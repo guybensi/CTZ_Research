@@ -1,0 +1,81 @@
+Data and Model Summary for Guy and Eshkol Project
+
+Paths and Files
+----------------
+- Project root: /home/ilai/Guy and Eshkol/Code/CTZ_Research
+- Data folder: /home/ilai/Guy and Eshkol/Data/Initial_Data
+- Source code: /home/ilai/Guy and Eshkol/Data/Initial_Data/All_Sky_AIflux.py
+- Data introspection script: /home/ilai/Guy and Eshkol/Data/Initial_Data/Details_of_npz.py
+- Shared dataset archive: /home/ilai/Guy and Eshkol/Data/Initial_Data/Data_toGuy.zip
+- Research article: /home/ilai/Guy and Eshkol/Previous Research/AGU Advances - 2025 - Eytan - The Net Radiative Effect of the Ill‐Defined Clear‐Sky in the Vicinity of Clouds.pdf
+
+Data Description
+-----------------
+- The archive Data_toGuy.zip contains test data organized into:
+  - test/images: multispectral image NPZ files such as A2014060.0245.npz
+  - test/moments: moment data NPZ files
+  - test/scalars: scalar data NPZ files
+- A representative image NPZ has variables:
+  - Imviews: shape (9, 3, 27, 55)
+  - ImSW: shape (9, 11, 27, 55) for solar spectral channels
+  - ImLW: shape (9, 16, 27, 55) for longwave thermal channels
+  - FOVorientation: shape (9,) for field-of-view orientation
+- The data appear to be satellite-derived cloud/atmosphere observations with multiple wavelengths, view angles, and flux-related scalar/moment summaries.
+
+Article Summary
+----------------
+- The PDF is a research article on the net radiative effect of ill-defined clear-sky regions near clouds.
+- It combines MODIS multispectral imagery with CERES broadband top-of-atmosphere radiative flux data.
+- Key findings include:
+  - The local radiative effect in the solar band is larger than the aerosol direct radiative effect in the same areas.
+  - The longwave effect is equivalent to a significant amount of CO2 forcing.
+- The work emphasizes the importance of accurately defining clear-sky versus cloud and aerosol conditions for radiative budget calculations.
+
+Model and Code Work
+--------------------
+- The main model code is in All_Sky_AIflux.py.
+- It loads a dataset from a file named mrch_2014_Pacific.npz and a corresponding pickled DataFrame.
+- Features include solar/thermal channel moments plus viewing geometry: SZA, VZA, RAA.
+- The model label is "Flux" and the label is normalized using a train label normalization layer.
+- The data are filtered by cloud-top height thresholds: mCTH < 3000 and stdCTH < 1000.
+- Training/test split is roughly 70/30 with an optional validation split of 5% on the training data.
+- Two model types are supported:
+  - Linear regression via Keras Dense output layer
+  - Feedforward ANN with configurable hidden layers and regularization
+- Default configuration appears to train the ANN (linreg=0), with one hidden layer size Nfeaters1 and optional additional layers if enabled.
+- Loss and metrics can be either mean squared error or mean absolute error.
+- The code evaluates on a test set and reports normalized loss, RMSE in W/m^2, and saves the model to Keras .keras format.
+- Visualization includes weight heatmaps for the linear or ANN models.
+- Details_of_npz.py is a utility for inspecting NPZ files and plotting example spectral images.
+
+What Has Been Done with the Model
+-----------------------------------
+1. Data ingestion and feature selection from a multispectral satellite dataset.
+2. Preprocessing with normalization layers for both inputs and label flux values.
+3. Train/test split and optional internal testing with saved normalization factors.
+4. Model training for either linear regression or ANN regression using TensorFlow/Keras.
+5. Evaluation of prediction error and display of learned weight patterns.
+
+Five Ways to Improve the Model
+-------------------------------
+1. Use better model selection and regularization:
+   - add early stopping, learning rate scheduling, dropout, and batch normalization.
+   - tune hidden-layer sizes, activation functions, and regularization strength.
+2. Expand the data pipeline and use cross-validation:
+   - create a proper train/validation/test split, stratify by cloud/aerosol conditions, and use k-fold validation.
+   - ensure no data leakage from the same scenes between training and testing.
+3. Incorporate spatial context and richer architectures:
+   - if the data are image arrays, use convolutional neural networks or encoder-decoder architectures.
+   - leverage the multispectral image structure instead of only tabular spectral moments.
+4. Improve feature engineering:
+   - add cross-channel spectral indices, cloud mask indicators, and physically motivated radiative variables.
+   - include additional environmental metadata if available (e.g. viewing geometry, surface type, aerosol optical depth).
+5. Add robust evaluation and domain-specific loss functions:
+   - compare model output to independent flux observations and use metrics beyond MSE/MAE.
+   - test physically consistent constraints, such as energy balance or radiative transfer consistency.
+
+Notes
+------
+- There is no separate trained model file in the inspected workspace other than the code saving Keras models under a data path.
+- The code appears built for Google Colab and uses local paths that may require adjustment on this machine.
+- The article provides the scientific motivation and context for the dataset and radiative flux modeling effort.
