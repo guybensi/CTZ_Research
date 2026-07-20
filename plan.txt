@@ -1,0 +1,13 @@
+Plan: GPU-ready model benchmarking workflow
+
+1. Review the existing CTZ research code and data layout so the new workflow stays aligned with the current regression logic.
+2. Implement a reusable training script that can:
+   - load real data when available,
+   - fall back to a synthetic demo dataset otherwise,
+   - benchmark a baseline linear regression model and five additional scikit-learn regressors,
+   - run hyperparameter tuning with multiple train/test splits and k-fold cross-validation,
+   - tune and compare a TensorFlow ANN,
+   - save the best configuration and evaluation artifacts.
+3. Add documentation files that explain the workflow, deployment steps, and remote GPU usage.
+4. Update the container configuration so the benchmark script runs automatically in a GPU-enabled environment.
+5. Verify the script in demo mode and capture the output as evidence before handing off.
