@@ -41,3 +41,16 @@ The copied original pipeline in [All_Sky_AIflux.py](All_Sky_AIflux.py) now suppo
 - `benchmark_outputs/best_classical_model.joblib`
 - `benchmark_outputs/best_ann_model.keras`
 - `benchmark_outputs/best_ann_scaler.joblib`
+
+## After the data arrives
+
+1. Mount or copy the real dataset into the machine or container.
+2. Run the original workflow first with preload tuning enabled:
+
+```bash
+python3 All_Sky_AIflux.py --data-path /path/to/data --data-file mrch_2014_Pacific.npz --preload-tuning
+```
+
+3. If the tuning looks reasonable, run the full original model on the real data without `--preload-only`.
+4. Run the broader benchmark pipeline to compare the original model against the additional regressors and ANN variants.
+5. Compare the saved metrics and keep the best configuration for the final training run.
