@@ -1,7 +1,7 @@
 Plan: GPU-ready model benchmarking workflow
 
-1. Review the existing CTZ research code and data layout so the new workflow stays aligned with the current regression logic.
-2. Implement a reusable training script that can:
+1. Review the existing CTZ research code and data layout so the new workflow stays aligned with the current regression logic. then copy it and try hyper tuning eithout change in logic
+2.  creat new model and Implement a reusable training script that can:
    - load real data when available,
    - fall back to a synthetic demo dataset otherwise,
    - benchmark a baseline linear regression model and five additional scikit-learn regressors,

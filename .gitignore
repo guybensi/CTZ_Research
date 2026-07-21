@@ -19,6 +19,10 @@ benchmark_outputs/
 *.keras
 *.pkl
 
+# Local NPZ datasets
+Data_toGuy/
+test/
+
 # Local OS files
 .DS_Store
 Thumbs.db

@@ -3,7 +3,7 @@
 # Build: docker build -t ctz_research:gpu .
 # Run:   docker run --gpus all -it --rm -v "$PWD":/app ctz_research:gpu
 
-FROM nvidia/cuda:12.2.0-runtime-ubuntu24.04
+FROM nvidia/cuda:12.2.0-runtime-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
