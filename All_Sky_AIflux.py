@@ -127,6 +127,7 @@ Nfeaters4=0
 errorprec=False # present error in (%) or (Wm^-2)
 linreg=0 # 1- linear regression | 0- ANN model | 2- do both and compare error
 # crossfeat=False
+cross_featers_list=[]
 Flabel=True
 SWf=True
 
@@ -153,35 +154,6 @@ kurtcols=['k'+tmp for tmp in base_column_names[3:]]
 base_column_names=['SZA','VZA','RAA']+mcols+stdcols+skewcols+kurtcols
 
 normlist=[SolarNorm,ThermalNorm,MixedNorm]
-
-preload_tuning_config = {}
-if ARGS.preload_tuning:
-    preload_tuning_config = run_preload_hyperparameter_tuning(len(featers_list))
-    apply_preload_tuning_results(preload_tuning_config)
-
-    tuning_summary = {
-        'selected_config': preload_tuning_config,
-        'learning_rate': learning_rate,
-        'batch_size': batch_size,
-        'validation_split': validation_split,
-        'activationf': activationf,
-        'Nfeaters1': Nfeaters1,
-        'Nfeaters2': Nfeaters2,
-        'Nfeaters3': Nfeaters3,
-        'Nfeaters4': Nfeaters4,
-    }
-    tuning_output = ARGS.tuning_output if ARGS.tuning_output else os.path.join(os.getcwd(), nmextension + '_preload_tuning.json')
-    try:
-        os.makedirs(os.path.dirname(tuning_output), exist_ok=True)
-        with open(tuning_output, 'w', encoding='utf-8') as tuning_file:
-            json.dump(tuning_summary, tuning_file, indent=2)
-        print('##### Preload hyperparameter tuning summary saved to', tuning_output)
-    except Exception as tuning_error:
-        print('##### Could not save preload tuning summary:', tuning_error)
-
-    if ARGS.preload_only:
-        print('##### Exiting after preload tuning as requested')
-        sys.exit(0)
 
 # %%
 #---------------------- title Define the plotting function. ---------------------------------------
@@ -311,6 +283,113 @@ def apply_preload_tuning_results(best_config):
     Nfeaters3 = best_config['Nfeaters3']
     Nfeaters4 = best_config['Nfeaters4']
 
+
+def _resolve_test_data_root(base_path):
+    """Find a directory that contains moments/ and scalars/ NPZ subfolders."""
+
+    candidates = [
+            base_path,
+            os.path.join(base_path, 'test') if base_path else '',
+            os.path.join(os.getcwd(), 'test'),
+            os.path.join(os.getcwd(), 'Data_toGuy', 'test'),
+    ]
+    for candidate in candidates:
+        if not candidate:
+            continue
+        moments_dir = os.path.join(candidate, 'moments')
+        scalars_dir = os.path.join(candidate, 'scalars')
+        if os.path.isdir(moments_dir) and os.path.isdir(scalars_dir):
+            return candidate
+    return ''
+
+
+def _build_dataframe_from_npz_pairs(data_root, wavelength_names, sw_mode=True):
+    """Build the expected training dataframe from moments/scalars NPZ pairs."""
+
+    moments_dir = os.path.join(data_root, 'moments')
+    scalars_dir = os.path.join(data_root, 'scalars')
+    moment_files = sorted([fname for fname in os.listdir(moments_dir) if fname.endswith('.npz')])
+
+    rows = []
+    used_pairs = 0
+    for moment_file in moment_files:
+        moment_path = os.path.join(moments_dir, moment_file)
+        scalar_path = os.path.join(scalars_dir, moment_file)
+        if not os.path.exists(scalar_path):
+            continue
+
+        with np.load(moment_path, allow_pickle=True) as moments_data, np.load(scalar_path, allow_pickle=True) as scalars_data:
+            sw_wavelengths = np.asarray(moments_data['SWwavlngs'], dtype=np.float32)
+            lw_wavelengths = np.asarray(moments_data['LWwavlngs'], dtype=np.float32)
+            all_wavelengths = np.concatenate((sw_wavelengths, lw_wavelengths), axis=0)
+
+            mean_spec = np.concatenate((moments_data['mSWspec'], moments_data['mLWspec']), axis=1)
+            skew_spec = np.concatenate((moments_data['skewSWspec'], moments_data['skewLWspec']), axis=1)
+
+            sza = np.asarray(scalars_data['SZA'], dtype=np.float32)
+            vza = np.asarray(scalars_data['VZA'], dtype=np.float32)
+            raa = np.asarray(scalars_data['RAA'], dtype=np.float32)
+            mean_cth = np.asarray(scalars_data['meanCTH'], dtype=np.float32)
+            std_cth = np.asarray(scalars_data['stdCTH'], dtype=np.float32)
+            flux = np.asarray(scalars_data['Fsw' if sw_mode else 'Flw'], dtype=np.float32)
+
+            target_wavelengths = np.asarray([float(wl) for wl in wavelength_names], dtype=np.float32)
+            nearest_indices = [int(np.argmin(np.abs(all_wavelengths - wl))) for wl in target_wavelengths]
+
+            sample_count = min(len(sza), len(vza), len(raa), len(mean_cth), len(std_cth), len(flux), mean_spec.shape[0], skew_spec.shape[0])
+            for row_idx in range(sample_count):
+                row = {
+                        'SZA': float(sza[row_idx]),
+                        'VZA': float(vza[row_idx]),
+                        'RAA': float(raa[row_idx]),
+                        'mCTH': float(mean_cth[row_idx]),
+                        'stdCTH': float(std_cth[row_idx]),
+                        'Flux': float(flux[row_idx]),
+                }
+
+                for wl_name, channel_idx in zip(wavelength_names, nearest_indices):
+                    row['m' + wl_name] = float(mean_spec[row_idx, channel_idx])
+                    row['sk' + wl_name] = float(skew_spec[row_idx, channel_idx])
+                rows.append(row)
+
+            used_pairs += 1
+
+    if not rows:
+        raise ValueError('No valid moments/scalars NPZ pairs were found under ' + data_root)
+
+    print('##### Built dataframe from', used_pairs, 'NPZ file pairs')
+    return pd.DataFrame(rows)
+
+
+preload_tuning_config = {}
+if ARGS.preload_tuning:
+    preload_tuning_config = run_preload_hyperparameter_tuning(len(featers_list))
+    apply_preload_tuning_results(preload_tuning_config)
+
+    tuning_summary = {
+        'selected_config': preload_tuning_config,
+        'learning_rate': learning_rate,
+        'batch_size': batch_size,
+        'validation_split': validation_split,
+        'activationf': activationf,
+        'Nfeaters1': Nfeaters1,
+        'Nfeaters2': Nfeaters2,
+        'Nfeaters3': Nfeaters3,
+        'Nfeaters4': Nfeaters4,
+    }
+    tuning_output = ARGS.tuning_output if ARGS.tuning_output else os.path.join(os.getcwd(), nmextension + '_preload_tuning.json')
+    try:
+        os.makedirs(os.path.dirname(tuning_output), exist_ok=True)
+        with open(tuning_output, 'w', encoding='utf-8') as tuning_file:
+            json.dump(tuning_summary, tuning_file, indent=2)
+        print('##### Preload hyperparameter tuning summary saved to', tuning_output)
+    except Exception as tuning_error:
+        print('##### Could not save preload tuning summary:', tuning_error)
+
+    if ARGS.preload_only:
+        print('##### Exiting after preload tuning as requested')
+        sys.exit(0)
+
 # ------------------- Define functions to create and train a linear regression model ----------------------------------------
 def create_model(my_inputs, my_outputs, my_learning_rate):
   """Create and compile a simple linear regression model."""
@@ -327,20 +406,27 @@ def create_model(my_inputs, my_outputs, my_learning_rate):
 
 
 def train_model(model, dataset, epochs, batch_size, label_name, validation_split=0.1):
-  """Feed a dataset into the model in order to train it."""
+        """Feed a dataset into the model in order to train it."""
 
-  # Split the dataset into features and label.
-  features = {name:np.array(value) for name, value in dataset.items()}
-  label = train_label(np.array(features.pop(label_name)))
-  history = model.fit(x=features, y=label, batch_size=batch_size,
-                      epochs=epochs, shuffle=True, validation_split=validation_split)
+        # Split the dataset into features and label.
+        features = {name: np.array(value) for name, value in dataset.items()}
+        label_raw = np.array(features.pop(label_name), dtype=np.float32).reshape(-1, 1)
+        label = train_label(label_raw)
+        history = model.fit(
+                        x=features,
+                        y=label,
+                        batch_size=batch_size,
+                        epochs=epochs,
+                        shuffle=True,
+                        validation_split=validation_split,
+        )
 
-  # Get details that will be useful for plotting the loss curve.
-  epochs = history.epoch
-  hist = pd.DataFrame(history.history)
-  mse = hist[loss_square]
+        # Get details that will be useful for plotting the loss curve.
+        epochs = history.epoch
+        hist = pd.DataFrame(history.history)
+        mse = hist[loss_square]
 
-  return epochs, mse, history.history
+        return epochs, mse, history.history
 
 print("Defined the create_model and train_model functions.")
 
@@ -404,18 +490,40 @@ def get_outputs_dnn():
 #                 tmpdf,column_names,label_normalization_factor,SWnorm,mixnorm,LWnorm,Norms,df_mean,df_std=make_df(tmppath,Flabel,SWf,featers_list,cross_featers_list,normlist)
 #                 df=df.append(tmpdf)
 
-dat=np.load(fname)
-# df=dat["DF"]
-column_names=dat["column_names"]
-label_normalization_factor=dat["label_normalization_factor"]
-SWnorm=dat["SWnorm"]
-MIXnorm=dat["MIXnorm"]
-LWnorm=dat["LWnorm"]
-Norms=dat["Norms"]
-df_mean=dat["df_mean"]
-df_std=dat["df_std"]
-name=fname[:-3]+'pkl'
-df = pd.read_pickle(name)
+legacy_ready = False
+if os.path.exists(fname):
+    with np.load(fname, allow_pickle=True) as dat:
+        needed_keys = ['column_names', 'label_normalization_factor', 'SWnorm', 'MIXnorm', 'LWnorm', 'Norms', 'df_mean', 'df_std']
+        if all(key in dat.files for key in needed_keys):
+            legacy_ready = True
+
+if legacy_ready and os.path.exists(fname[:-3] + 'pkl'):
+    with np.load(fname, allow_pickle=True) as dat:
+        column_names=dat['column_names']
+        label_normalization_factor=dat['label_normalization_factor']
+        SWnorm=dat['SWnorm']
+        MIXnorm=dat['MIXnorm']
+        LWnorm=dat['LWnorm']
+        Norms=dat['Norms']
+        df_mean=dat['df_mean']
+        df_std=dat['df_std']
+    name=fname[:-3]+'pkl'
+    df = pd.read_pickle(name)
+else:
+    test_data_root = _resolve_test_data_root(datapath)
+    if not test_data_root:
+        raise FileNotFoundError('Could not locate test moments/scalars folders. Set --data-path to a folder containing moments/ and scalars/.')
+
+    datapath = test_data_root
+    df = _build_dataframe_from_npz_pairs(test_data_root, wavelns_list0, SWf)
+    column_names = list(df.columns)
+    label_normalization_factor = 1.0
+    SWnorm = np.array([1.0], dtype=np.float32)
+    MIXnorm = np.array([1.0], dtype=np.float32)
+    LWnorm = np.array([1.0], dtype=np.float32)
+    Norms = np.array([1.0, 1.0, 1.0], dtype=np.float32)
+    df_mean = df[featers_list].mean().to_numpy(dtype=np.float32)
+    df_std = df[featers_list].replace([np.inf, -np.inf], np.nan).std().fillna(0.0).to_numpy(dtype=np.float32)
 
 # df = df[:2000000] 
 # print('################## NOTE ############  DF cut by half')
@@ -423,9 +531,12 @@ df = pd.read_pickle(name)
 # Filter rows based on a column condition
 df = df[ (df['mCTH'] < mCTHth) & (df['stdCTH'] < stdCTHth) ]
 
-# Drop unwanted columns
-drop_list=[ind  for ind in column_names if ind not in featers_list]
-df = df.drop(columns=drop_list)
+# Keep only model features and label after cloud-height filtering.
+required_columns = featers_list + ['Flux']
+missing_columns = [col for col in required_columns if col not in df.columns]
+if missing_columns:
+    raise ValueError('Missing required columns in dataframe: ' + ', '.join(missing_columns))
+df = df[required_columns]
 column_names=featers_list  #np.concatenate((column_names[0:3], column_names[9:]))
 
 print('##### Number of FOVs', len(df)) 
@@ -453,8 +564,19 @@ print('##### Number of FOVs', len(df))
 # df = df.sample(frac=1).reset_index(drop=True)
 # df=df.dropna() 
 
-df_train=df.iloc[0:int(np.ceil(trainprec*len(df))),:]
-df_test=df.iloc[int(np.ceil(trainprec*len(df)))+1:,:]
+df = df.sample(frac=1.0, random_state=ARGS.seed).reset_index(drop=True)
+split_idx = int(np.ceil(trainprec * len(df)))
+split_idx = max(1, min(split_idx, len(df) - 1))
+df_train=df.iloc[0:split_idx,:]
+df_test=df.iloc[split_idx:,:]
+
+if len(df_train) < 2 or len(df_test) < 1:
+    raise ValueError('Not enough samples after preprocessing. Need at least 3 rows to train/test split.')
+
+batch_size = max(1, min(batch_size, len(df_train)))
+max_val_split = (len(df_train) - 1) / len(df_train)
+validation_split = min(validation_split, max(0.0, max_val_split - 1e-6))
+
 lentest=len(df_test)
 if linearfit_split>0:
     df_test_lincorr=df_test.iloc[int(np.ceil(linearfit_split*lentest))+1:,:]
@@ -474,7 +596,7 @@ for i in range(0,df.shape[1]-1):
     print('normalizing layer',i)
     tmpstr='normalization_'+column_names[i]
     tmp = tf.keras.layers.Normalization(name=tmpstr, axis=None)
-    tmp.adapt(df_train[column_names[i]])
+    tmp.adapt(np.array(df_train[column_names[i]], dtype=np.float32).reshape(-1, 1))
     norm_inputs[i] = tmp(inputs_dic.get(column_names[i]))
 
 
@@ -487,9 +609,9 @@ print("Preprocessing layers defined.")
 
 # Create Normalization layers to normalize the Flux data. Because Flux is our label, these layers won't be added to our model.
 train_label= tf.keras.layers.Normalization(axis=None)#,invert=True)
-train_label.adapt(np.array(df_train['Flux']))
+train_label.adapt(np.array(df_train['Flux'], dtype=np.float32).reshape(-1, 1))
 test_label = tf.keras.layers.Normalization(axis=None)#,invert=True)
-test_label.adapt(np.array(df_test['Flux']))
+test_label.adapt(np.array(df_test['Flux'], dtype=np.float32).reshape(-1, 1))
 
 
 if internal_test:
@@ -531,7 +653,7 @@ if linreg!=0:
     # plot_the_loss_curve(epochs, mse, history["val_mean_squared_error"])
     
     test_features = {name:np.array(value) for name, value in df_test.items()}
-    lin_test_label = test_label(test_features.pop(label_name)) # isolate the label
+    lin_test_label = test_label(np.array(test_features.pop(label_name), dtype=np.float32).reshape(-1, 1)) # isolate the label
     print("\n Evaluate the linear regression model against the test set:")
     Score=Lin_model.evaluate(x = test_features, y = lin_test_label, batch_size=batch_size, return_dict=True)
     
@@ -606,7 +728,7 @@ if linreg!=1:
     
     # After building a model against the training set, test that model against the test set.
     test_features = {name:np.array(value) for name, value in df_test.items()}
-    ANN_test_label = test_label(np.array(test_features.pop(label_name))) # isolate the label
+    ANN_test_label = test_label(np.array(test_features.pop(label_name), dtype=np.float32).reshape(-1, 1)) # isolate the label
     print("\n Evaluate the new model against the test set:")
     Score=ANN_model.evaluate(x = test_features, y = ANN_test_label, batch_size=batch_size, return_dict=True)
     
