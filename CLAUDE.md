@@ -47,11 +47,14 @@ python3 python/guys_model.py --skip-classical
 
 # With specific data region
 python3 python/guys_model.py --data-root data/paired/North15_March2014/2014
+
+# Rank features by Random Forest importance and benchmark top-N subsets (5/10/15/20/24) instead of the fixed combinations
+python3 python/guys_model.py --feature-selection importance
 ```
 
 **What it does:**
-1. Loads moments/scalars from paired data and generates feature combinations
-2. Benchmarks 7+ classical models (Random Forest, CatBoost, XGBoost, Linear Regression, Gradient Boosting, AdaBoost, SVM)
+1. Loads moments/scalars from paired data and generates feature combinations. The target is `Fsw` (shortwave flux) from the scalars data; wavelength arrays (`SWwavlngs`/`LWwavlngs`) and the unused `Flw` (longwave flux) scalar are excluded from the features, and rows with NaN/inf values are dropped.
+2. Benchmarks 7+ classical models (Random Forest, CatBoost, XGBoost, Linear Regression, Gradient Boosting, AdaBoost, SVM) — or, with `--feature-selection importance`, only Ridge and SVM across importance-ranked top-N feature subsets, picking the practical speed/accuracy tradeoff (prefers `top_20`) rather than the single best R².
 3. Identifies best model/combo pair
 4. Hyperparameter-tunes the best model
 5. Builds and trains a TensorFlow ANN using All_Sky_AIflux architecture
@@ -93,6 +96,12 @@ Quick NPZ inspection example:
 python3 python/Details_of_npz.py --data-root data/test --file-type images --file-name A2014060.0245.npz
 ```
 
+To sample a fraction of a large paired data directory into a single NPZ (useful for quick local iteration before running the full benchmark):
+
+```bash
+python3 python/sample_paired_data.py data/paired/Pacific_2014-2015 benchmark_outputs/sampled_data.npz
+```
+
 ## Editing Notes
 
 - Update [README.md](README.md) when the workflow or runtime instructions change.
@@ -129,4 +138,5 @@ data/
 - Test subset is [data/test](data/test).
 - Pre-built training data goes in [data/consolidated](data/consolidated).
 - New feature combination benchmark script: [python/guys_model.py](python/guys_model.py) — compares classical models, hyperparameter-tunes, then trains ANN.
+- New sampling helper: [python/sample_paired_data.py](python/sample_paired_data.py) — samples a fraction of a paired data directory into a single NPZ.
 

@@ -5,6 +5,8 @@ CTZ_Research is a research-oriented project for improving the quality and predic
 ## What is in this repository
 
 - [python/benchmark_pipeline.py](python/benchmark_pipeline.py): main training and benchmarking entry point.
+- [python/guys_model.py](python/guys_model.py): feature combination benchmark with model selection, hyperparameter tuning, and ANN training. Target is `Fsw` (shortwave flux) from the scalars data.
+- [python/sample_paired_data.py](python/sample_paired_data.py): samples a fraction of a paired moments/scalars data directory and saves it as a single NPZ, for quick local iteration on the full dataset.
 - [python/All_Sky_AIflux.py](python/All_Sky_AIflux.py): original ANN/linear regression workflow.
 - [python/Details_of_npz.py](python/Details_of_npz.py): NPZ inspection and visualization utility.
 - [BENCHMARKING.md](BENCHMARKING.md): detailed run instructions and output descriptions.
@@ -44,6 +46,25 @@ Inspect NPZ files from the consolidated dataset:
 python3 python/Details_of_npz.py --data-root data/test --file-type images --file-name A2014060.0245.npz
 ```
 
+Guy's Model - feature combination benchmark with automatic model selection and ANN training:
+
+```bash
+# Demo mode (synthetic data)
+python3 python/guys_model.py --demo
+
+# With real paired data (default), target is Fsw (shortwave flux)
+python3 python/guys_model.py
+
+# Rank features by Random Forest importance and benchmark top-N subsets instead of the fixed combinations
+python3 python/guys_model.py --feature-selection importance
+```
+
+Sample a fraction of a large paired data directory into a single NPZ for faster local iteration:
+
+```bash
+python3 python/sample_paired_data.py data/paired/Pacific_2014-2015 benchmark_outputs/sampled_data.npz
+```
+
 ## Original model tuning flags
 
 - `--data-path`: overrides the hard-coded data directory used by the original script.
@@ -67,6 +88,6 @@ The ANN benchmark will require GPU access inside the container.
 
 - The code now lives in [python](python), so all script invocations should use `python/<script>.py`.
 - [python/All_Sky_AIflux.py](python/All_Sky_AIflux.py) now defaults to [data/test](data/test), and still accepts `--data-path` for explicit dataset selection.
-- [python/All_Sky_AIflux.py](python/All_Sky_AIflux.py) expects a folder containing `moments/` and `scalars/` (for example [data/test](data/test) or [data/March_2014N15_momentsNscalars/2014](data/March_2014N15_momentsNscalars/2014)).
+- [python/All_Sky_AIflux.py](python/All_Sky_AIflux.py) expects a folder containing `moments/` and `scalars/` (for example [data/test](data/test) or [data/paired/North15_March2014/2014](data/paired/North15_March2014/2014)).
 - [python/benchmark_pipeline.py](python/benchmark_pipeline.py) supports both single CSV/NPZ tabular files with a target key (`Flux`/`target`/etc.) and paired folder layouts containing `moments/` and `scalars/` NPZ files (including nested `test/moments` and `test/scalars`).
 - [python/Details_of_npz.py](python/Details_of_npz.py) defaults to [data/test](data/test), and `--data-root` can still be used to inspect other datasets.
