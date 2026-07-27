@@ -34,8 +34,7 @@ RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1
 
 COPY requirements.txt /app/requirements.txt
 RUN python3 -m pip install --no-cache-dir -r /app/requirements.txt
-RUN python3 -m pip install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu122
 
 COPY . /app
 
-CMD ["python3", "benchmark_pipeline.py"]
+CMD ["python3", "python/benchmark_pipeline.py"]
