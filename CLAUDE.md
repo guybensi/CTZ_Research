@@ -4,6 +4,7 @@
 
 - Keep the original regression logic intact. Improve the training workflow by tuning parameters, cross-validation, and model selection rather than changing the scientific target.
 - Prefer changes in [python/benchmark_pipeline.py](python/benchmark_pipeline.py) for all ML workflow updates.
+- For feature combination exploration and model selection workflow, use [python/guys_model.py](python/guys_model.py) which systematically benchmarks classical models before training ANN.
 - Keep the code runnable before the real dataset is available by preserving demo mode.
 - Use the GPU-enabled Docker workflow for ANN training and mark GPU as required inside the container.
 - Save model artifacts and metrics in `benchmark_outputs/`.
@@ -25,6 +26,45 @@ To run against real data:
 
 ```bash
 python3 python/benchmark_pipeline.py --data-path /data --output-dir benchmark_outputs
+```
+
+### Guy's Model - Feature Combination Benchmark
+
+Run feature combination analysis with automatic model selection, hyperparameter tuning, and ANN training:
+
+```bash
+# Demo mode (synthetic data)
+python3 python/guys_model.py --demo
+
+# With real paired data (default)
+python3 python/guys_model.py
+
+# Custom output directory and epochs
+python3 python/guys_model.py --output-dir my_results --ann-epochs 200
+
+# Skip classical models, go straight to ANN
+python3 python/guys_model.py --skip-classical
+
+# With specific data region
+python3 python/guys_model.py --data-root data/paired/North15_March2014/2014
+```
+
+**What it does:**
+1. Loads moments/scalars from paired data and generates feature combinations
+2. Benchmarks 7+ classical models (Random Forest, CatBoost, XGBoost, Linear Regression, Gradient Boosting, AdaBoost, SVM)
+3. Identifies best model/combo pair
+4. Hyperparameter-tunes the best model
+5. Builds and trains a TensorFlow ANN using All_Sky_AIflux architecture
+6. Outputs: performance heatmaps, feature importance plots, metrics CSV, trained model weights
+
+**Output directory structure:**
+```
+benchmark_outputs/run_YYYYMMDD_HHMMSS/
+  ├── benchmark_results.csv          # All model/combo results
+  ├── performance_heatmap.png        # Model performance matrix
+  ├── feature_importance.png         # Top feature importances
+  ├── ann_model.keras                # Trained ANN weights
+  └── summary.json                   # Final metrics & configuration
 ```
 
 To run the original paired NPZ workflow on specific data regions:
@@ -88,4 +128,5 @@ data/
 - Local data is organized under [data/paired](data/paired) by region.
 - Test subset is [data/test](data/test).
 - Pre-built training data goes in [data/consolidated](data/consolidated).
+- New feature combination benchmark script: [python/guys_model.py](python/guys_model.py) — compares classical models, hyperparameter-tunes, then trains ANN.
 
