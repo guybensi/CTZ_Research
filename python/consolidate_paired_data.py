@@ -20,14 +20,14 @@ def parse_args() -> argparse.Namespace:
         default=[
             str(repo_root / "data" / "test"),
             str(repo_root / "data" / "legacy_code" / "old_codes" / "test"),
-            str(repo_root / "data" / "March_2014N15_momentsNscalars" / "2014"),
-            str(repo_root / "data" / "March_2014N15_momentsNscalars" / "2015"),
+            str(repo_root / "data" / "paired" / "North15_March2014" / "2014"),
+            str(repo_root / "data" / "paired" / "North15_March2014" / "2015"),
         ],
         help="Dataset roots that may contain moments/scalars(/images)",
     )
     parser.add_argument(
         "--output-root",
-        default=str(repo_root / "data" / "all_paired"),
+        default=str(repo_root / "data" / "paired" / "Pacific_2014-2015"),
         help="Output root for consolidated links/files",
     )
     parser.add_argument(

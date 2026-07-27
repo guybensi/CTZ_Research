@@ -27,10 +27,24 @@ To run against real data:
 python3 python/benchmark_pipeline.py --data-path /data --output-dir benchmark_outputs
 ```
 
-To run the original paired NPZ workflow on the consolidated local data:
+To run the original paired NPZ workflow on specific data regions:
 
 ```bash
-python3 python/All_Sky_AIflux.py --data-path data/March_2014N15_momentsNscalars/2014
+# North15 March 2014 data
+python3 python/All_Sky_AIflux.py --data-path data/paired/North15_March2014/2014
+
+# Pacific 2014-2015 data
+python3 python/All_Sky_AIflux.py --data-path data/paired/Pacific_2014-2015
+```
+
+To build a legacy training dataset from paired moments/scalars:
+
+```bash
+# Default uses Pacific 2014-2015
+python3 python/build_legacy_dataset_from_pairs.py
+
+# Or specify a different region
+python3 python/build_legacy_dataset_from_pairs.py --data-root data/paired/North15_March2014/2014
 ```
 
 Quick NPZ inspection example:
@@ -45,24 +59,33 @@ python3 python/Details_of_npz.py --data-root data/test --file-type images --file
 - Update [Dockerfile](Dockerfile) when dependencies or the GPU runtime changes.
 - Ignore generated training outputs and local environment files in `.gitignore`.
 
+## Data Structure
+
+```
+data/
+  paired/                          # Paired moments/scalars data organized by region
+    Pacific_2014-2015/             # Pacific region training data (default for legacy scripts)
+      moments/
+      scalars/
+      images/
+    North15_March2014/             # North 15° region validation data
+      2014/
+        moments/
+        scalars/
+      2015/
+        moments/
+        scalars/
+  test/                            # Quick reference test subset
+    moments/
+    scalars/
+    images/
+  consolidated/                    # Pre-built datasets (NPZ/CSV for benchmarking)
+```
+
 ## Python Folder Migration Notes
 
 - Python scripts are now under [python](python).
-- Local data is consolidated under [data](data).
-- Current canonical test subset is [data/test](data/test).
+- Local data is organized under [data/paired](data/paired) by region.
+- Test subset is [data/test](data/test).
+- Pre-built training data goes in [data/consolidated](data/consolidated).
 
-## Required Python-File Changes (Documented Only, Not Applied)
-
-The following changes are still needed in Python files to run more smoothly on the current repository layout without relying on command-line overrides.
-
-1. [python/All_Sky_AIflux.py](python/All_Sky_AIflux.py)
-- Replace the Windows-only `DEFAULT_DATAPATH` with a repository-relative default such as `Path(__file__).resolve().parents[1] / "data" / "test"`.
-- Optionally extend `_resolve_test_data_root` candidates to include `repo_root/data/test` and `repo_root/data/March_2014N15_momentsNscalars/<year>` automatically.
-- Keep support for explicit `--data-path` as highest priority.
-
-2. [python/Details_of_npz.py](python/Details_of_npz.py)
-- Change `default_data_root` from `script_dir / "Data_toGuy" / "test"` to a repo-relative location under `data` (for example `repo_root / "data" / "test"`).
-
-3. [python/benchmark_pipeline.py](python/benchmark_pipeline.py)
-- Add a loader path for paired `moments/` + `scalars/` folders (the same format used by [python/All_Sky_AIflux.py](python/All_Sky_AIflux.py)).
-- Alternatively, document and enforce that this script requires a single prebuilt tabular NPZ/CSV with a target key (`Flux`, `target`, etc.).

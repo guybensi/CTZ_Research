@@ -23,7 +23,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build legacy PKL/NPZ bundle from paired moments/scalars data")
     parser.add_argument(
         "--data-root",
-        default=str(repo_root / "data" / "all_paired"),
+        default=str(repo_root / "data" / "paired" / "Pacific_2014-2015"),
         help="Root that contains moments/ and scalars/ folders",
     )
     parser.add_argument(
