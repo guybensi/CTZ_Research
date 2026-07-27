@@ -6,7 +6,7 @@ CTZ_Research is a research-oriented project for improving the quality and predic
 
 - [python/benchmark_pipeline.py](python/benchmark_pipeline.py): main training and benchmarking entry point.
 - [python/guys_benchmark_models.py](python/guys_benchmark_models.py): feature combination benchmark with model selection, hyperparameter tuning, and ANN training. Target is `Fsw` (shortwave flux) from the scalars data.
-- [python/final_model.py](python/final_model.py): locked-down production recipe from the benchmark (Ridge + ANN on the top-20 importance-selected features) — trains and saves both models directly, no grid search.
+- [python/guy_model.py](python/guy_model.py): locked-down production recipe from the benchmark (Ridge + ANN on the top-20 importance-selected features) — trains and saves both models directly, no grid search.
 - [python/sample_paired_data.py](python/sample_paired_data.py): samples a fraction of a paired moments/scalars data directory and saves it as a single NPZ, for quick local iteration on the full dataset.
 - [python/All_Sky_AIflux.py](python/All_Sky_AIflux.py): original ANN/linear regression workflow.
 - [python/Details_of_npz.py](python/Details_of_npz.py): NPZ inspection and visualization utility.
@@ -63,8 +63,8 @@ python3 python/guys_benchmark_models.py --feature-selection importance
 Train the final locked-down model (Ridge + ANN on the top-20 importance-selected features, no grid search):
 
 ```bash
-python3 python/final_model.py --demo
-python3 python/final_model.py --data-root data/paired/Pacific_2014-2015
+python3 python/guy_model.py --demo
+python3 python/guy_model.py --data-root data/paired/Pacific_2014-2015
 ```
 
 Sample a fraction of a large paired data directory into a single NPZ for faster local iteration:

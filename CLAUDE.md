@@ -102,16 +102,16 @@ To sample a fraction of a large paired data directory into a single NPZ (useful 
 python3 python/sample_paired_data.py data/paired/Pacific_2014-2015 benchmark_outputs/sampled_data.npz
 ```
 
-### Final Model
+### Guy Model (Final Locked-Down Recipe)
 
-Once [python/guys_benchmark_models.py](python/guys_benchmark_models.py) `--feature-selection importance` has identified the best combo/model, [python/final_model.py](python/final_model.py) locks that recipe in (currently: top-20 Random Forest importance-selected features, Ridge alpha=1.0 baseline, plus the ANN) and trains it directly without re-running the full sweep:
+Once [python/guys_benchmark_models.py](python/guys_benchmark_models.py) `--feature-selection importance` has identified the best combo/model, [python/guy_model.py](python/guy_model.py) locks that recipe in (currently: top-20 Random Forest importance-selected features, Ridge alpha=1.0 baseline, plus the ANN) and trains it directly without re-running the full sweep:
 
 ```bash
-python3 python/final_model.py --demo
-python3 python/final_model.py --data-root data/paired/Pacific_2014-2015
+python3 python/guy_model.py --demo
+python3 python/guy_model.py --data-root data/paired/Pacific_2014-2015
 ```
 
-If a future benchmark run picks a different combo/model as the practical recommendation, update the constants and imports at the top of `final_model.py` to match.
+If a future benchmark run picks a different combo/model as the practical recommendation, update the constants and imports at the top of `guy_model.py` to match.
 
 ## Editing Notes
 
@@ -150,5 +150,5 @@ data/
 - Pre-built training data goes in [data/consolidated](data/consolidated).
 - New feature combination benchmark script: [python/guys_benchmark_models.py](python/guys_benchmark_models.py) — compares classical models, hyperparameter-tunes, then trains ANN.
 - New sampling helper: [python/sample_paired_data.py](python/sample_paired_data.py) — samples a fraction of a paired data directory into a single NPZ.
-- New final model script: [python/final_model.py](python/final_model.py) — trains the locked-down production recipe (Ridge + ANN on top-20 importance-selected features) picked by the benchmark.
+- New locked-down recipe script: [python/guy_model.py](python/guy_model.py) — trains the production recipe (Ridge + ANN on top-20 importance-selected features) picked by the benchmark.
 
