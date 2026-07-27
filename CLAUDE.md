@@ -4,7 +4,7 @@
 
 - Keep the original regression logic intact. Improve the training workflow by tuning parameters, cross-validation, and model selection rather than changing the scientific target.
 - Prefer changes in [python/benchmark_pipeline.py](python/benchmark_pipeline.py) for all ML workflow updates.
-- For feature combination exploration and model selection workflow, use [python/guys_model.py](python/guys_model.py) which systematically benchmarks classical models before training ANN.
+- For feature combination exploration and model selection workflow, use [python/guys_benchmark_models.py](python/guys_benchmark_models.py) which systematically benchmarks classical models before training ANN.
 - Keep the code runnable before the real dataset is available by preserving demo mode.
 - Use the GPU-enabled Docker workflow for ANN training and mark GPU as required inside the container.
 - Save model artifacts and metrics in `benchmark_outputs/`.
@@ -34,22 +34,22 @@ Run feature combination analysis with automatic model selection, hyperparameter 
 
 ```bash
 # Demo mode (synthetic data)
-python3 python/guys_model.py --demo
+python3 python/guys_benchmark_models.py --demo
 
 # With real paired data (default)
-python3 python/guys_model.py
+python3 python/guys_benchmark_models.py
 
 # Custom output directory and epochs
-python3 python/guys_model.py --output-dir my_results --ann-epochs 200
+python3 python/guys_benchmark_models.py --output-dir my_results --ann-epochs 200
 
 # Skip classical models, go straight to ANN
-python3 python/guys_model.py --skip-classical
+python3 python/guys_benchmark_models.py --skip-classical
 
 # With specific data region
-python3 python/guys_model.py --data-root data/paired/North15_March2014/2014
+python3 python/guys_benchmark_models.py --data-root data/paired/North15_March2014/2014
 
 # Rank features by Random Forest importance and benchmark top-N subsets (5/10/15/20/24) instead of the fixed combinations
-python3 python/guys_model.py --feature-selection importance
+python3 python/guys_benchmark_models.py --feature-selection importance
 ```
 
 **What it does:**
@@ -102,6 +102,17 @@ To sample a fraction of a large paired data directory into a single NPZ (useful 
 python3 python/sample_paired_data.py data/paired/Pacific_2014-2015 benchmark_outputs/sampled_data.npz
 ```
 
+### Final Model
+
+Once [python/guys_benchmark_models.py](python/guys_benchmark_models.py) `--feature-selection importance` has identified the best combo/model, [python/final_model.py](python/final_model.py) locks that recipe in (currently: top-20 Random Forest importance-selected features, Ridge alpha=1.0 baseline, plus the ANN) and trains it directly without re-running the full sweep:
+
+```bash
+python3 python/final_model.py --demo
+python3 python/final_model.py --data-root data/paired/Pacific_2014-2015
+```
+
+If a future benchmark run picks a different combo/model as the practical recommendation, update the constants and imports at the top of `final_model.py` to match.
+
 ## Editing Notes
 
 - Update [README.md](README.md) when the workflow or runtime instructions change.
@@ -137,6 +148,7 @@ data/
 - Local data is organized under [data/paired](data/paired) by region.
 - Test subset is [data/test](data/test).
 - Pre-built training data goes in [data/consolidated](data/consolidated).
-- New feature combination benchmark script: [python/guys_model.py](python/guys_model.py) — compares classical models, hyperparameter-tunes, then trains ANN.
+- New feature combination benchmark script: [python/guys_benchmark_models.py](python/guys_benchmark_models.py) — compares classical models, hyperparameter-tunes, then trains ANN.
 - New sampling helper: [python/sample_paired_data.py](python/sample_paired_data.py) — samples a fraction of a paired data directory into a single NPZ.
+- New final model script: [python/final_model.py](python/final_model.py) — trains the locked-down production recipe (Ridge + ANN on top-20 importance-selected features) picked by the benchmark.
 
