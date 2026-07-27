@@ -1,5 +1,5 @@
 ================================================================================
-FINAL MODEL vs ALL_SKY_AIFLUX - FULL REAL DATASET COMPARISON
+GUY MODEL vs ALL_SKY_AIFLUX - FULL REAL DATASET COMPARISON
 ================================================================================
 Date: 2026-07-27
 Dataset: data/paired/Pacific_2014-2015 (full, 2163 moments/scalars NPZ file pairs)
@@ -7,9 +7,9 @@ Target: Fsw (shortwave flux), units W/m^2
 Random seed: 42
 
 ================================================================================
-1. python/final_model.py
+1. python/guy_model.py
 ================================================================================
-Command: python3 python/final_model.py --data-root data/paired/Pacific_2014-2015
+Command: python3 python/guy_model.py --data-root data/paired/Pacific_2014-2015
 
 Data loaded: X.shape=(1703803, 129), y.shape=(1703803,)
 Feature selection: top 20 of 129 features by Random Forest importance
@@ -49,17 +49,17 @@ Test label stats (as printed by the script): mean=182.17 W/m^2, std=106.87 W/m^2
 ================================================================================
 3. COMPARISON
 ================================================================================
-- final_model.py's ANN (RMSE=5.76 W/m^2) outperforms All_Sky_AIflux.py's ANN
+- guy_model.py's ANN (RMSE=5.76 W/m^2) outperforms All_Sky_AIflux.py's ANN
   (RMSE=17.72 W/m^2) by roughly 3x lower error.
-- final_model.py's classical Ridge baseline alone (RMSE=11.03 W/m^2) also beats
+- guy_model.py's classical Ridge baseline alone (RMSE=11.03 W/m^2) also beats
   All_Sky_AIflux.py's ANN.
 - Likely contributors to the gap:
-  1. Feature selection: final_model.py uses 20 features chosen by Random Forest
+  1. Feature selection: guy_model.py uses 20 features chosen by Random Forest
      importance ranking out of the full 129-feature moments+scalars set (includes
      cloud fraction, cloud top height, AOD, lat/lon, etc.). All_Sky_AIflux.py
      uses a fixed, smaller, hand-picked 37-feature set of geometry + spectral
      mean/skew only, with no cloud/aerosol/geolocation scalars.
-  2. Network capacity: final_model.py's ANN has two hidden layers (10, 5 units)
+  2. Network capacity: guy_model.py's ANN has two hidden layers (10, 5 units)
      vs. All_Sky_AIflux.py's single hidden layer (18 units).
   3. Train/test split: 80/20 vs 70/30.
 - Both scripts were run unmodified (original regression logic preserved per
@@ -69,7 +69,7 @@ Test label stats (as printed by the script): mean=182.17 W/m^2, std=106.87 W/m^2
 ================================================================================
 ARTIFACTS
 ================================================================================
-- benchmark_outputs/final_model_full/  (ridge_model.joblib, ridge_scaler.joblib,
-  ann_model.keras, final_model_summary.json)
+- benchmark_outputs/guy_model_full/  (ridge_model.joblib, ridge_scaler.joblib,
+  ann_model.keras, guy_model_summary.json)
 - data/paired/Pacific_2014-2015/ANN_model_SW_3LY_Pac_mrch_tst.keras (saved by All_Sky_AIflux.py)
 ================================================================================
