@@ -176,12 +176,123 @@ def _load_npz(path: Path) -> Tuple[np.ndarray, np.ndarray, str]:
         return x, y, str(path)
 
 
+def _find_paired_npz_root(path: Path) -> Optional[Path]:
+    """Return a directory that directly contains moments/ and scalars/."""
+
+    direct_moments = path / "moments"
+    direct_scalars = path / "scalars"
+    if direct_moments.is_dir() and direct_scalars.is_dir():
+        return path
+
+    nested_test = path / "test"
+    nested_moments = nested_test / "moments"
+    nested_scalars = nested_test / "scalars"
+    if nested_moments.is_dir() and nested_scalars.is_dir():
+        return nested_test
+
+    return None
+
+
+def _load_paired_npz_directory(path: Path) -> Tuple[np.ndarray, np.ndarray, str]:
+    """Load a dataset from paired moments/*.npz and scalars/*.npz files."""
+
+    moments_dir = path / "moments"
+    scalars_dir = path / "scalars"
+    moment_files = sorted(moments_dir.glob("*.npz"))
+
+    if not moment_files:
+        raise FileNotFoundError(f"No moments .npz files found under {moments_dir}")
+
+    x_chunks: List[np.ndarray] = []
+    y_chunks: List[np.ndarray] = []
+
+    for moment_file in moment_files:
+        scalar_file = scalars_dir / moment_file.name
+        if not scalar_file.exists():
+            continue
+
+        with np.load(moment_file, allow_pickle=True) as moments_data, np.load(scalar_file, allow_pickle=True) as scalars_data:
+            required_moment_keys = ("mSWspec", "mLWspec", "skewSWspec", "skewLWspec")
+            required_scalar_keys = ("SZA", "VZA", "RAA")
+
+            if not all(key in moments_data.files for key in required_moment_keys):
+                continue
+            if not all(key in scalars_data.files for key in required_scalar_keys):
+                continue
+
+            target_key = None
+            for candidate in ("Fsw", "Flux", "flux", "target", "Target", "Flw"):
+                if candidate in scalars_data.files:
+                    target_key = candidate
+                    break
+
+            if target_key is None:
+                continue
+
+            sza = np.asarray(scalars_data["SZA"], dtype=np.float32).reshape(-1, 1)
+            vza = np.asarray(scalars_data["VZA"], dtype=np.float32).reshape(-1, 1)
+            raa = np.asarray(scalars_data["RAA"], dtype=np.float32).reshape(-1, 1)
+            target = np.asarray(scalars_data[target_key], dtype=np.float32).reshape(-1)
+
+            mean_sw = np.asarray(moments_data["mSWspec"], dtype=np.float32)
+            mean_lw = np.asarray(moments_data["mLWspec"], dtype=np.float32)
+            skew_sw = np.asarray(moments_data["skewSWspec"], dtype=np.float32)
+            skew_lw = np.asarray(moments_data["skewLWspec"], dtype=np.float32)
+
+            mean_sw = mean_sw.reshape(mean_sw.shape[0], -1)
+            mean_lw = mean_lw.reshape(mean_lw.shape[0], -1)
+            skew_sw = skew_sw.reshape(skew_sw.shape[0], -1)
+            skew_lw = skew_lw.reshape(skew_lw.shape[0], -1)
+
+            sample_count = min(
+                sza.shape[0],
+                vza.shape[0],
+                raa.shape[0],
+                target.shape[0],
+                mean_sw.shape[0],
+                mean_lw.shape[0],
+                skew_sw.shape[0],
+                skew_lw.shape[0],
+            )
+            if sample_count < 2:
+                continue
+
+            features = np.concatenate(
+                [
+                    sza[:sample_count],
+                    vza[:sample_count],
+                    raa[:sample_count],
+                    mean_sw[:sample_count],
+                    mean_lw[:sample_count],
+                    skew_sw[:sample_count],
+                    skew_lw[:sample_count],
+                ],
+                axis=1,
+            )
+
+            x_chunks.append(features.astype(np.float32))
+            y_chunks.append(target[:sample_count].astype(np.float32))
+
+    if not x_chunks:
+        raise ValueError(
+            f"No valid paired moments/scalars NPZ files with required keys were found under {path}"
+        )
+
+    x = np.concatenate(x_chunks, axis=0)
+    y = np.concatenate(y_chunks, axis=0)
+    return x, y, f"{path} (paired moments/scalars)"
+
+
 def load_dataset(data_path: str, demo: bool, seed: int) -> Tuple[np.ndarray, np.ndarray, str]:
     if demo or not data_path:
         return _demo_dataset(seed)
 
     path = Path(data_path)
     if path.is_dir():
+        paired_root = _find_paired_npz_root(path)
+        if paired_root is not None:
+            return _load_paired_npz_directory(paired_root)
+
         candidate = _first_existing_file(sorted(path.rglob("*.csv")) + sorted(path.rglob("*.npz")))
         if candidate is None:
             raise FileNotFoundError(f"No .csv or .npz files found under {path}")

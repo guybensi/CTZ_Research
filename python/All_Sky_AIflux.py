@@ -19,6 +19,7 @@ import math
 import os
 import sys
 import time
+from pathlib import Path
 
 import pandas as pd
 import netCDF4 as nc
@@ -92,7 +93,8 @@ fname='mrch_2014_Pacific.npz'
 # datapath=r'C:/Users/eeytan/Documents/Projects/F1km'
 # fname=datapath+'/DFs/'+fname
 
-DEFAULT_DATAPATH=r'C:\Users\eeytan\OneDrive - UCB-O365\Documents\New stuff after mv to ahrddrive\projects\F1km'
+REPO_ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_DATAPATH=str(REPO_ROOT / 'data' / 'test')
 datapath=ARGS.data_path if ARGS.data_path else DEFAULT_DATAPATH
 fname=ARGS.data_file if ARGS.data_file else fname
 fname=os.path.join(datapath, fname)
@@ -287,12 +289,21 @@ def apply_preload_tuning_results(best_config):
 def _resolve_test_data_root(base_path):
     """Find a directory that contains moments/ and scalars/ NPZ subfolders."""
 
+    paired_years_root = REPO_ROOT / 'data' / 'March_2014N15_momentsNscalars'
     candidates = [
             base_path,
             os.path.join(base_path, 'test') if base_path else '',
             os.path.join(os.getcwd(), 'test'),
             os.path.join(os.getcwd(), 'Data_toGuy', 'test'),
+            str(REPO_ROOT / 'data' / 'test'),
+            str(REPO_ROOT / 'data'),
     ]
+
+    if paired_years_root.is_dir():
+        for year_dir in sorted(paired_years_root.iterdir()):
+            if year_dir.is_dir():
+                candidates.append(str(year_dir))
+
     for candidate in candidates:
         if not candidate:
             continue

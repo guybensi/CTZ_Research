@@ -32,7 +32,7 @@ To tune first and exit before loading the real dataset:
 python3 python/All_Sky_AIflux.py --preload-tuning --preload-only
 ```
 
-Run benchmark on real tabular NPZ/CSV data:
+Run benchmark on real data (tabular NPZ/CSV or paired moments/scalars folders):
 
 ```bash
 python3 python/benchmark_pipeline.py --data-path /path/to/data --output-dir benchmark_outputs
@@ -66,7 +66,7 @@ The ANN benchmark will require GPU access inside the container.
 ## Notes For Current Data Layout
 
 - The code now lives in [python](python), so all script invocations should use `python/<script>.py`.
-- For [python/All_Sky_AIflux.py](python/All_Sky_AIflux.py), pass `--data-path` explicitly. Without it, the script falls back to a Windows-only default path.
+- [python/All_Sky_AIflux.py](python/All_Sky_AIflux.py) now defaults to [data/test](data/test), and still accepts `--data-path` for explicit dataset selection.
 - [python/All_Sky_AIflux.py](python/All_Sky_AIflux.py) expects a folder containing `moments/` and `scalars/` (for example [data/test](data/test) or [data/March_2014N15_momentsNscalars/2014](data/March_2014N15_momentsNscalars/2014)).
-- [python/benchmark_pipeline.py](python/benchmark_pipeline.py) loads a single CSV/NPZ with a target key like `Flux`/`target`; it does not directly consume the paired `moments/` + `scalars/` folder format used by the original script.
-- [python/Details_of_npz.py](python/Details_of_npz.py) currently defaults to `python/Data_toGuy/test`, which does not exist in the reorganized layout, so `--data-root` should be provided.
+- [python/benchmark_pipeline.py](python/benchmark_pipeline.py) supports both single CSV/NPZ tabular files with a target key (`Flux`/`target`/etc.) and paired folder layouts containing `moments/` and `scalars/` NPZ files (including nested `test/moments` and `test/scalars`).
+- [python/Details_of_npz.py](python/Details_of_npz.py) defaults to [data/test](data/test), and `--data-root` can still be used to inspect other datasets.

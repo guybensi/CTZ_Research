@@ -7,7 +7,8 @@ import numpy as np
 
 def parse_args():
     script_dir = Path(__file__).resolve().parent
-    default_data_root = script_dir / "Data_toGuy" / "test"
+    repo_root = script_dir.parent
+    default_data_root = repo_root / "data" / "test"
 
     parser = argparse.ArgumentParser(description="Inspect and visualize NPZ benchmark files.")
     parser.add_argument("--data-root", type=Path, default=default_data_root)
