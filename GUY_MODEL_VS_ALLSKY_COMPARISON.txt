@@ -1,0 +1,152 @@
+================================================================================
+GUY MODEL vs ALL_SKY_AIFLUX - FULL REAL DATASET COMPARISON
+================================================================================
+Date: 2026-07-27 (data/sample-count/model-logic notes appended 2026-07-28)
+Dataset: data/paired/Pacific_2014-2015 (full, 2163 moments/scalars NPZ file pairs)
+Target: Fsw (shortwave flux), units W/m^2
+Random seed: 42
+
+================================================================================
+1. python/guy_model.py
+================================================================================
+Command: python3 python/guy_model.py --data-root data/paired/Pacific_2014-2015
+
+--- Data used ---
+Folder: data/paired/Pacific_2014-2015/{moments,scalars}/  (images/ subfolder not read)
+Folder size: moments/ = 2.1 GB, scalars/ = 408 MB  ->  ~2.5 GB actually read
+  (full Pacific_2014-2015 folder incl. unused images/ = 4.4 GB)
+File pairs read: 2163 moments+scalars NPZ pairs (all of them, no sampling)
+Raw FOVs assembled from those pairs: 5,260,208
+Rows kept after dropping any row with a NaN/Inf value across the 129 candidate
+  features + target: X.shape=(1,703,803, 129), y.shape=(1,703,803,)
+  -> ~32% of raw FOVs retained (moments/scalars have NaNs on parts of the
+     grid, e.g. terminator/limb pixels, that fail this all-finite check)
+Test split: 20%  ->  ~1,363,042 train rows / ~340,761 test rows
+
+Feature selection: top 20 of 129 features by Random Forest importance
+  (moments: mean/std/skew/kurtosis of SW+LW spectra minus wavelength arrays;
+   scalars: all of Isw/Ilw/mSumIsw/stdSumIsw/mSumIlw/stdSumIlw/mDFNC/stdDFNC/
+   CF/meanCTH/stdCTH/LiqPhsf/VZA/SZA/RAA/Lat/Lon/AOD/Clrf/glintf/landf,
+   i.e. Fsw and Flw excluded)
+
+Model               | RMSE (W/m^2) | MAE (W/m^2) | R^2
+------------------------------------------------------------------------------
+Ridge (alpha=1.0)   |    11.03     |    8.38     | 0.9796
+ANN (Normalization + Dense(10) + Dense(8) + output, 150 epochs, early stop)
+                    |     5.76     |    4.06     | 0.9944
+
+--- Model logic (what each stage actually is) ---
+guy_model.py is a two-stage classical-ML + deep-learning pipeline, all run on
+the *same* fixed top-20 feature subset so the two model types are compared
+head-to-head:
+  1. Feature selection (classical ML, not a predictor itself): a Random
+     Forest regressor (50 trees, max depth 10) is fit on standardized inputs
+     purely to rank features by mean-decrease-in-impurity importance; the
+     top 20 of 129 features are kept and the forest itself is discarded.
+  2. Classical baseline: Ridge Regression - ordinary least squares with L2
+     (weight-shrinkage) regularization, alpha=1.0. It assumes Fsw is
+     approximately a linear combination of the 20 selected features; the
+     regularization mainly controls coefficient variance from features that
+     are correlated with each other (e.g. adjacent spectral moments).
+  3. Deep learning model: a feed-forward artificial neural network / MLP
+     (Normalization layer -> Dense(10, ReLU) -> Dense(8, ReLU) -> Dense(1,
+     linear)), trained with Adam + MSE loss and early stopping on validation
+     loss (patience 15) to avoid overfitting the ~1.36M-row training set.
+     Its job is to capture whatever non-linearity in Fsw ~ features remains
+     after Ridge, on the exact same 20 features, so the R^2 gap between the
+     two rows above (0.9796 -> 0.9944) is attributable to non-linearity
+     rather than to a different feature set.
+
+================================================================================
+2. python/All_Sky_AIflux.py
+================================================================================
+Command: python3 python/All_Sky_AIflux.py --data-path data/paired/Pacific_2014-2015
+
+--- Data used ---
+Folder: data/paired/Pacific_2014-2015/{moments,scalars}/  (same folder/files as
+  guy_model.py above - images/ subfolder not read; ~2.5 GB read out of the
+  4.4 GB total folder)
+File pairs read: 2163 moments+scalars NPZ pairs (all of them)
+Raw FOVs assembled from those pairs: 5,260,208 (same raw count as guy_model.py,
+  since both build rows from the identical NPZ pairs before any filtering)
+Cloud-height filter applied (mCTH < 3000 m, stdCTH < 1000 m - a scene-quality
+  filter this script applies that guy_model.py does not): 2,909,419 FOVs
+  remain ("Number of FOVs" as printed by the script)
+Test split: 30% (trainprec=0.7) -> ~2,036,593 train FOVs / ~872,826 test FOVs
+
+Features used (fixed, hand-picked, not importance-selected): SZA, VZA, RAA, plus
+  mean + skew of the SW/LW spectra at 17 fixed wavelengths (37 features total)
+Model: ANN only (linreg=0 default), single hidden layer of 18 units, 200 epochs
+
+Model               | RMSE (W/m^2) | MAE       | R^2
+------------------------------------------------------------------------------
+ANN                 |    17.72     |  not printed by this script | not printed
+                                      (approx. R^2 ~ 0.97, derived from
+                                       1 - (RMSE/label_std)^2 using the
+                                       script's own printed label std of 106.87;
+                                       not a native output of the script)
+
+Test label stats (as printed by the script): mean=182.17 W/m^2, std=106.87 W/m^2
+
+--- Model logic (what the script actually is) ---
+All_Sky_AIflux.py is deep-learning-only regression; there is no automatic
+feature-selection or classical-model-comparison step (the `linreg` flag can
+switch in a plain linear-regression branch, but it defaults to 0/off, so only
+the ANN branch runs):
+  - Feature set is fixed and hand-designed from radiative-transfer domain
+    knowledge (viewing geometry + spectral mean/skew at 17 chosen
+    wavelengths), not learned or ranked from the data the way guy_model.py's
+    Random Forest importance step is.
+  - Architecture: a Keras functional-API MLP where each of the 37 features
+    gets its own per-feature Normalization layer (rather than one joint
+    normalization over the whole matrix), the normalized features are
+    concatenated, then passed through up to 4 configurable Dense layers with
+    ReLU activation and L1 kernel regularization (a weight-sparsity penalty:
+    0.01 on the first hidden layer, 0.001 on deeper ones) - only the first
+    layer (18 units, i.e. half of 37 features) is enabled by default, the
+    other 3 are sized to 0 and skipped - ending in a single linear output
+    neuron. Same Adam + MSE training setup as guy_model.py's ANN, but no
+    early stopping: it always runs the full 200 epochs.
+  - After training, it fits a separate scikit-learn LinearRegression between
+    the ANN's raw predictions and the true test labels. This is a post-hoc
+    bias/scale correction and diagnostic (for the R^2/plots), not a second
+    trained model competing with the ANN.
+  - Net effect: this script is a single-hidden-layer, hand-featured DL
+    regressor with no train/test model-selection loop, versus guy_model.py's
+    deeper (2-hidden-layer) DL regressor on RF-importance-selected features
+    that is explicitly benchmarked against a Ridge linear baseline.
+
+================================================================================
+3. COMPARISON
+================================================================================
+- guy_model.py's ANN (RMSE=5.76 W/m^2) outperforms All_Sky_AIflux.py's ANN
+  (RMSE=17.72 W/m^2) by roughly 3x lower error.
+- guy_model.py's classical Ridge baseline alone (RMSE=11.03 W/m^2) also beats
+  All_Sky_AIflux.py's ANN.
+- Likely contributors to the gap:
+  1. Feature selection: guy_model.py uses 20 features chosen by Random Forest
+     importance ranking out of the full 129-feature moments+scalars set (includes
+     cloud fraction, cloud top height, AOD, lat/lon, etc.). All_Sky_AIflux.py
+     uses a fixed, smaller, hand-picked 37-feature set of geometry + spectral
+     mean/skew only, with no cloud/aerosol/geolocation scalars.
+  2. Network capacity: guy_model.py's ANN has two hidden layers (10, 8 units)
+     vs. All_Sky_AIflux.py's single hidden layer (18 units).
+  3. Train/test split: 80/20 vs 70/30.
+  4. Sample counts differ too: guy_model.py trains/tests on 1,703,803 rows
+     (all-finite rows only, no cloud filter), while All_Sky_AIflux.py
+     trains/tests on 2,909,419 rows (cloud-height filtered, NaNs not
+     explicitly dropped) - the two scripts are not evaluated on identical
+     row sets, only the same underlying 2163 NPZ file pairs.
+- Both scripts were run unmodified (original regression logic preserved per
+  project rules); this comparison reflects the existing pipelines as-is, not a
+  tuned apples-to-apples experiment.
+
+================================================================================
+ARTIFACTS
+================================================================================
+- benchmark_outputs/final_model_full/  (ridge_model.joblib, ridge_scaler.joblib,
+  ann_model.keras, final_model_summary.json)
+- data/paired/Pacific_2014-2015/ANN_model_SW_3LY_Pac_mrch_tst.keras (saved by All_Sky_AIflux.py)
+- data/paired/Pacific_2014-2015/SW_norm_factors_3LY_Pac_mrch_tst.npz (label mean/std
+  saved by All_Sky_AIflux.py; used above to confirm the test-set mean=182.17/std=106.87)
+================================================================================
