@@ -27,6 +27,9 @@ Feature selection: top 20 of 129 features by Random Forest importance
   (moments: mean/std/skew/kurtosis of SW+LW spectra minus wavelength arrays;
    scalars: all of Isw/Ilw/mSumIsw/stdSumIsw/mSumIlw/stdSumIlw/mDFNC/stdDFNC/
    CF/meanCTH/stdCTH/LiqPhsf/VZA/SZA/RAA/Lat/Lon/AOD/Clrf/glintf/landf,
+לבדוק איזה 20 פרמטרים זה
+ונלסות לאמן בשימוש רק המומנטים ובגיאומטריה של התמונה
+לנסות להשתמש רק בפיצרים במופיעים ברזולוצי הנמוכה
    i.e. Fsw and Flw excluded)
 
 Model               | RMSE (W/m^2) | MAE (W/m^2) | R^2
