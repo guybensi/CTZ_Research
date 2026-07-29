@@ -27,11 +27,38 @@ Feature selection: top 20 of 129 features by Random Forest importance
   (moments: mean/std/skew/kurtosis of SW+LW spectra minus wavelength arrays;
    scalars: all of Isw/Ilw/mSumIsw/stdSumIsw/mSumIlw/stdSumIlw/mDFNC/stdDFNC/
    CF/meanCTH/stdCTH/LiqPhsf/VZA/SZA/RAA/Lat/Lon/AOD/Clrf/glintf/landf,
-לבדוק איזה 20 פרמטרים זה
-ונלסות לאמן בשימוש רק המומנטים ובגיאומטריה של התמונה
-מה הפלט של הריג'ד רגרסיין
-לנסות להשתמש רק בפיצרים במופיעים ברזולוצי הנמוכה
    i.e. Fsw and Flw excluded)
+
+Resolved feature list (top 20, ranked most -> least important; from
+top_feature_indices in benchmark_outputs/final_model_full/
+final_model_summary.json, cross-referenced against the column order built by
+load_paired_moments_scalars() - 108 moment cols: mean/std/skew/kurt x 11 SW +
+16 LW wavelengths, then 21 scalar cols - and the actual SWwavlngs/LWwavlngs
+values read from a real NPZ pair):
+   1. mSWspec @ 0.905um  (mean SW reflectance)        idx 4
+   2. Isw                (SW radiance/irradiance)     idx 108
+   3. VZA                (viewing zenith angle)       idx 120
+   4. RAA                (relative azimuth angle)     idx 122
+   5. mSWspec @ 0.47um   (mean SW reflectance)         idx 0
+   6. mLWspec @ 3.96um ch.1 (mean LW brightness temp)  idx 12
+   7. SZA                (solar zenith angle)         idx 121
+   8. mSWspec @ 1.24um   (mean SW reflectance)         idx 7
+   9. mLWspec @ 4.05um   (mean LW brightness temp)     idx 14
+  10. mLWspec @ 11.0um   (mean LW brightness temp)     idx 21
+  11. mLWspec @ 8.55um   (mean LW brightness temp)     idx 19
+  12. mLWspec @ 12.0um   (mean LW brightness temp)     idx 22
+  13. Clrf               (clear-sky fraction)          idx 126
+  14. mSWspec @ 0.55um   (mean SW reflectance)         idx 1
+  15. mLWspec @ 3.75um   (mean LW brightness temp)     idx 11
+  16. Ilw                (LW radiance/irradiance)      idx 109
+  17. mSWspec @ 0.66um   (mean SW reflectance)         idx 2
+  18. Lat                (latitude)                    idx 123
+  19. mLWspec @ 3.96um ch.2 (mean LW brightness temp)  idx 13
+  20. AOD                (aerosol optical depth)       idx 125
+Dominated by mean spectral channels (8 SW + 6 LW, spanning 0.47-12um) plus 6
+geometry/cloud/aerosol scalars (VZA/SZA/RAA/Lat/Clrf/AOD) and 2 radiance
+scalars (Isw/Ilw); none of the std/skew/kurtosis moment columns made the
+top 20.
 
 Model               | RMSE (W/m^2) | MAE (W/m^2) | R^2
 ------------------------------------------------------------------------------
@@ -52,6 +79,9 @@ head-to-head:
      approximately a linear combination of the 20 selected features; the
      regularization mainly controls coefficient variance from features that
      are correlated with each other (e.g. adjacent spectral moments).
+     Output: a single continuous predicted Fsw value (W/m^2) per test row,
+     from ridge.predict(X_test_scaled) - scored RMSE=11.03, MAE=8.38,
+     R^2=0.9796 in the table above.
   3. Deep learning model: a feed-forward artificial neural network / MLP
      (Normalization layer -> Dense(10, ReLU) -> Dense(8, ReLU) -> Dense(1,
      linear)), trained with Adam + MSE loss and early stopping on validation
@@ -60,6 +90,43 @@ head-to-head:
      after Ridge, on the exact same 20 features, so the R^2 gap between the
      two rows above (0.9796 -> 0.9944) is attributable to non-linearity
      rather than to a different feature set.
+
+--- Pipeline input/output flow (per stage) ---
+Stage 0 - Data loading (load_paired_moments_scalars):
+  Input:  2163 moments+scalars NPZ file pairs
+  Output: X (1,703,803 x 129 float32 feature matrix), y (1,703,803,) Fsw
+          target (rows with any NaN/Inf across features+target dropped)
+
+Stage 1 - Feature selection (Random Forest importance ranking):
+  Input:  X (1,703,803 x 129), y (1,703,803,)
+  Output: top_indices (20,) - column indices into X, ranked by
+          mean-decrease-in-impurity importance from a 50-tree, max-depth-10
+          RF fit on standardized inputs; the forest itself is discarded
+          -> X_top = X[:, top_indices]  (1,703,803 x 20)
+
+Stage 2 - Train/test split:
+  Input:  X_top (1,703,803 x 20), y (1,703,803,)
+  Output: X_train/y_train (~1,363,042 rows), X_test/y_test (~340,761 rows),
+          80/20 split, random_state=42
+
+Stage 3 - Classical baseline (Ridge, alpha=1.0):
+  Input:  X_train/X_test standardized via a StandardScaler fit on X_train
+          (20 features), y_train
+  Output: ridge_pred (n_test,) predicted Fsw (W/m^2); metrics RMSE=11.03,
+          MAE=8.38, R^2=0.9796; artifacts ridge_model.joblib,
+          ridge_scaler.joblib
+
+Stage 4 - ANN (Normalization -> Dense(10, ReLU) -> Dense(8, ReLU) ->
+           Dense(1, linear)):
+  Input:  X_train/X_test raw/unscaled (the Normalization layer learns
+          feature scaling internally), y_train; Adam + MSE, early stopping
+          on validation loss (patience 15), up to 150 epochs
+  Output: ann_pred (n_test,) predicted Fsw (W/m^2); metrics RMSE=5.76,
+          MAE=4.06, R^2=0.9944; artifact ann_model.keras
+
+Stage 5 - Summary:
+  Input:  top_indices, ridge_metrics, ann_metrics, X.shape
+  Output: final_model_summary.json (feature indices + both models' metrics)
 
 ================================================================================
 2. python/All_Sky_AIflux.py
@@ -153,4 +220,13 @@ ARTIFACTS
 - data/paired/Pacific_2014-2015/ANN_model_SW_3LY_Pac_mrch_tst.keras (saved by All_Sky_AIflux.py)
 - data/paired/Pacific_2014-2015/SW_norm_factors_3LY_Pac_mrch_tst.npz (label mean/std
   saved by All_Sky_AIflux.py; used above to confirm the test-set mean=182.17/std=106.87)
+
 ================================================================================
+TODO
+================================================================================
+- [ANSWERED 2026-07-29 - see "Resolved feature list" in section 1] Identify
+  what those 20 parameters in guy_model are.
+- Try training guy_model using only the moments and the image geometry.
+- [ANSWERED 2026-07-29 - see Stage 3 in "Pipeline input/output flow" in
+  section 1] What is the output of the Ridge Regression model?
+- Try using only the features that are available at the lower resolution.
