@@ -29,6 +29,7 @@ Feature selection: top 20 of 129 features by Random Forest importance
    CF/meanCTH/stdCTH/LiqPhsf/VZA/SZA/RAA/Lat/Lon/AOD/Clrf/glintf/landf,
 לבדוק איזה 20 פרמטרים זה
 ונלסות לאמן בשימוש רק המומנטים ובגיאומטריה של התמונה
+מה הפלט של הריג'ד רגרסיין
 לנסות להשתמש רק בפיצרים במופיעים ברזולוצי הנמוכה
    i.e. Fsw and Flw excluded)
 
