@@ -3,7 +3,7 @@ pandas
 matplotlib
 scipy
 scikit-learn
-tensorflow
+tensorflow[and-cuda]
 tensorflow-addons
 netCDF4
 h5py

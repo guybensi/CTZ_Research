@@ -107,6 +107,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--demo", action="store_true", help="Use synthetic demo data instead of real paired data")
     parser.add_argument("--skip-classical", action="store_true", help="Skip classical models, go straight to best-pretrained ANN")
     parser.add_argument("--feature-selection", type=str, default="", choices=["", "importance"], help="Feature selection mode: 'importance' to test top-N features from importances")
+    parser.add_argument("--feature-source", type=str, default="full", choices=["full", "allsky37"],
+                         help="'full' uses all 129 moments+scalars features; 'allsky37' restricts the pool to the 37 features "
+                              "All_Sky_AIflux.py uses (SZA/VZA/RAA + mean/skew spectra at its 17 fixed wavelengths) before any selection")
+    parser.add_argument("--importance-models", type=str, default="Ridge,SVM",
+                         help="Comma-separated classical models to test in --feature-selection importance mode "
+                              "(SVM does not scale to multi-million-row datasets; drop it with e.g. 'Ridge' for full-data runs)")
     return parser.parse_args()
 
 
@@ -213,6 +219,88 @@ def load_paired_moments_scalars(data_root: str) -> Tuple[np.ndarray, np.ndarray,
     return X, y, {}
 
 
+# The exact 37 features All_Sky_AIflux.py hand-picks: SZA/VZA/RAA (image/viewing geometry)
+# plus mean and skew moments at these 17 wavelengths (see featers_list in All_Sky_AIflux.py).
+ALLSKY_WAVELENGTH_TARGETS = ['0.47', '0.66', '0.86', '1.24', '1.375', '2.13', '3.96', '4.05', '4.5',
+                             '6.7', '7.3', '8.5', '9.7', '11.0', '12.0', '13.33', '14.23']
+
+
+def load_allsky37_subset(data_root: str) -> Tuple[np.ndarray, np.ndarray, List[str]]:
+    """Load only the All_Sky_AIflux 37-feature subset: SZA/VZA/RAA + mean/skew spectra at its 17 wavelengths.
+
+    Wavelengths are matched to the nearest actual SW/LW channel per file, mirroring the
+    nearest-wavelength lookup All_Sky_AIflux.py itself uses when building its dataframe.
+    """
+    moments_dir = Path(data_root) / "moments"
+    scalars_dir = Path(data_root) / "scalars"
+
+    if not moments_dir.exists() or not scalars_dir.exists():
+        raise FileNotFoundError(f"Expected moments/ and scalars/ subdirectories in {data_root}")
+
+    moment_files = sorted(moments_dir.glob("*.npz"))
+    if not moment_files:
+        raise FileNotFoundError(f"No .npz files found in {moments_dir}")
+
+    print(f"Loading {len(moment_files)} moments files (All_Sky 37-feature subset)...")
+
+    target_wavelengths = np.array([float(w) for w in ALLSKY_WAVELENGTH_TARGETS], dtype=np.float32)
+    nearest_indices: Optional[List[int]] = None
+
+    all_rows = []
+    all_targets = []
+
+    for moment_file in moment_files:
+        scalar_file = scalars_dir / moment_file.name
+        if not scalar_file.exists():
+            continue
+
+        with np.load(moment_file, allow_pickle=True) as m_data, np.load(scalar_file, allow_pickle=True) as s_data:
+            if "Fsw" not in s_data.files:
+                continue
+
+            if nearest_indices is None:
+                sw_wl = np.asarray(m_data["SWwavlngs"], dtype=np.float32)
+                lw_wl = np.asarray(m_data["LWwavlngs"], dtype=np.float32)
+                all_wl = np.concatenate([sw_wl, lw_wl])
+                nearest_indices = [int(np.argmin(np.abs(all_wl - wl))) for wl in target_wavelengths]
+
+            mean_spec = np.concatenate([m_data["mSWspec"], m_data["mLWspec"]], axis=1)
+            skew_spec = np.concatenate([m_data["skewSWspec"], m_data["skewLWspec"]], axis=1)
+
+            sza = np.asarray(s_data["SZA"], dtype=np.float32).reshape(-1, 1)
+            vza = np.asarray(s_data["VZA"], dtype=np.float32).reshape(-1, 1)
+            raa = np.asarray(s_data["RAA"], dtype=np.float32).reshape(-1, 1)
+            fsw = np.asarray(s_data["Fsw"], dtype=np.float32)
+
+            n = min(len(sza), len(vza), len(raa), mean_spec.shape[0], skew_spec.shape[0], len(fsw))
+            if n <= 0:
+                continue
+
+            geom = np.concatenate([sza[:n], vza[:n], raa[:n]], axis=1)
+            mean_sel = mean_spec[:n][:, nearest_indices]
+            skew_sel = skew_spec[:n][:, nearest_indices]
+            all_rows.append(np.concatenate([geom, mean_sel, skew_sel], axis=1))
+            all_targets.append(fsw[:n])
+
+    if not all_rows:
+        raise ValueError("No valid moment/scalar pairs found")
+
+    X = np.concatenate(all_rows, axis=0).astype(np.float32)
+    y = np.concatenate(all_targets, axis=0).astype(np.float32)
+
+    valid_mask = np.isfinite(X).all(axis=1) & np.isfinite(y)
+    X = X[valid_mask]
+    y = y[valid_mask]
+
+    feature_names = (
+        ["SZA", "VZA", "RAA"]
+        + [f"m{w}" for w in ALLSKY_WAVELENGTH_TARGETS]
+        + [f"sk{w}" for w in ALLSKY_WAVELENGTH_TARGETS]
+    )
+    print(f"✓ Loaded data: X.shape={X.shape}, y.shape={y.shape}")
+    return X, y, feature_names
+
+
 def generate_feature_combinations(X: np.ndarray, feature_names: Optional[List[str]] = None) -> Dict[str, Tuple[np.ndarray, List[str]]]:
     """Generate systematic feature combinations from the full feature matrix.
     
@@ -305,9 +393,10 @@ def generate_importance_based_combinations(
     sorted_indices = np.argsort(-feature_importances)
     
     combos = {}
-    
-    # Test different numbers of top features
-    for n_keep in [5, 10, 15, 20, 24]:
+
+    # Test different numbers of top features, plus the full pool itself
+    candidate_sizes = sorted(set([5, 10, 15, 20, 24, n_features]))
+    for n_keep in candidate_sizes:
         if n_keep <= n_features:
             top_indices = sorted_indices[:n_keep]
             combo_name = f"top_{n_keep}"
@@ -734,7 +823,10 @@ def main():
         data_root = args.data_root if args.data_root else str(repo_root / "data" / "paired" / "Pacific_2014-2015")
 
         print(f"Loading from {data_root}...")
-        X, y, _ = load_paired_moments_scalars(data_root)
+        if args.feature_source == "allsky37":
+            X, y, _ = load_allsky37_subset(data_root)
+        else:
+            X, y, _ = load_paired_moments_scalars(data_root)
 
     # Generate feature combinations based on mode
     if args.feature_selection == "importance":
@@ -753,10 +845,11 @@ def main():
 
         models = get_classical_models()
         
-        # In importance mode, only test Ridge and SVM
+        # In importance mode, only test the configured subset (default Ridge + SVM)
         if args.feature_selection == "importance":
-            models = {k: v for k, v in models.items() if k in ["Ridge", "SVM"]}
-            print(f"🎯 Feature selection mode: testing only top 2 models - {list(models.keys())}")
+            allowed_models = {m.strip() for m in args.importance_models.split(",") if m.strip()}
+            models = {k: v for k, v in models.items() if k in allowed_models}
+            print(f"🎯 Feature selection mode: testing models - {list(models.keys())}")
         
         all_results = []
 
