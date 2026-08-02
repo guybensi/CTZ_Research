@@ -222,11 +222,313 @@ ARTIFACTS
   saved by All_Sky_AIflux.py; used above to confirm the test-set mean=182.17/std=106.87)
 
 ================================================================================
+4. GUY BENCHMARK RESTRICTED TO THE ALL_SKY_AIFLUX 37-FEATURE POOL
+================================================================================
+Date: 2026-08-02
+Question this answers: "if guy model will use only moment and image geometry
+as in all sky flux, will the result be much worse?" / TODO "Try training
+guy_model using only the moments and the image geometry."
+
+Command:
+python3 python/guys_benchmark_models.py --feature-selection importance \
+  --feature-source allsky37 --importance-models Ridge \
+  --data-root data/paired/Pacific_2014-2015 \
+  --output-dir benchmark_outputs/guys_benchmark_allsky37_full
+
+--- What changed vs. the original guy_model.py recipe ---
+guys_benchmark_models.py was extended with a --feature-source allsky37 mode
+(load_allsky37_subset()) that restricts the candidate feature pool, *before*
+any Random Forest importance ranking, to exactly the 37 features
+All_Sky_AIflux.py hand-picks: SZA, VZA, RAA (viewing/solar geometry) plus mean
+and skew spectral moments at its 17 fixed wavelengths (0.47, 0.66, 0.86, 1.24,
+1.375, 2.13, 3.96, 4.05, 4.5, 6.7, 7.3, 8.5, 9.7, 11.0, 12.0, 13.33, 14.23 um),
+each matched to the nearest real SW/LW channel per file - i.e. no Isw/Ilw
+radiance scalars, no CF/meanCTH/stdCTH/AOD/Clrf/glintf/landf, no Lat/Lon, and
+no std/kurtosis moments. SVM was dropped from the classical sweep
+(--importance-models Ridge) since SVR does not scale to a multi-million-row
+training set; this doesn't change the recommendation since
+select_best_practical_model() already always picks Ridge for the practical
+config regardless of SVM's score.
+
+--- Data used ---
+Folder: data/paired/Pacific_2014-2015/{moments,scalars}/ (same 2163 file pairs
+  as section 1)
+Rows kept after dropping any row with NaN/Inf across only these 37 features +
+  target: X.shape=(5,260,208, 37), y.shape=(5,260,208,)
+  -> ~3.1x more rows survive than guy_model.py's 129-feature version
+     (1,703,803 rows) because far fewer columns can NaN-out a given FOV
+Test split: 20% -> ~4,208,166 train rows / ~1,052,042 test rows
+
+--- Feature importance ranking within the 37 (Random Forest, seed=42) ---
+Overwhelmingly dominated by a single channel: mean SW reflectance at 0.66um
+carries ~93% of total importance by itself; everything else is a long tail.
+Skew moments are essentially useless here - only sk9.7 and sk4.5 barely creep
+into the top 20, all other skew columns rank at/near zero importance.
+
+Rank Feature   Importance   In top-20?
+   1  m0.66      0.93388      yes
+   2  m0.47      0.02394      yes
+   3  m0.86      0.02040      yes
+   4  VZA        0.00477      yes
+   5  SZA        0.00373      yes
+   6  m3.96      0.00341      yes
+   7  m8.5       0.00225      yes
+   8  m11.0      0.00221      yes
+   9  m9.7       0.00186      yes
+  10  m1.24      0.00127      yes
+  11  m4.05      0.00058      yes
+  12  RAA        0.00051      yes
+  13  m12.0      0.00033      yes
+  14  m1.375     0.00029      yes
+  15  m4.5       0.00016      yes
+  16  m2.13      0.00016      yes
+  17  sk9.7      0.00016      yes
+  18  m13.33     0.00003      yes
+  19  sk4.5      0.00003      yes
+  20  m14.23     0.00001      yes
+  21  sk11.0     0.00001      no
+  22-37 (all remaining sk* channels, m7.3, m6.7)  ~0.00000  no
+
+--- Results (Ridge across all combo sizes tested; ANN on the picked combo) ---
+Model / combo             | RMSE (W/m^2) | MAE (W/m^2) | R^2
+------------------------------------------------------------------------------
+Ridge, top_5  (5 feats)   |    28.45     |    20.32    | 0.9682
+Ridge, top_10 (10 feats)  |    23.89     |    17.35    | 0.9775
+Ridge, top_15 (15 feats)  |    22.98     |    16.98    | 0.9792
+Ridge, top_20 (20 feats)  |    22.58     |    16.57    | 0.9799  <- picked
+Ridge, top_24 (24 feats)  |    22.51     |    16.55    | 0.9801
+Ridge, top_37 (all 37)    |    22.27     |    16.40    | 0.9805  (best, marginal)
+ANN on top_20 (20 feats)  |    15.73     |    11.08    | 0.9903
+
+Recommended/practical combo (same preference logic as the full recipe):
+Ridge on top_20 of the 37 - R^2=0.9799, essentially tied with using all 37
+(R^2=0.9805), confirming 20 features already capture nearly all of the signal
+available inside this restricted pool.
+
+--- Comparison to guy_model.py's original top-20-of-129 recipe (section 1) ---
+                          | RMSE (W/m^2) | MAE (W/m^2) | R^2
+------------------------------------------------------------------------------
+Ridge, top-20 of 129      |    11.03     |    8.38     | 0.9796
+Ridge, top-20 of 37 (this)|    22.58     |    16.57    | 0.9799
+ANN, top-20 of 129        |     5.76     |    4.06     | 0.9944
+ANN, top-20 of 37 (this)  |    15.73     |    11.08    | 0.9903
+
+--- Answer ---
+Yes, noticeably worse in absolute terms, even though R^2 looks almost
+unchanged: RMSE/MAE roughly DOUBLE for Ridge (11.03 -> 22.58 W/m^2) and
+roughly TRIPLE for the ANN (5.76 -> 15.73 W/m^2) when the pool is restricted
+to moments + image/solar geometry only (no Isw/Ilw radiance, no
+AOD/Clrf/CF/CTH cloud-aerosol scalars, no Lat/Lon). R^2 staying ~0.98-0.99 in
+both cases is not a fair apples-to-apples signal here: the two runs are
+scored against different row sets with different label variance (5.26M rows
+here vs. 1.70M for the 129-feature version, since restricting to fewer
+columns lets ~3x more FOVs survive the all-finite filter), so R^2 alone
+understates the gap - RMSE/MAE in W/m^2 are the meaningful comparison.
+The dominant loss driver is losing Isw (SW radiance/irradiance, the #2 most
+important feature in the full 129-feature recipe) plus AOD/Clrf/Lat; within
+the restricted 37-feature pool, a single channel (mean SW reflectance at
+0.66um) ends up carrying ~93% of the RF importance on its own, well beyond
+its role in the full recipe, since it has to substitute for information the
+excluded scalars would otherwise provide.
+
+Artifacts: benchmark_outputs/guys_benchmark_allsky37_full/run_20260802_141925/
+  (benchmark_results.csv, summary.json, performance_heatmap.png, ann_model.keras)
+
+================================================================================
+5. guy_model.py LOCKED RECIPE ON ALL 37 ALLSKY FEATURES (FULL PACIFIC DATA)
+================================================================================
+Date: 2026-08-02
+Follows up section 4: of the sizes swept there (top_5/10/15/20/24/37 of the 37
+All_Sky-style features), top_37 (i.e. no further trimming, use the whole
+restricted pool) scored best (R^2=0.9805), beating the top_20 pick that
+select_best_practical_model()'s hardcoded preference order would otherwise
+have chosen. guy_model.py was given a new --feature-source allsky37 option
+(default remains "full" - the original 129-feature production recipe is
+unchanged) that locks in this exact recipe: all 37 All_Sky-style features, no
+Random Forest trimming, Ridge (alpha=1.0) baseline + ANN.
+
+Command:
+python3 python/guy_model.py --feature-source allsky37 \
+  --data-root data/paired/Pacific_2014-2015
+
+--- Data used ---
+Same 2163 moments+scalars NPZ pairs as sections 1 and 4.
+X.shape=(5,260,208, 37), y.shape=(5,260,208,) - all 37 features used directly,
+no importance-based trimming (top_37 of 37 is the full pool itself).
+Test split: 20% -> ~4,208,166 train rows / ~1,052,042 test rows.
+
+Features used (all 37, order as printed by the script):
+SZA, VZA, RAA, m0.47, m0.66, m0.86, m1.24, m1.375, m2.13, m3.96, m4.05, m4.5,
+m6.7, m7.3, m8.5, m9.7, m11.0, m12.0, m13.33, m14.23, sk0.47, sk0.66, sk0.86,
+sk1.24, sk1.375, sk2.13, sk3.96, sk4.05, sk4.5, sk6.7, sk7.3, sk8.5, sk9.7,
+sk11.0, sk12.0, sk13.33, sk14.23
+
+--- Results ---
+Model               | RMSE (W/m^2) | MAE (W/m^2) | R^2
+------------------------------------------------------------------------------
+Ridge (alpha=1.0)   |    22.27     |    16.40    | 0.9805
+ANN (Normalization + Dense(18) + Dense(9) + output, up to 150 epochs,
+     early stop patience=15, stopped ~epoch 63, GPU-accelerated via cuDNN)
+                    |    15.33     |    10.79    | 0.9907
+
+Matches section 4's benchmark-sweep estimate for top_37 almost exactly
+(Ridge RMSE 22.27 vs 22.27, R^2 0.9805 vs 0.9805) - confirms the sweep number
+wasn't a fluke and the locked-down script reproduces it directly. The ANN is
+also slightly better than the benchmark run's ANN-on-top_20 from section 4
+(RMSE 15.33 vs 15.73), as expected from having 37 features instead of 20.
+
+Artifacts: benchmark_outputs/final_model_allsky37/
+  (ridge_model.joblib, ridge_scaler.joblib, ann_model.keras,
+   final_model_summary.json)
+
+--- Scatter plot: predicted vs. true Fsw, all 4 model/recipe combos ---
+benchmark_outputs/guy_vs_allsky_scatter_comparison.png
+(scatter/histogram style modeled after Eytan et al. 2025, AGU Advances, Figure 3:
+top mini-histogram of Model vs. Truth distributions, main scatter with X=Y
+line (black) and OLS best-fit line Y=aX+b (red dashed), RMSE/MAE/ME/R^2_x=y
+annotated in black and the fit's own R^2 in red)
+  (a) ANN,   top-20 of 129 features -> RMSE=5.76,  tight scatter around X=Y
+  (b) ANN,   all 37 allsky features -> RMSE=15.33, visibly more scatter
+  (c) Ridge, top-20 of 129 features -> RMSE=11.03, fit line close to X=Y
+  (d) Ridge, all 37 allsky features -> RMSE=22.27, widest scatter of the four
+All 4 panels share the same axis range (based on the true-Fsw distribution)
+so the accuracy gap is directly comparable by eye - (b) and (d) are visibly
+more scattered around the X=Y line than (a) and (c), consistent with the
+RMSE/MAE numbers above. Regenerate with: python3 python/plot_guy_vs_allsky_comparison.py (re-loads
+both datasets, applies the saved ridge_model.joblib/ridge_scaler.joblib/
+ann_model.keras from each recipe's output dir to the same random_state=42
+test split used at training time - no retraining needed). Stats also saved
+to benchmark_outputs/guy_vs_allsky_scatter_comparison_stats.json.
+
+--- Standing comparison to the production recipe (section 1, unchanged) ---
+                          | RMSE (W/m^2) | MAE (W/m^2) | R^2
+------------------------------------------------------------------------------
+Production: top-20 of 129 (Ridge)  |    11.03     |    8.38     | 0.9796
+This: all 37 allsky feats (Ridge)  |    22.27     |    16.40    | 0.9805
+Production: top-20 of 129 (ANN)    |     5.76     |    4.06     | 0.9944
+This: all 37 allsky feats (ANN)    |    15.33     |    10.79    | 0.9907
+
+Conclusion unchanged from section 4: restricting to moments + image/solar
+geometry only (dropping Isw/Ilw/AOD/Clrf/CF/CTH/Lat/Lon) roughly doubles
+Ridge's RMSE and roughly triples the ANN's RMSE versus the full 129-feature
+production recipe. guy_model.py's default (--feature-source full, i.e. no
+flag) remains the recommended production recipe; --feature-source allsky37
+is kept as a documented, reproducible comparison point, not a replacement.
+
+================================================================================
+6. IDEAS TO IMPROVE guy_model WHEN RESTRICTED TO THE 37 ALLSKY FEATURES
+================================================================================
+Date: 2026-08-02
+Context: sections 4/5 showed that, restricted to SZA/VZA/RAA + mean/skew
+spectra at the 17 All_Sky wavelengths (no Isw/Ilw/AOD/Clrf/CF/CTH/Lat/Lon),
+Ridge RMSE roughly doubles (11.03 -> 22.27) and ANN RMSE roughly triples
+(5.76 -> 15.33) versus the full 129-feature recipe. Ideas below are ranked
+by expected effort-to-payoff, grounded either in what our own RF importance
+ranking showed (section 4) or in the methodology of the attached AGU Advances
+paper (Eytan et al. 2025, "The Net Radiative Effect of the Ill-Defined
+Clear-Sky in the Vicinity of Clouds").
+
+A. Drop Ridge, keep only the ANN (cheap, no new data/features needed)
+   Ridge lost to the ANN in every single comparison run so far (full recipe:
+   11.03 vs 5.76 RMSE; allsky37: 22.27 vs 15.33 RMSE) - it never wins, so it
+   is not doing useful work as a "baseline" beyond a sanity check. Worse,
+   select_best_practical_model() picks the practical feature-subset size
+   using Ridge's R^2 (see section 4's top_20-vs-top_37 discrepancy) even
+   though the ANN is what actually ships - a linear model's feature
+   preference isn't necessarily the nonlinear model's preference. Fix: for
+   the allsky37 recipe, either (a) skip Ridge entirely in guy_model.py and
+   just report the ANN, or (b) change guys_benchmark_models.py's combo
+   selection to rank combos by a quick ANN CV score instead of Ridge's.
+
+B. Replace Ridge with a nonlinear classical baseline (cheap - already wired)
+   guys_benchmark_models.py already supports Gradient Boosting/XGBoost/
+   CatBoost/Random Forest via get_classical_models(); only Ridge+SVM are
+   enabled in --feature-selection importance mode. Flux is not expected to
+   be linear in radiance or in viewing/solar angles (the paper's anisotropic
+   factor R that converts radiance to flux is itself angle- and
+   optical-thickness-dependent - see Equations 10-14 and Figure 5 of the
+   attached paper), so a tree-based model should fit the same 37 features
+   better than Ridge without needing new data. Test with the flag already
+   added to guys_benchmark_models.py:
+     --importance-models "Ridge,Gradient Boosting,XGBoost"
+   (drop SVM as before - doesn't scale to millions of rows; Gradient
+   Boosting/XGBoost with modest n_estimators/max_depth should still run in
+   reasonable time on ~4M rows, unlike SVR).
+
+C. Reconstruct an Isw-like broadband-radiance feature from the spectrum
+   (grounded directly in the paper's own method; moderate effort)
+   In the full 129-feature recipe, Isw (SW radiance/irradiance) was the #2
+   most important feature (section 1) - guy_model loses direct access to it
+   under allsky37. But the attached paper's Equation 10-11 show broadband
+   flux is approximated as a linear combination of a handful of narrow-band
+   radiances: f = (pi/R) * sum(I_ch * alpha_ch), with alpha_ch regression
+   coefficients from Loeb & Manalo-Smith (2005). We already have the
+   per-channel mean spectra (mSWspec/mLWspec) for all 27 wavelengths, i.e.
+   more raw material than the 37-feature pool currently exposes. Engineer an
+   explicit "reconstructed Isw" feature (e.g. a fixed or fitted weighted sum
+   of the SW channels) and add it alongside the 37 - this hands the model a
+   physically-motivated proxy for the single scalar it's missing, without
+   needing new data.
+
+D. Cross-feature the spectrum against baseline channels (grounded in the
+   paper's Appendix A(e); cheap, reuses existing data)
+   The paper found that normalizing each wavelength by a baseline channel
+   per spectral region (0.47um for SW/atmospheric background, 4.05um for
+   mid-IR, 11.0um for the LW atmospheric window) measurably improved their
+   own ANN's Fclr retrieval. Our RF ranking (section 4) found a single raw
+   channel (m0.66) carrying ~93% of importance, which smells like the model
+   using one channel as an implicit brightness proxy rather than the ratios
+   the paper's domain experts found more informative - explicit
+   ratio/cross-features (m_ch / m_baseline) are a direct, low-cost way to
+   give the model that same signal in a more learnable form.
+
+E. Swap skew moments for std moments (near-zero cost - same data, no new
+   features)
+   Section 4's RF ranking found every skew_* column at/near-zero importance
+   (only sk9.7 and sk4.5 barely entered the top 20) - skew is essentially
+   dead weight in the current 37-feature pool. The paper's own CTZ detection
+   metric psi (Equation 16) is fundamentally a variance-normalized deviation
+   from the clear-sky spectral signal - i.e. within-footprint standard
+   deviation is exactly what the paper uses to flag cloud-contaminated
+   "clear" pixels. Since CTZ contamination is a very plausible source of our
+   largest prediction errors, swapping the 17 skew_* columns for the
+   corresponding 17 std_* columns (already available in the same moments
+   NPZ files, no new data needed) is a nearly-free experiment worth trying
+   before anything that requires new features or data.
+
+F. Angular/geometric feature engineering (cheap, same data)
+   Ridge sees SZA/VZA/RAA as raw degrees; the paper's radiative-transfer
+   argument (Section 2.1, Figure 5) is that the geometry enters through a
+   markedly nonlinear anisotropic factor R (varies from <1 to >3 across the
+   observed angle range, see Figure 5b). Adding cos(SZA), cos(VZA), sin/cos
+   of RAA, and a VZA*RAA (or SZA*VZA) interaction term as explicit features
+   would give a linear model (Ridge, or the reconstructed-Isw feature in C)
+   a much easier time approximating R's nonlinearity; likely lower-value for
+   the ANN, which can already learn such interactions from raw angles given
+   enough data.
+
+G. Stacked/residual model, only if A-F plateau (higher effort, likely not
+   worth it given Ridge already loses outright - listed for completeness)
+   Train Ridge (or the engineered-feature linear model from C/D/F) first,
+   then train the ANN to predict the residual (true - Ridge prediction)
+   rather than the raw target. This can occasionally squeeze out a bit more
+   accuracy over a single end-to-end ANN, but given Ridge's R^2 is already
+   dominated by the ANN's, the likely gain here is smaller than A-F above.
+
+Suggested order to try, cheapest/most-grounded first: A -> E -> B -> D/F -> C
+-> G. A and E cost nothing beyond a script change and can be tried
+immediately with the existing Pacific_2014-2015 data; B just changes the
+--importance-models flag already added to guys_benchmark_models.py; C/D/F
+need small additions to load_allsky37_subset(); G is a bigger structural
+change and probably premature.
+
+================================================================================
 TODO
 ================================================================================
 - [ANSWERED 2026-07-29 - see "Resolved feature list" in section 1] Identify
   what those 20 parameters in guy_model are.
-- Try training guy_model using only the moments and the image geometry.
+- [ANSWERED 2026-08-02 - see section 4] Try training guy_model using only the
+  moments and the image geometry.
 - [ANSWERED 2026-07-29 - see Stage 3 in "Pipeline input/output flow" in
   section 1] What is the output of the Ridge Regression model?
 - Try using only the features that are available at the lower resolution.

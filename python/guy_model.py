@@ -29,6 +29,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from guys_benchmark_models import (
     demo_data,
     get_feature_importances_from_ensemble,
+    load_allsky37_subset,
     load_paired_moments_scalars,
     train_ann,
 )
@@ -39,13 +40,22 @@ RIDGE_ALPHA = 1.0
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Train the final Ridge + ANN model on top-20 importance-selected features")
+    parser = argparse.ArgumentParser(description="Train the final Ridge + ANN model on the locked-down feature recipe")
     parser.add_argument("--data-root", type=str, default="", help="Override data directory (defaults to data/paired/Pacific_2014-2015)")
-    parser.add_argument("--output-dir", type=str, default="benchmark_outputs/final_model", help="Output directory for the trained model and metrics")
+    parser.add_argument("--output-dir", type=str, default="", help="Output directory for the trained model and metrics "
+                         "(defaults to benchmark_outputs/final_model, or benchmark_outputs/final_model_allsky37 for --feature-source allsky37)")
+    parser.add_argument("--feature-source", type=str, default="full", choices=["full", "allsky37"],
+                         help="'full' (default, production recipe): top-20 of all 129 moments+scalars features by RF importance. "
+                              "'allsky37': the benchmarked All_Sky_AIflux-style recipe - all 37 features "
+                              "(SZA/VZA/RAA + mean/skew spectra at its 17 wavelengths), no further trimming, since "
+                              "guys_benchmark_models.py --feature-source allsky37 found top_37 (the full restricted pool) scored best")
     parser.add_argument("--demo", action="store_true", help="Use synthetic demo data instead of real paired data")
     parser.add_argument("--ann-epochs", type=int, default=150, help="Maximum ANN epochs")
     parser.add_argument("--ann-batch-size", type=int, default=64, help="ANN batch size")
-    return parser.parse_args()
+    args = parser.parse_args()
+    if not args.output_dir:
+        args.output_dir = "benchmark_outputs/final_model_allsky37" if args.feature_source == "allsky37" else "benchmark_outputs/final_model"
+    return args
 
 
 def select_top_features(X: np.ndarray, y: np.ndarray) -> np.ndarray:
@@ -58,6 +68,7 @@ def main() -> None:
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    feature_names: list[str] | None = None
     if args.demo:
         print("🔬 Using synthetic demo data...")
         X, y = demo_data(RANDOM_SEED)
@@ -65,12 +76,22 @@ def main() -> None:
         repo_root = Path(__file__).resolve().parents[1]
         data_root = args.data_root if args.data_root else str(repo_root / "data" / "paired" / "Pacific_2014-2015")
         print(f"Loading from {data_root}...")
-        X, y, _ = load_paired_moments_scalars(data_root)
+        if args.feature_source == "allsky37":
+            X, y, feature_names = load_allsky37_subset(data_root)
+        else:
+            X, y, _ = load_paired_moments_scalars(data_root)
 
-    print("📊 Selecting top features by Random Forest importance...")
-    top_indices = select_top_features(X, y)
-    X_top = X[:, top_indices]
-    print(f"✓ Using {X_top.shape[1]} of {X.shape[1]} features: {top_indices.tolist()}")
+    if args.feature_source == "allsky37":
+        # top_37 of 37 is the full restricted pool itself - no trimming needed.
+        top_indices = np.arange(X.shape[1])
+        X_top = X
+        names = feature_names if feature_names else [str(i) for i in top_indices]
+        print(f"✓ Using all {X_top.shape[1]} All_Sky-style features: {names}")
+    else:
+        print("📊 Selecting top features by Random Forest importance...")
+        top_indices = select_top_features(X, y)
+        X_top = X[:, top_indices]
+        print(f"✓ Using {X_top.shape[1]} of {X.shape[1]} features: {top_indices.tolist()}")
 
     X_train, X_test, y_train, y_test = train_test_split(X_top, y, test_size=0.2, random_state=RANDOM_SEED)
 
@@ -112,8 +133,10 @@ def main() -> None:
     ann_model.save(output_dir / "ann_model.keras")
 
     summary = {
-        "feature_selection": "top_20_random_forest_importance",
+        "feature_source": args.feature_source,
+        "feature_selection": "all_37_allsky_features" if args.feature_source == "allsky37" else "top_20_random_forest_importance",
         "top_feature_indices": top_indices.tolist(),
+        "feature_names": feature_names,
         "ridge": {"alpha": RIDGE_ALPHA, **ridge_metrics},
         "ann": ann_metrics,
         "data_shape": list(X.shape),
