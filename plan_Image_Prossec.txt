@@ -1,0 +1,424 @@
+================================================================================
+PLAN: ADDING COMPUTER VISION / CONVOLUTION TO guy_model FOR 1KM-RESOLUTION FLUX
+================================================================================
+Date: 2026-08-02
+This is a brainstorm/ideas document, not an implementation - no code has been
+written for this yet. It follows directly from GUY_MODEL_VS_ALLSKY_COMPARISON.txt
+section 6's open TODO ("Try using only the features that are available at the
+lower resolution").
+
+Question this explores: can we add a CV/convolutional layer to guy_model, so
+that instead of (or in addition to) predicting one Fsw number per CERES
+footprint, it can produce a flux MAP at MODIS's native ~1km pixel resolution -
+i.e. "know the flux as in CERES, but at 1km-on-1km resolution like MODIS"?
+
+================================================================================
+1. WHY THIS IS HARDER THAN A NORMAL "ADD A CNN" TASK
+================================================================================
+Every model in this repo today (guys_benchmark_models.py, guy_model.py,
+All_Sky_AIflux.py) is 100% tabular. For every CERES footprint, the raw
+per-pixel spectral image is pre-collapsed into scalar "moments" (mean/std/
+skew/kurtosis of the spectrum across all pixels in the footprint) before any
+model ever sees it. That collapse throws away 100% of the spatial
+information - cloud edges, distance-to-cloud gradients, sub-pixel cloud
+contamination patterns - which is exactly the kind of structure a CNN is good
+at exploiting, and exactly the kind of structure the attached AGU Advances
+paper (Eytan, Gristey & Feingold 2025, "The Net Radiative Effect of the
+Ill-Defined Clear-Sky in the Vicinity of Clouds" - same domain group, Eshkol
+Eytan co-author) spent an entire paper hand-engineering metrics for (their
+psi spectral-deviation metric, their D distance-to-cloud metric).
+
+The harder problem underneath "add a CNN": CERES NEVER measures flux at 1km
+resolution. Its footprints are ~27km x 55km. There is no ground truth at
+1km, anywhere, ever - not in this repo, not in the CERES product itself. So
+this is NOT a normal supervised-regression problem where you have a label per
+training example. It's fundamentally a WEAK/AGGREGATE SUPERVISION problem:
+we only ever have one true label per ~1,500 pixels (27x55), and we want a
+model that outputs something meaningful per pixel anyway.
+
+The attached paper hits this exact same wall in its own Section 3.2 /
+Appendix A: it trains its (non-convolutional) regression models at CERES
+footprint scale, and only applies them at MODIS 1km-pixel scale by relying on
+an explicit homogeneity assumption (footprints where psi<1, i.e. "pure
+clear-sky" footprints where every pixel inside looks statistically similar) -
+under that assumption, whatever the model learned from the footprint average
+should transfer sensibly to any one pixel inside it, since all pixels inside
+are alike. Our own effort should adopt the same escape hatch, not invent a
+new one: use CNNs everywhere, but validate them using the same physical-
+plausibility logic as the paper, not a nonexistent direct 1km RMSE.
+
+================================================================================
+2. DATA WE HAVE - VERIFIED FACTS (not estimates)
+================================================================================
+There is a THIRD data type in this repo, images/*.npz, that no existing
+script trains on. Verified directly (not guessed):
+
+- Location: data/paired/Pacific_2014-2015/images/ and data/test/images/
+  (the latter is a byte-identical copy of the former - genuinely only 6
+  unique image granules exist anywhere in this repo).
+- Exactly 6 files:
+    A2014060.0245.npz   9 footprints    1.0 MB
+    A2014060.0415.npz   3,810 footprints  679 MB
+    A2014060.0530.npz   670 footprints    67 MB
+    A2014090.2240.npz   4,482 footprints  799 MB
+    A2014090.2350.npz   502 footprints    55 MB
+    A2014090.2355.npz   2,444 footprints  436 MB
+    TOTAL:              11,917 footprints, ~2.04 GB
+  (compare: the tabular moments/scalars pipeline has 2163 files and 1.7-5.2
+  million rows depending on feature set - the image data is roughly 150-450x
+  smaller in row count than what guy_model.py trains on today.)
+- Each file's arrays:
+    Imviews        shape (N, 3, 27, 55)   float32  - 3 viewing-geometry channels
+    ImSW           shape (N, 11, 27, 55)  float32  - 11 shortwave/solar channels
+    ImLW           shape (N, 16, 27, 55)  float32  - 16 longwave/thermal channels
+    FOVorientation shape (N,)             float32  - a 0/1 flag
+  N = number of CERES footprints in that granule file (varies per file, see
+  table above).
+- The 27x55 pixel grid is a fixed-size patch per footprint, and it matches
+  EXACTLY a CERES footprint's real spatial extent (~27km x 55km) at MODIS's
+  native ~1km resolution (this matches the paper's own footprint description
+  in Section 2.3). So each footprint already comes with its own internal
+  "image" - no new data collection needed, just new code to use what's here.
+- images/*.npz filenames align 1:1 with moments/*.npz and scalars/*.npz of
+  the same name (e.g. images/A2014060.0245.npz <-> moments/A2014060.0245.npz
+  <-> scalars/A2014060.0245.npz), and the footprint ordering along axis 0 is
+  index-aligned across all three (footprint i in images == row i in
+  moments/scalars for that file). BUT images/ only covers 6 of
+  Pacific_2014-2015's 2163 moments/scalars files - very sparse coverage.
+- FOVorientation is close to 50/50 balanced in every single file (e.g. one
+  file was 1899 vs 1911, another 2234 vs 2248) - this is NOT noise or a rare
+  edge case, it's a real, common, roughly-half-the-data flag. Almost
+  certainly encodes something physically meaningful (ascending/descending
+  orbit side, or forward/backward-scattering scan geometry relative to the
+  sun) rather than junk. IMPORTANT CAVEAT for section 4 below: verify what
+  this actually means before doing anything (like flip-augmentation) that
+  assumes footprints are orientation-symmetric.
+- No existing code trains on images/*.npz. Only python/Details_of_npz.py
+  reads it, and only to call plt.imshow() on one channel of one footprint at
+  a time for visual inspection - there is no CNN, Conv2D, or any spatial-
+  aggregation code anywhere in this repository today. Every existing model
+  (All_Sky_AIflux.py, guys_benchmark_models.py, guy_model.py) is a plain
+  Dense/MLP Keras network on flattened scalar features.
+- scalars/*.npz already has CF (cloud fraction) and Clrf (clear-sky
+  fraction) per footprint - both on a 0-100 scale, NOT 0-1 (easy to get this
+  wrong - flag it explicitly in any new code). CF and (100-Clrf) only
+  correlate at about r=0.25 with each other across the 6 image files, so
+  they measure genuinely different things (probably different cloud-mask
+  definitions/thresholds) and are not interchangeable.
+- All_Sky_AIflux.py already implements and uses a scene-homogeneity filter:
+  meanCTH < 3000m AND stdCTH < 1000m (using the meanCTH/stdCTH scalars).
+  This is a proven-in-production proxy for "not near a messy cloud edge" -
+  reusable as-is, see section 6.
+- No CERES point-spread-function (PSF) weight map exists anywhere in this
+  repo. Every existing footprint-mean calculation (moments, and any new
+  aggregate-CNN idea below) implicitly assumes every pixel in the 27x55 grid
+  contributes equally to the footprint's true flux - in reality CERES's real
+  PSF weights the footprint center more heavily than its edges. This is a
+  known, documented simplification, not an oversight to silently fix later.
+
+================================================================================
+3. THE CORE IDEA, NAMED PROPERLY
+================================================================================
+Concrete proposal: a small CNN that takes a footprint's full image cube
+(after transposing to Keras's channel-last layout: (27, 55, 30) where 30 =
+3 Imviews + 11 ImSW + 16 ImLW channels) and outputs a (27, 55, 1) per-pixel
+flux map, using a few Conv2D layers with 'same' padding (so spatial size is
+preserved - no pooling/downsampling needed given how small 27x55 already is;
+2-3 stacked 3x3 conv layers already give a receptive field covering a large
+fraction of the patch). Since there's no per-pixel ground truth, train it
+with:
+
+    loss = MSE( GlobalAveragePooling2D(predicted_map) , true_footprint_Fsw )
+
+This is NOT an ad hoc idea - it's a named technique family, worth knowing the
+name of so it can be researched further:
+- In the general ML literature this is "Learning from Label Proportions"
+  (LLP) - you have per-instance (per-pixel) inputs but only a bag-level
+  (per-footprint) aggregate label, and you train a model whose per-instance
+  outputs aggregate correctly. See Musicant et al., "Supervised learning by
+  training on aggregate outputs."
+- It's also a special case of Multiple-Instance Learning (MIL) regression.
+  MIL is more commonly posed with max-pooling (for classification - "does
+  ANY instance in the bag have the property"), but for a physically additive
+  quantity like radiative flux, mean-pooling (what's proposed above) is the
+  physically correct aggregation, not max. If flat mean-pooling underperforms,
+  a learned attention-weighted pooling is a documented alternative (Ilse et
+  al. 2018, "Attention-based Deep Multiple Instance Learning") - effectively
+  learning the PSF weighting we don't currently have, instead of assuming it's
+  flat.
+- In remote sensing / geoscience specifically, this general pattern (fine-
+  resolution imagery + only coarse-resolution ground truth) is called
+  statistical or weak-supervision downscaling, often implemented via a
+  "downsampling-consistency loss": predict at fine resolution, apply the
+  known (or assumed) coarsening/degradation operator, and supervise the
+  result against the coarse label. GlobalAveragePooling2D(predicted_map) vs.
+  Fsw IS exactly a downsampling-consistency loss, where the assumed
+  degradation operator is "flat spatial average" (a simplification - see the
+  PSF point in section 2).
+
+Fundamental caveat to keep in mind throughout: mean-pooling supervision alone
+cannot uniquely determine the per-pixel decomposition - infinitely many
+27x55 flux maps average to the same single number. This means the
+homogeneity filtering (section 6) and any auxiliary regularizers (section 4)
+aren't optional nice-to-haves, they're what makes the per-pixel output
+physically meaningful rather than an arbitrary decomposition invented by the
+optimizer.
+
+================================================================================
+4. THE ELEPHANT IN THE ROOM: ONLY ~12,000 FOOTPRINTS HAVE IMAGES
+================================================================================
+11,917 footprints (section 2) is a genuinely small dataset to train a CNN
+from scratch, compared to the 1.7-5.2 million rows the existing tabular
+pipeline trains on. Prioritized mitigations, cheapest/highest-value first:
+
+  A. Multi-input (two-branch) architecture - highest priority.
+     One branch is the new CNN on the image cube; the other branch is a
+     plain Dense network on the EXISTING tabular features (the 129-feature
+     or 37-feature "allsky" recipes already built in guys_benchmark_models.py
+     / guy_model.py), concatenated before a small shared head. This means
+     only the new conv layers have to learn from the small ~12k-footprint
+     image set, while the tabular branch can be pretrained on (or its
+     weights initialized from) the full millions-of-rows dataset that
+     already exists. This turns "train a CNN from scratch on 12k examples"
+     into "add a small complementary conv branch on top of an already-good
+     tabular predictor" - a much easier problem.
+
+  B. Physically-aware data augmentation, WITH A CAVEAT.
+     Flips and 90-degree rotations of the 27x55 grid are normally a cheap
+     ~4-8x multiplier for small image datasets. But given FOVorientation's
+     near-50/50 balance in every file (section 2), verify what it actually
+     encodes before assuming a flip is label-preserving - if it's a real
+     scan-direction or sun-relative asymmetry, naive flipping could quietly
+     corrupt training data rather than augment it. If it turns out to encode
+     something like ascending/descending orbit side, flips may need to
+     co-transform FOVorientation's meaning too, not just the pixels.
+
+  C. Teacher/consistency regularization using the already-trained
+     footprint-level ANN.
+     guy_model.py's existing ANN (RMSE 5.76 W/m^2 on the full 129-feature
+     recipe) already predicts Fsw well from tabular features alone. Use its
+     prediction as a soft auxiliary target: alongside the true Fsw loss, add
+     a small-weight secondary loss term encouraging
+     GlobalAveragePooling2D(CNN output) to also track the teacher's
+     prediction. This is knowledge distillation used purely as a regularizer
+     for the small-data conv branch - not a replacement for the real label.
+
+  D. Open question, not an assumption: can more image granules be
+     generated? It's unknown from this repo alone whether the upstream
+     pipeline that produced these 6 files (nothing in python/ generates
+     images/*.npz - only Details_of_npz.py reads them) could be re-run on
+     more MODIS/CERES overpasses. This is worth asking Eshkol/whoever
+     produced these 6 files directly - even 5-10x more image granules would
+     substantially de-risk everything else in this document.
+
+  E. Standard small-data hygiene:
+     - Small filter counts per Conv2D layer (8-16 filters is plenty at this
+       scale), dropout/L2 regularization on the conv branch.
+     - K-fold cross-validation is affordable at n=11,917 (unlike at millions
+       of rows, where the existing pipeline skips it for cost reasons).
+     - CRITICAL: split train/test by GRANULE FILE, not by individual
+       footprint row. Footprints within one file are spatially adjacent
+       along the satellite's scan path, not independent samples - randomly
+       splitting rows would leak spatially-correlated footprints between
+       train and test and overstate accuracy.
+
+================================================================================
+5. STAGED BUILD-OUT (cheapest/most-validated first, each phase gated)
+================================================================================
+Don't jump straight to a fully-convolutional 1km flux map. Build up:
+
+  PHASE 0 - Non-convolutional per-pixel MLP baseline (no new architecture
+  needed - literally reproduces the attached paper's own method on our data).
+  Treat every PIXEL (not footprint) as a training row: per-pixel ImSW/ImLW
+  spectral values, plus the footprint's SZA/VZA/RAA broadcast to every pixel
+  inside it, as input; the footprint's single Fsw value broadcast as a
+  (repeated, weak) label for every one of its ~1,500 pixels. No spatial/conv
+  structure at all - this is exactly the paper's own Fclr regression, just
+  applied to our all-sky Fsw target and our own image cubes.
+  GATE: average the per-pixel predictions back up to the footprint level
+  (mean per footprint) and score against true Fsw with the same RMSE/MAE/R^2
+  used everywhere else in this repo. This should land somewhere near today's
+  existing Ridge-level footprint accuracy (11-22 W/m^2 RMSE depending on
+  feature pool, see GUY_MODEL_VS_ALLSKY_COMPARISON.txt sections 4-5) once
+  aggregated. If it doesn't get anywhere close, suspect a data-pairing bug in
+  the new images loader, not an architecture problem - fix that before
+  touching convolution at all.
+
+  PHASE 1 - Small CNN + GlobalAveragePooling2D, footprint-mean supervision
+  (the core idea in section 3), evaluated purely at the footprint level
+  exactly like Phase 0.
+  GATE: must match or beat Phase 0's aggregated RMSE. If a model with actual
+  spatial/conv structure can't beat the spatially-naive per-pixel MLP once
+  both are evaluated the same way, the convolution isn't adding value yet,
+  and Phase 2 should wait (more data, different architecture, or better
+  homogeneity filtering, before trying again).
+
+  PHASE 2 - Fully-convolutional dense-output network as the real
+  1km-flux-map deliverable (same architecture family as Phase 1, but the
+  actual product is the full (27,55,1) map, not just its average).
+  GATE: only proceed once Phase 1 clears its bar AND the validation strategy
+  in section 7 is actually in place - shipping an unvalidated 1km map with
+  no plausibility checks would be worse than not having one.
+
+  Throughout: keep the multi-input tabular+CNN architecture (section 4A) as
+  the default. Run a CNN-image-ONLY ablation (no tabular branch) once, as a
+  control, purely to see how much of the accuracy the tabular branch alone
+  is carrying versus the image branch.
+
+================================================================================
+6. FILTERING TO "HOMOGENEOUS" FOOTPRINTS FOR AGGREGATE-SUPERVISION TRAINING
+================================================================================
+Footprints with lots of cloud/CTZ contamination have per-pixel flux that
+varies enormously inside them - training a dense per-pixel output against
+just their single mean label is much less physically meaningful than doing
+so for a footprint that's genuinely uniform inside (the paper's whole PCS/
+psi<1 homogeneity requirement, Equation 16, exists for exactly this reason).
+Computing the paper's full psi metric from scratch is a real side-project on
+its own (needs a reference "clear-sky spectral signal" per channel that
+isn't precomputed anywhere in this repo). Three cheaper proxies already exist
+in the data, in order of ease of reuse:
+
+  1. Reuse All_Sky_AIflux.py's existing filter as-is (cheapest - the code
+     already exists and is already in production use): meanCTH < 3000m AND
+     stdCTH < 1000m. Caveat: this is a cloud-height-VARIABILITY proxy ("not
+     near a messy cloud edge"), not a direct radiance-homogeneity measure.
+
+  2. Clrf > 95 (clear-sky fraction). Remember it's on a 0-100 scale, not
+     0-1 (section 2) - an easy off-by-100 bug if this gets implemented
+     without double-checking. About 55% of footprints already exceed 95.
+
+  3. CF < 0.05 (cloud fraction), a stricter filter - only about 10.5% of
+     footprints pass. Since CF and Clrf only correlate at r~0.25 (section 2),
+     they're not redundant - combining both (Clrf > 95 AND CF < 5) gives a
+     stricter, more defensible "genuinely homogeneous" filter than either
+     alone, at the cost of a much smaller usable training subset.
+
+  TRADEOFF TO STATE PLAINLY: with only 11,917 footprints total, aggressive
+  filtering (especially the CF<0.05 option, ~10.5% pass rate) could shrink
+  the CNN's actual training set down to roughly 1,000-1,300 footprints -
+  small enough that whether this filtering helps or hurts should be tested
+  empirically (does the CNN even converge? does held-out RMSE actually
+  improve vs. training on the full unfiltered 11,917?), not assumed to be a
+  pure win. A softer alternative worth trying instead of a hard filter: use
+  the homogeneity measure as a per-sample LOSS WEIGHT (downweight messy
+  footprints rather than dropping them entirely) to avoid starving the model
+  of data.
+
+================================================================================
+7. VALIDATION STRATEGY - THERE IS NO DIRECT 1KM GROUND TRUTH
+================================================================================
+Mirror the attached paper's own validation philosophy, since a direct
+per-pixel RMSE is neither possible nor honest here (no per-pixel label
+exists, full stop):
+
+  1. Footprint-level fidelity (the closest thing to "ground truth" we have).
+     Score GlobalAveragePooling2D(predicted_map) per footprint against true
+     Fsw with the SAME RMSE/MAE/R^2 convention already used by guy_model.py
+     and guys_benchmark_models.py, on the same held-out-FILE test split
+     (section 4E). Plot it in the same X=Y/histogram style as
+     benchmark_outputs/guy_vs_allsky_scatter_comparison.png (see
+     python/plot_guy_vs_allsky_comparison.py) for direct, apples-to-apples
+     comparability against every model already benchmarked in
+     GUY_MODEL_VS_ALLSKY_COMPARISON.txt.
+
+  2. Spatial plausibility checks. Visually overlay predicted per-pixel flux
+     maps against the input ImSW/ImLW channels (reuse
+     python/Details_of_npz.py's imshow pattern) for a handful of hand-picked
+     footprints that visibly span a cloud edge. Check that predicted flux
+     transitions track the visible cloud edge structure, rather than looking
+     noisy or spatially arbitrary (a real risk given the identifiability
+     caveat in section 3).
+
+  3. Flux-vs-distance-from-cloud decay check - a direct analog of the
+     paper's own Figure 1b/c and its ~10km CTZ e-folding-distance finding.
+     Compute an approximate per-pixel "distance to nearest cloudy pixel"
+     within each footprint (using whichever cloud-mask threshold was chosen
+     in section 6), bin the CNN's predicted per-pixel flux by that distance,
+     and look for a physically sensible, non-flat, non-noisy trend near
+     cloud edges. CAVEAT: the paper's own finding was for pure-clear-sky Fclr
+     specifically, not all-sky Fsw - the expected curve shape for Fsw isn't
+     guaranteed to be identical, so this should be treated as a plausibility
+     signal to sanity-check with Eshkol, not a hard pass/fail target assumed
+     in advance.
+
+  4. Internal consistency between Phase 0 and Phase 1/2 predictions. Large
+     unexplained divergence between the spatially-naive per-pixel MLP
+     (Phase 0) and the CNN (Phase 1/2) on the same held-out footprints is
+     itself a useful bug-detection signal, even without any external ground
+     truth to compare either one against.
+
+================================================================================
+8. CONCRETE FILE/MODULE NAMING (follow existing conventions, don't invent new
+   ones)
+================================================================================
+  - New file: python/guy_image_model.py
+    Parallels guy_model.py's naming and role (a locked-down recipe script),
+    kept SEPARATE from the production tabular pipeline rather than modifying
+    guy_model.py/guys_benchmark_models.py in place - consistent with this
+    project's existing practice of adding new scripts/flags instead of
+    rewriting proven pipelines (see how --feature-source allsky37 was added
+    to guy_model.py as an opt-in flag, not a replacement of the default).
+
+  - New loader function: load_paired_images(data_root)
+    Follow load_paired_moments_scalars()/load_allsky37_subset()'s exact
+    filename-pairing convention in python/guys_benchmark_models.py: glob
+    images/*.npz, match each to scalars/*.npz (and optionally moments/*.npz)
+    by filename (scalar_file = scalars_dir / image_file.name, skip with a
+    warning if missing - same pattern already used everywhere else in this
+    repo). Transpose ImSW/ImLW/Imviews from the stored (N,C,27,55) to Keras's
+    expected channel-last (N,27,55,C) layout. Return both the image tensor
+    and the matching tabular feature row per footprint, so the multi-input
+    architecture (section 4A) can be built from one loader call.
+
+  - New model builder: build_image_ann_model(...)
+    Follow build_ann_model()/train_ann()'s existing pattern in
+    guys_benchmark_models.py: keep the Normalization-layer-first approach for
+    the tabular branch (reuse as-is), add a small Conv2D stack (2-3 layers,
+    'same' padding, 8-16 filters, ReLU) for the image branch, merge via
+    Concatenate before a small Dense head, and keep the same
+    Adam + mean_squared_error + EarlyStopping(patience=15,
+    restore_best_weights=True) training convention used everywhere else in
+    this repo, so it plugs into the existing ModelResult/CSV-export/
+    heatmap-plotting scaffolding with minimal new code.
+
+  - Keep train_test_split(..., random_state=42) as the fixed-seed convention,
+    but split by granule FILENAME, not by footprint row (section 4E).
+
+  - Report results the same way the rest of this project already does:
+    extend GUY_MODEL_VS_ALLSKY_COMPARISON.txt-style before/after tables, and
+    reuse plot_guy_vs_allsky_comparison.py's scatter+histogram style for the
+    new model's footprint-aggregated predictions, so results are visually and
+    numerically comparable to every model already benchmarked, not a
+    disconnected one-off report.
+
+================================================================================
+9. SUGGESTED ORDER TO ACTUALLY TRY THIS (cheapest/most-grounded first)
+================================================================================
+  1. Write a small throwaway script to re-verify the exact data facts in
+     section 2 firsthand (footprint counts, array shapes, FOVorientation
+     meaning if discoverable from context/units elsewhere in the repo or from
+     Eshkol) before building anything on top of them.
+  2. Phase 0: per-pixel MLP baseline (section 5) - cheapest possible sanity
+     check that the images/scalars pairing and per-pixel broadcasting is
+     correct, using zero new architecture.
+  3. Pick a homogeneity filter (start with the free All_Sky_AIflux.py reuse,
+     section 6, since it costs nothing new to try first).
+  4. Phase 1: small CNN + GlobalAveragePooling2D (section 5), gated against
+     Phase 0's result.
+  5. Decide whether Phase 2 (the actual 1km flux map) is worth building based
+     on how Phase 1 turned out - don't commit to it up front.
+
+================================================================================
+OPEN QUESTIONS FOR ESHKOL / DOMAIN EXPERTS (not answerable from this repo alone)
+================================================================================
+- Can more images/*.npz granules be generated from the same upstream
+  MODIS/CERES pipeline that produced these 6 files? (section 4D)
+- What does FOVorientation actually encode - orbit side, scan direction,
+  something else? (section 2, 4B)
+- Is there an existing CERES angular point-spread-function weight map
+  (even an approximate one) that could replace the flat
+  GlobalAveragePooling2D assumption with something closer to CERES's true
+  footprint weighting? (section 2, 3)
+- Is the paper's Figure 1b/c flux-vs-distance-from-cloud decay pattern
+  expected to hold similarly for all-sky Fsw (this repo's target), or only
+  for the paper's specific pure-clear-sky Fclr? (section 7)
