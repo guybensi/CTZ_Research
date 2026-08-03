@@ -1,0 +1,110 @@
+
+================================================================================
+GUY BENCHMARK RESTRICTED TO THE ALL_SKY_AIFLUX 37-FEATURE POOL
+================================================================================
+Date: 2026-08-02
+
+Command:
+python3 python/guys_benchmark_models.py --feature-selection importance \
+  --feature-source allsky37 --importance-models Ridge \
+  --data-root data/paired/Pacific_2014-2015 \
+  --output-dir benchmark_outputs/guys_benchmark_allsky37_full
+
+--- What changed vs. the original guy_model_1.0.py recipe ---
+guys_benchmark_models.py was extended with a --feature-source allsky37 mode
+(load_allsky37_subset()) that restricts the candidate feature pool, *before*
+any Random Forest importance ranking, to exactly the 37 features
+All_Sky_AIflux.py hand-picks: SZA, VZA, RAA (viewing/solar geometry) plus mean
+and skew spectral moments at its 17 fixed wavelengths (0.47, 0.66, 0.86, 1.24,
+1.375, 2.13, 3.96, 4.05, 4.5, 6.7, 7.3, 8.5, 9.7, 11.0, 12.0, 13.33, 14.23 um),
+each matched to the nearest real SW/LW channel per file - i.e. no Isw/Ilw
+radiance scalars, no CF/meanCTH/stdCTH/AOD/Clrf/glintf/landf, no Lat/Lon, and
+no std/kurtosis moments. SVM was dropped from the classical sweep
+(--importance-models Ridge) since SVR does not scale to a multi-million-row
+training set; this doesn't change the recommendation since
+select_best_practical_model() already always picks Ridge for the practical
+config regardless of SVM's score.
+
+--- Data used ---
+Folder: data/paired/Pacific_2014-2015/{moments,scalars}/ (same 2163 file pairs
+  as section 1)
+Rows kept after dropping any row with NaN/Inf across only these 37 features +
+  target: X.shape=(5,260,208, 37), y.shape=(5,260,208,)
+  -> ~3.1x more rows survive than guy_model_1.0.py's 129-feature version
+     (1,703,803 rows) because far fewer columns can NaN-out a given FOV
+Test split: 20% -> ~4,208,166 train rows / ~1,052,042 test rows
+
+--- Feature importance ranking within the 37 (Random Forest, seed=42) ---
+Overwhelmingly dominated by a single channel: mean SW reflectance at 0.66um
+carries ~93% of total importance by itself; everything else is a long tail.
+Skew moments are essentially useless here - only sk9.7 and sk4.5 barely creep
+into the top 20, all other skew columns rank at/near zero importance.
+
+Rank Feature   Importance   In top-20?
+   1  m0.66      0.93388      yes
+   2  m0.47      0.02394      yes
+   3  m0.86      0.02040      yes
+   4  VZA        0.00477      yes
+   5  SZA        0.00373      yes
+   6  m3.96      0.00341      yes
+   7  m8.5       0.00225      yes
+   8  m11.0      0.00221      yes
+   9  m9.7       0.00186      yes
+  10  m1.24      0.00127      yes
+  11  m4.05      0.00058      yes
+  12  RAA        0.00051      yes
+  13  m12.0      0.00033      yes
+  14  m1.375     0.00029      yes
+  15  m4.5       0.00016      yes
+  16  m2.13      0.00016      yes
+  17  sk9.7      0.00016      yes
+  18  m13.33     0.00003      yes
+  19  sk4.5      0.00003      yes
+  20  m14.23     0.00001      yes
+  21  sk11.0     0.00001      no
+  22-37 (all remaining sk* channels, m7.3, m6.7)  ~0.00000  no
+
+--- Results (Ridge across all combo sizes tested; ANN on the picked combo) ---
+Model / combo             | RMSE (W/m^2) | MAE (W/m^2) | R^2
+------------------------------------------------------------------------------
+Ridge, top_5  (5 feats)   |    28.45     |    20.32    | 0.9682
+Ridge, top_10 (10 feats)  |    23.89     |    17.35    | 0.9775
+Ridge, top_15 (15 feats)  |    22.98     |    16.98    | 0.9792
+Ridge, top_20 (20 feats)  |    22.58     |    16.57    | 0.9799  <- picked
+Ridge, top_24 (24 feats)  |    22.51     |    16.55    | 0.9801
+Ridge, top_37 (all 37)    |    22.27     |    16.40    | 0.9805  (best, marginal)
+ANN on top_20 (20 feats)  |    15.73     |    11.08    | 0.9903
+
+Recommended/practical combo (same preference logic as the full recipe):
+Ridge on top_20 of the 37 - R^2=0.9799, essentially tied with using all 37
+(R^2=0.9805), confirming 20 features already capture nearly all of the signal
+available inside this restricted pool.
+
+--- Comparison to guy_model_1.0.py's original top-20-of-129 recipe (section 1) ---
+                          | RMSE (W/m^2) | MAE (W/m^2) | R^2
+------------------------------------------------------------------------------
+Ridge, top-20 of 129      |    11.03     |    8.38     | 0.9796
+Ridge, top-20 of 37 (this)|    22.58     |    16.57    | 0.9799
+ANN, top-20 of 129        |     5.76     |    4.06     | 0.9944
+ANN, top-20 of 37 (this)  |    15.73     |    11.08    | 0.9903
+
+--- Answer ---
+Yes, noticeably worse in absolute terms, even though R^2 looks almost
+unchanged: RMSE/MAE roughly DOUBLE for Ridge (11.03 -> 22.58 W/m^2) and
+roughly TRIPLE for the ANN (5.76 -> 15.73 W/m^2) when the pool is restricted
+to moments + image/solar geometry only (no Isw/Ilw radiance, no
+AOD/Clrf/CF/CTH cloud-aerosol scalars, no Lat/Lon). R^2 staying ~0.98-0.99 in
+both cases is not a fair apples-to-apples signal here: the two runs are
+scored against different row sets with different label variance (5.26M rows
+here vs. 1.70M for the 129-feature version, since restricting to fewer
+columns lets ~3x more FOVs survive the all-finite filter), so R^2 alone
+understates the gap - RMSE/MAE in W/m^2 are the meaningful comparison.
+The dominant loss driver is losing Isw (SW radiance/irradiance, the #2 most
+important feature in the full 129-feature recipe) plus AOD/Clrf/Lat; within
+the restricted 37-feature pool, a single channel (mean SW reflectance at
+0.66um) ends up carrying ~93% of the RF importance on its own, well beyond
+its role in the full recipe, since it has to substitute for information the
+excluded scalars would otherwise provide.
+
+Artifacts: benchmark_outputs/guys_benchmark_allsky37_full/run_20260802_141925/
+  (benchmark_results.csv, summary.json, performance_heatmap.png, ann_model.keras)
