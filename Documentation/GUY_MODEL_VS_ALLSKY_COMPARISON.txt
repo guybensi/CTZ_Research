@@ -6,10 +6,17 @@ Dataset: data/paired/Pacific_2014-2015 (full, 2163 moments/scalars NPZ file pair
 Target: Fsw (shortwave flux), units W/m^2
 Random seed: 42
 
+Script versions referenced below (archived under python/ for documentation):
+  guy_model_1.0.py = original locked recipe (top-20 of 129 features, Ridge +
+    ANN only; no --feature-source flag) - sections 1-4.
+  guy_model_2.0.py = guy_model_1.0.py + a --feature-source {full,allsky37}
+    option (default "full" reproduces 1.0's recipe exactly; "allsky37" locks
+    in the all-37-feature recipe) - sections 5-6.
+
 ================================================================================
-1. python/guy_model.py
+1. python/guy_model_1.0.py
 ================================================================================
-Command: python3 python/guy_model.py --data-root data/paired/Pacific_2014-2015
+Command: python3 python/guy_model_1.0.py --data-root data/paired/Pacific_2014-2015
 
 --- Data used ---
 Folder: data/paired/Pacific_2014-2015/{moments,scalars}/  (images/ subfolder not read)
@@ -67,7 +74,7 @@ ANN (Normalization + Dense(10) + Dense(8) + output, 150 epochs, early stop)
                     |     5.76     |    4.06     | 0.9944
 
 --- Model logic (what each stage actually is) ---
-guy_model.py is a two-stage classical-ML + deep-learning pipeline, all run on
+guy_model_1.0.py is a two-stage classical-ML + deep-learning pipeline, all run on
 the *same* fixed top-20 feature subset so the two model types are compared
 head-to-head:
   1. Feature selection (classical ML, not a predictor itself): a Random
@@ -135,13 +142,13 @@ Command: python3 python/All_Sky_AIflux.py --data-path data/paired/Pacific_2014-2
 
 --- Data used ---
 Folder: data/paired/Pacific_2014-2015/{moments,scalars}/  (same folder/files as
-  guy_model.py above - images/ subfolder not read; ~2.5 GB read out of the
+  guy_model_1.0.py above - images/ subfolder not read; ~2.5 GB read out of the
   4.4 GB total folder)
 File pairs read: 2163 moments+scalars NPZ pairs (all of them)
-Raw FOVs assembled from those pairs: 5,260,208 (same raw count as guy_model.py,
+Raw FOVs assembled from those pairs: 5,260,208 (same raw count as guy_model_1.0.py,
   since both build rows from the identical NPZ pairs before any filtering)
 Cloud-height filter applied (mCTH < 3000 m, stdCTH < 1000 m - a scene-quality
-  filter this script applies that guy_model.py does not): 2,909,419 FOVs
+  filter this script applies that guy_model_1.0.py does not): 2,909,419 FOVs
   remain ("Number of FOVs" as printed by the script)
 Test split: 30% (trainprec=0.7) -> ~2,036,593 train FOVs / ~872,826 test FOVs
 
@@ -166,7 +173,7 @@ switch in a plain linear-regression branch, but it defaults to 0/off, so only
 the ANN branch runs):
   - Feature set is fixed and hand-designed from radiative-transfer domain
     knowledge (viewing geometry + spectral mean/skew at 17 chosen
-    wavelengths), not learned or ranked from the data the way guy_model.py's
+    wavelengths), not learned or ranked from the data the way guy_model_1.0.py's
     Random Forest importance step is.
   - Architecture: a Keras functional-API MLP where each of the 37 features
     gets its own per-feature Normalization layer (rather than one joint
@@ -176,34 +183,34 @@ the ANN branch runs):
     0.01 on the first hidden layer, 0.001 on deeper ones) - only the first
     layer (18 units, i.e. half of 37 features) is enabled by default, the
     other 3 are sized to 0 and skipped - ending in a single linear output
-    neuron. Same Adam + MSE training setup as guy_model.py's ANN, but no
+    neuron. Same Adam + MSE training setup as guy_model_1.0.py's ANN, but no
     early stopping: it always runs the full 200 epochs.
   - After training, it fits a separate scikit-learn LinearRegression between
     the ANN's raw predictions and the true test labels. This is a post-hoc
     bias/scale correction and diagnostic (for the R^2/plots), not a second
     trained model competing with the ANN.
   - Net effect: this script is a single-hidden-layer, hand-featured DL
-    regressor with no train/test model-selection loop, versus guy_model.py's
+    regressor with no train/test model-selection loop, versus guy_model_1.0.py's
     deeper (2-hidden-layer) DL regressor on RF-importance-selected features
     that is explicitly benchmarked against a Ridge linear baseline.
 
 ================================================================================
 3. COMPARISON
 ================================================================================
-- guy_model.py's ANN (RMSE=5.76 W/m^2) outperforms All_Sky_AIflux.py's ANN
+- guy_model_1.0.py's ANN (RMSE=5.76 W/m^2) outperforms All_Sky_AIflux.py's ANN
   (RMSE=17.72 W/m^2) by roughly 3x lower error.
-- guy_model.py's classical Ridge baseline alone (RMSE=11.03 W/m^2) also beats
+- guy_model_1.0.py's classical Ridge baseline alone (RMSE=11.03 W/m^2) also beats
   All_Sky_AIflux.py's ANN.
 - Likely contributors to the gap:
-  1. Feature selection: guy_model.py uses 20 features chosen by Random Forest
+  1. Feature selection: guy_model_1.0.py uses 20 features chosen by Random Forest
      importance ranking out of the full 129-feature moments+scalars set (includes
      cloud fraction, cloud top height, AOD, lat/lon, etc.). All_Sky_AIflux.py
      uses a fixed, smaller, hand-picked 37-feature set of geometry + spectral
      mean/skew only, with no cloud/aerosol/geolocation scalars.
-  2. Network capacity: guy_model.py's ANN has two hidden layers (10, 8 units)
+  2. Network capacity: guy_model_1.0.py's ANN has two hidden layers (10, 8 units)
      vs. All_Sky_AIflux.py's single hidden layer (18 units).
   3. Train/test split: 80/20 vs 70/30.
-  4. Sample counts differ too: guy_model.py trains/tests on 1,703,803 rows
+  4. Sample counts differ too: guy_model_1.0.py trains/tests on 1,703,803 rows
      (all-finite rows only, no cloud filter), while All_Sky_AIflux.py
      trains/tests on 2,909,419 rows (cloud-height filtered, NaNs not
      explicitly dropped) - the two scripts are not evaluated on identical
@@ -235,7 +242,7 @@ python3 python/guys_benchmark_models.py --feature-selection importance \
   --data-root data/paired/Pacific_2014-2015 \
   --output-dir benchmark_outputs/guys_benchmark_allsky37_full
 
---- What changed vs. the original guy_model.py recipe ---
+--- What changed vs. the original guy_model_1.0.py recipe ---
 guys_benchmark_models.py was extended with a --feature-source allsky37 mode
 (load_allsky37_subset()) that restricts the candidate feature pool, *before*
 any Random Forest importance ranking, to exactly the 37 features
@@ -255,7 +262,7 @@ Folder: data/paired/Pacific_2014-2015/{moments,scalars}/ (same 2163 file pairs
   as section 1)
 Rows kept after dropping any row with NaN/Inf across only these 37 features +
   target: X.shape=(5,260,208, 37), y.shape=(5,260,208,)
-  -> ~3.1x more rows survive than guy_model.py's 129-feature version
+  -> ~3.1x more rows survive than guy_model_1.0.py's 129-feature version
      (1,703,803 rows) because far fewer columns can NaN-out a given FOV
 Test split: 20% -> ~4,208,166 train rows / ~1,052,042 test rows
 
@@ -305,7 +312,7 @@ Ridge on top_20 of the 37 - R^2=0.9799, essentially tied with using all 37
 (R^2=0.9805), confirming 20 features already capture nearly all of the signal
 available inside this restricted pool.
 
---- Comparison to guy_model.py's original top-20-of-129 recipe (section 1) ---
+--- Comparison to guy_model_1.0.py's original top-20-of-129 recipe (section 1) ---
                           | RMSE (W/m^2) | MAE (W/m^2) | R^2
 ------------------------------------------------------------------------------
 Ridge, top-20 of 129      |    11.03     |    8.38     | 0.9796
@@ -335,20 +342,21 @@ Artifacts: benchmark_outputs/guys_benchmark_allsky37_full/run_20260802_141925/
   (benchmark_results.csv, summary.json, performance_heatmap.png, ann_model.keras)
 
 ================================================================================
-5. guy_model.py LOCKED RECIPE ON ALL 37 ALLSKY FEATURES (FULL PACIFIC DATA)
+5. guy_model_2.0.py LOCKED RECIPE ON ALL 37 ALLSKY FEATURES (FULL PACIFIC DATA)
 ================================================================================
 Date: 2026-08-02
 Follows up section 4: of the sizes swept there (top_5/10/15/20/24/37 of the 37
 All_Sky-style features), top_37 (i.e. no further trimming, use the whole
 restricted pool) scored best (R^2=0.9805), beating the top_20 pick that
 select_best_practical_model()'s hardcoded preference order would otherwise
-have chosen. guy_model.py was given a new --feature-source allsky37 option
-(default remains "full" - the original 129-feature production recipe is
-unchanged) that locks in this exact recipe: all 37 All_Sky-style features, no
-Random Forest trimming, Ridge (alpha=1.0) baseline + ANN.
+have chosen. guy_model_1.0.py was given a new --feature-source allsky37 option,
+becoming guy_model_2.0.py (default remains "full" - the original 129-feature
+production recipe is unchanged) that locks in this exact recipe: all 37
+All_Sky-style features, no Random Forest trimming, Ridge (alpha=1.0) baseline
++ ANN.
 
 Command:
-python3 python/guy_model.py --feature-source allsky37 \
+python3 python/guy_model_2.0.py --feature-source allsky37 \
   --data-root data/paired/Pacific_2014-2015
 
 --- Data used ---
@@ -411,7 +419,7 @@ This: all 37 allsky feats (ANN)    |    15.33     |    10.79    | 0.9907
 Conclusion unchanged from section 4: restricting to moments + image/solar
 geometry only (dropping Isw/Ilw/AOD/Clrf/CF/CTH/Lat/Lon) roughly doubles
 Ridge's RMSE and roughly triples the ANN's RMSE versus the full 129-feature
-production recipe. guy_model.py's default (--feature-source full, i.e. no
+production recipe. guy_model_2.0.py's default (--feature-source full, i.e. no
 flag) remains the recommended production recipe; --feature-source allsky37
 is kept as a documented, reproducible comparison point, not a replacement.
 
@@ -436,7 +444,7 @@ A. Drop Ridge, keep only the ANN (cheap, no new data/features needed)
    using Ridge's R^2 (see section 4's top_20-vs-top_37 discrepancy) even
    though the ANN is what actually ships - a linear model's feature
    preference isn't necessarily the nonlinear model's preference. Fix: for
-   the allsky37 recipe, either (a) skip Ridge entirely in guy_model.py and
+   the allsky37 recipe, either (a) skip Ridge entirely in guy_model_2.0.py and
    just report the ANN, or (b) change guys_benchmark_models.py's combo
    selection to rank combos by a quick ANN CV score instead of Ridge's.
 

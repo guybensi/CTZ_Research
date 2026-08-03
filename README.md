@@ -6,13 +6,13 @@ CTZ_Research is a research-oriented project for improving the quality and predic
 
 - [python/benchmark_pipeline.py](python/benchmark_pipeline.py): main training and benchmarking entry point.
 - [python/guys_benchmark_models.py](python/guys_benchmark_models.py): feature combination benchmark with model selection, hyperparameter tuning, and ANN training. Target is `Fsw` (shortwave flux) from the scalars data.
-- [python/guy_model.py](python/guy_model.py): locked-down production recipe from the benchmark (Ridge + ANN on the top-20 importance-selected features) — trains and saves both models directly, no grid search.
+- [python/guy_model_2.0.py](python/guy_model_2.0.py): locked-down production recipe from the benchmark (Ridge + ANN on the top-20 importance-selected features) — trains and saves both models directly, no grid search. Adds a `--feature-source {full,allsky37}` option over [python/guy_model_1.0.py](python/guy_model_1.0.py) (kept for reference); default `full` reproduces 1.0 exactly.
 - [python/sample_paired_data.py](python/sample_paired_data.py): samples a fraction of a paired moments/scalars data directory and saves it as a single NPZ, for quick local iteration on the full dataset.
 - [python/All_Sky_AIflux.py](python/All_Sky_AIflux.py): original ANN/linear regression workflow.
 - [python/Details_of_npz.py](python/Details_of_npz.py): NPZ inspection and visualization utility.
 - [BENCHMARKING.md](BENCHMARKING.md): detailed run instructions and output descriptions.
 - [CLAUDE.md](CLAUDE.md): project rules for future edits.
-- [plan.txt](plan.txt): the current implementation plan.
+- [Documentation](Documentation): planning docs and result writeups — [Documentation/plan_CV.txt](Documentation/plan_CV.txt) (current implementation plan), [Documentation/GUY_MODEL_VS_ALLSKY_COMPARISON.txt](Documentation/GUY_MODEL_VS_ALLSKY_COMPARISON.txt), [Documentation/BENCHMARK_RESULTS_1.0.txt](Documentation/BENCHMARK_RESULTS_1.0.txt), and [Documentation/Ideas_For_guy_model_2.0.txt](Documentation/Ideas_For_guy_model_2.0.txt).
 - [data](data): consolidated local datasets and legacy copies.
 
 ## Quick start
@@ -63,8 +63,11 @@ python3 python/guys_benchmark_models.py --feature-selection importance
 Train the final locked-down model (Ridge + ANN on the top-20 importance-selected features, no grid search):
 
 ```bash
-python3 python/guy_model.py --demo
-python3 python/guy_model.py --data-root data/paired/Pacific_2014-2015
+python3 python/guy_model_2.0.py --demo
+python3 python/guy_model_2.0.py --data-root data/paired/Pacific_2014-2015
+
+# Compare against the restricted 37-feature All_Sky_AIflux-style pool
+python3 python/guy_model_2.0.py --feature-source allsky37 --data-root data/paired/Pacific_2014-2015
 ```
 
 Sample a fraction of a large paired data directory into a single NPZ for faster local iteration:

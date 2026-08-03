@@ -104,14 +104,17 @@ python3 python/sample_paired_data.py data/paired/Pacific_2014-2015 benchmark_out
 
 ### Guy Model (Final Locked-Down Recipe)
 
-Once [python/guys_benchmark_models.py](python/guys_benchmark_models.py) `--feature-selection importance` has identified the best combo/model, [python/guy_model.py](python/guy_model.py) locks that recipe in (currently: top-20 Random Forest importance-selected features, Ridge alpha=1.0 baseline, plus the ANN) and trains it directly without re-running the full sweep:
+Once [python/guys_benchmark_models.py](python/guys_benchmark_models.py) `--feature-selection importance` has identified the best combo/model, [python/guy_model_2.0.py](python/guy_model_2.0.py) locks that recipe in (currently: top-20 Random Forest importance-selected features, Ridge alpha=1.0 baseline, plus the ANN) and trains it directly without re-running the full sweep:
 
 ```bash
-python3 python/guy_model.py --demo
-python3 python/guy_model.py --data-root data/paired/Pacific_2014-2015
+python3 python/guy_model_2.0.py --demo
+python3 python/guy_model_2.0.py --data-root data/paired/Pacific_2014-2015
+
+# Restricted 37-feature All_Sky_AIflux-style pool, no RF trimming
+python3 python/guy_model_2.0.py --feature-source allsky37 --data-root data/paired/Pacific_2014-2015
 ```
 
-If a future benchmark run picks a different combo/model as the practical recommendation, update the constants and imports at the top of `guy_model.py` to match.
+The script is versioned: [python/guy_model_1.0.py](python/guy_model_1.0.py) is the original recipe (no `--feature-source` flag, always top-20 of 129 features) kept for reference; `guy_model_2.0.py` adds the `--feature-source {full,allsky37}` option, with `full` (default) reproducing 1.0 exactly. See [Documentation/GUY_MODEL_VS_ALLSKY_COMPARISON.txt](Documentation/GUY_MODEL_VS_ALLSKY_COMPARISON.txt) for the results behind both versions. If a future benchmark run picks a different combo/model as the practical recommendation, bump the version (e.g. add `guy_model_3.0.py`) and update the constants and imports at its top to match.
 
 ## Editing Notes
 
@@ -150,5 +153,5 @@ data/
 - Pre-built training data goes in [data/consolidated](data/consolidated).
 - New feature combination benchmark script: [python/guys_benchmark_models.py](python/guys_benchmark_models.py) — compares classical models, hyperparameter-tunes, then trains ANN.
 - New sampling helper: [python/sample_paired_data.py](python/sample_paired_data.py) — samples a fraction of a paired data directory into a single NPZ.
-- New locked-down recipe script: [python/guy_model.py](python/guy_model.py) — trains the production recipe (Ridge + ANN on top-20 importance-selected features) picked by the benchmark.
+- New locked-down recipe script: [python/guy_model_2.0.py](python/guy_model_2.0.py) (previously [python/guy_model_1.0.py](python/guy_model_1.0.py)) — trains the production recipe (Ridge + ANN on top-20 importance-selected features) picked by the benchmark.
 

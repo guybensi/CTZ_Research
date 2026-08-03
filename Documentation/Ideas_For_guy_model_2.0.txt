@@ -1,0 +1,107 @@
+
+================================================================================
+IDEAS TO IMPROVE guy_model WHEN RESTRICTED TO THE 37 ALLSKY FEATURES
+================================================================================
+Date: 2026-08-02
+Context: sections 4/5 showed that, restricted to SZA/VZA/RAA + mean/skew
+spectra at the 17 All_Sky wavelengths (no Isw/Ilw/AOD/Clrf/CF/CTH/Lat/Lon),
+Ridge RMSE roughly doubles (11.03 -> 22.27) and ANN RMSE roughly triples
+(5.76 -> 15.33) versus the full 129-feature recipe. Ideas below are ranked
+by expected effort-to-payoff, grounded either in what our own RF importance
+ranking showed (section 4) or in the methodology of the attached AGU Advances
+paper (Eytan et al. 2025, "The Net Radiative Effect of the Ill-Defined
+Clear-Sky in the Vicinity of Clouds").
+
+A. Drop Ridge, keep only the ANN (cheap, no new data/features needed)
+   Ridge lost to the ANN in every single comparison run so far (full recipe:
+   11.03 vs 5.76 RMSE; allsky37: 22.27 vs 15.33 RMSE) - it never wins, so it
+   is not doing useful work as a "baseline" beyond a sanity check. Worse,
+   select_best_practical_model() picks the practical feature-subset size
+   using Ridge's R^2 (see section 4's top_20-vs-top_37 discrepancy) even
+   though the ANN is what actually ships - a linear model's feature
+   preference isn't necessarily the nonlinear model's preference. Fix: for
+   the allsky37 recipe, either (a) skip Ridge entirely in guy_model_2.0.py and
+   just report the ANN, or (b) change guys_benchmark_models.py's combo
+   selection to rank combos by a quick ANN CV score instead of Ridge's.
+
+B. Replace Ridge with a nonlinear classical baseline (cheap - already wired)
+   guys_benchmark_models.py already supports Gradient Boosting/XGBoost/
+   CatBoost/Random Forest via get_classical_models(); only Ridge+SVM are
+   enabled in --feature-selection importance mode. Flux is not expected to
+   be linear in radiance or in viewing/solar angles (the paper's anisotropic
+   factor R that converts radiance to flux is itself angle- and
+   optical-thickness-dependent - see Equations 10-14 and Figure 5 of the
+   attached paper), so a tree-based model should fit the same 37 features
+   better than Ridge without needing new data. Test with the flag already
+   added to guys_benchmark_models.py:
+     --importance-models "Ridge,Gradient Boosting,XGBoost"
+   (drop SVM as before - doesn't scale to millions of rows; Gradient
+   Boosting/XGBoost with modest n_estimators/max_depth should still run in
+   reasonable time on ~4M rows, unlike SVR).
+
+C. Reconstruct an Isw-like broadband-radiance feature from the spectrum
+   (grounded directly in the paper's own method; moderate effort)
+   In the full 129-feature recipe, Isw (SW radiance/irradiance) was the #2
+   most important feature (section 1) - guy_model loses direct access to it
+   under allsky37. But the attached paper's Equation 10-11 show broadband
+   flux is approximated as a linear combination of a handful of narrow-band
+   radiances: f = (pi/R) * sum(I_ch * alpha_ch), with alpha_ch regression
+   coefficients from Loeb & Manalo-Smith (2005). We already have the
+   per-channel mean spectra (mSWspec/mLWspec) for all 27 wavelengths, i.e.
+   more raw material than the 37-feature pool currently exposes. Engineer an
+   explicit "reconstructed Isw" feature (e.g. a fixed or fitted weighted sum
+   of the SW channels) and add it alongside the 37 - this hands the model a
+   physically-motivated proxy for the single scalar it's missing, without
+   needing new data.
+
+D. Cross-feature the spectrum against baseline channels (grounded in the
+   paper's Appendix A(e); cheap, reuses existing data)
+   The paper found that normalizing each wavelength by a baseline channel
+   per spectral region (0.47um for SW/atmospheric background, 4.05um for
+   mid-IR, 11.0um for the LW atmospheric window) measurably improved their
+   own ANN's Fclr retrieval. Our RF ranking (section 4) found a single raw
+   channel (m0.66) carrying ~93% of importance, which smells like the model
+   using one channel as an implicit brightness proxy rather than the ratios
+   the paper's domain experts found more informative - explicit
+   ratio/cross-features (m_ch / m_baseline) are a direct, low-cost way to
+   give the model that same signal in a more learnable form.
+
+E. Swap skew moments for std moments (near-zero cost - same data, no new
+   features)
+   Section 4's RF ranking found every skew_* column at/near-zero importance
+   (only sk9.7 and sk4.5 barely entered the top 20) - skew is essentially
+   dead weight in the current 37-feature pool. The paper's own CTZ detection
+   metric psi (Equation 16) is fundamentally a variance-normalized deviation
+   from the clear-sky spectral signal - i.e. within-footprint standard
+   deviation is exactly what the paper uses to flag cloud-contaminated
+   "clear" pixels. Since CTZ contamination is a very plausible source of our
+   largest prediction errors, swapping the 17 skew_* columns for the
+   corresponding 17 std_* columns (already available in the same moments
+   NPZ files, no new data needed) is a nearly-free experiment worth trying
+   before anything that requires new features or data.
+
+F. Angular/geometric feature engineering (cheap, same data)
+   Ridge sees SZA/VZA/RAA as raw degrees; the paper's radiative-transfer
+   argument (Section 2.1, Figure 5) is that the geometry enters through a
+   markedly nonlinear anisotropic factor R (varies from <1 to >3 across the
+   observed angle range, see Figure 5b). Adding cos(SZA), cos(VZA), sin/cos
+   of RAA, and a VZA*RAA (or SZA*VZA) interaction term as explicit features
+   would give a linear model (Ridge, or the reconstructed-Isw feature in C)
+   a much easier time approximating R's nonlinearity; likely lower-value for
+   the ANN, which can already learn such interactions from raw angles given
+   enough data.
+
+G. Stacked/residual model, only if A-F plateau (higher effort, likely not
+   worth it given Ridge already loses outright - listed for completeness)
+   Train Ridge (or the engineered-feature linear model from C/D/F) first,
+   then train the ANN to predict the residual (true - Ridge prediction)
+   rather than the raw target. This can occasionally squeeze out a bit more
+   accuracy over a single end-to-end ANN, but given Ridge's R^2 is already
+   dominated by the ANN's, the likely gain here is smaller than A-F above.
+
+Suggested order to try, cheapest/most-grounded first: A -> E -> B -> D/F -> C
+-> G. A and E cost nothing beyond a script change and can be tried
+immediately with the existing Pacific_2014-2015 data; B just changes the
+--importance-models flag already added to guys_benchmark_models.py; C/D/F
+need small additions to load_allsky37_subset(); G is a bigger structural
+change and probably premature.
