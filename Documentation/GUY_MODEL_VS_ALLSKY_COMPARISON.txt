@@ -8,10 +8,12 @@ Random seed: 42
 
 Script versions referenced below (archived under python/ for documentation):
   guy_model_1.0.py = original locked recipe (top-20 of 129 features, Ridge +
-    ANN only; no --feature-source flag) - sections 1-4.
+    ANN only; no --feature-source flag) - section 1.
   guy_model_2.0.py = guy_model_1.0.py + a --feature-source {full,allsky37}
     option (default "full" reproduces 1.0's recipe exactly; "allsky37" locks
-    in the all-37-feature recipe) - sections 5-6.
+    in the all-37-feature recipe) - section 3.
+Section 4 (COMPARISON) covers both versions plus All_Sky_AIflux.py (section 2)
+together.
 
 ================================================================================
 1. python/guy_model_1.0.py
@@ -152,6 +154,36 @@ Cloud-height filter applied (mCTH < 3000 m, stdCTH < 1000 m - a scene-quality
   remain ("Number of FOVs" as printed by the script)
 Test split: 30% (trainprec=0.7) -> ~2,036,593 train FOVs / ~872,826 test FOVs
 
+--- Feature importance ranking within the 37 (Random Forest, seed=42) ---
+Overwhelmingly dominated by a single channel: mean SW reflectance at 0.66um
+carries ~93% of total importance by itself; everything else is a long tail.
+Skew moments are essentially useless here - only sk9.7 and sk4.5 barely creep
+into the top 20, all other skew columns rank at/near zero importance.
+
+Rank Feature   Importance   In top-20?
+   1  m0.66      0.93388      yes
+   2  m0.47      0.02394      yes
+   3  m0.86      0.02040      yes
+   4  VZA        0.00477      yes
+   5  SZA        0.00373      yes
+   6  m3.96      0.00341      yes
+   7  m8.5       0.00225      yes
+   8  m11.0      0.00221      yes
+   9  m9.7       0.00186      yes
+  10  m1.24      0.00127      yes
+  11  m4.05      0.00058      yes
+  12  RAA        0.00051      yes
+  13  m12.0      0.00033      yes
+  14  m1.375     0.00029      yes
+  15  m4.5       0.00016      yes
+  16  m2.13      0.00016      yes
+  17  sk9.7      0.00016      yes
+  18  m13.33     0.00003      yes
+  19  sk4.5      0.00003      yes
+  20  m14.23     0.00001      yes
+  21  sk11.0     0.00001      no
+  22-37 (all remaining sk* channels, m7.3, m6.7)  ~0.00000  no
+
 Features used (fixed, hand-picked, not importance-selected): SZA, VZA, RAA, plus
   mean + skew of the SW/LW spectra at 17 fixed wavelengths (37 features total)
 Model: ANN only (linreg=0 default), single hidden layer of 18 units, 200 epochs
@@ -195,31 +227,6 @@ the ANN branch runs):
     that is explicitly benchmarked against a Ridge linear baseline.
 
 ================================================================================
-3. COMPARISON
-================================================================================
-- guy_model_1.0.py's ANN (RMSE=5.76 W/m^2) outperforms All_Sky_AIflux.py's ANN
-  (RMSE=17.72 W/m^2) by roughly 3x lower error.
-- guy_model_1.0.py's classical Ridge baseline alone (RMSE=11.03 W/m^2) also beats
-  All_Sky_AIflux.py's ANN.
-- Likely contributors to the gap:
-  1. Feature selection: guy_model_1.0.py uses 20 features chosen by Random Forest
-     importance ranking out of the full 129-feature moments+scalars set (includes
-     cloud fraction, cloud top height, AOD, lat/lon, etc.). All_Sky_AIflux.py
-     uses a fixed, smaller, hand-picked 37-feature set of geometry + spectral
-     mean/skew only, with no cloud/aerosol/geolocation scalars.
-  2. Network capacity: guy_model_1.0.py's ANN has two hidden layers (10, 8 units)
-     vs. All_Sky_AIflux.py's single hidden layer (18 units).
-  3. Train/test split: 80/20 vs 70/30.
-  4. Sample counts differ too: guy_model_1.0.py trains/tests on 1,703,803 rows
-     (all-finite rows only, no cloud filter), while All_Sky_AIflux.py
-     trains/tests on 2,909,419 rows (cloud-height filtered, NaNs not
-     explicitly dropped) - the two scripts are not evaluated on identical
-     row sets, only the same underlying 2163 NPZ file pairs.
-- Both scripts were run unmodified (original regression logic preserved per
-  project rules); this comparison reflects the existing pipelines as-is, not a
-  tuned apples-to-apples experiment.
-
-================================================================================
 ARTIFACTS
 ================================================================================
 - benchmark_outputs/final_model_full/  (ridge_model.joblib, ridge_scaler.joblib,
@@ -229,10 +236,11 @@ ARTIFACTS
   saved by All_Sky_AIflux.py; used above to confirm the test-set mean=182.17/std=106.87)
 
 ================================================================================
-4. guy_model_2.0.py LOCKED RECIPE ON ALL 37 ALLSKY FEATURES (FULL PACIFIC DATA)
+3. guy_model_2.0.py LOCKED RECIPE ON ALL 37 ALLSKY FEATURES (FULL PACIFIC DATA)
 ================================================================================
 Date: 2026-08-02
-Follows up section 4: of the sizes swept there (top_5/10/15/20/24/37 of the 37
+Follows up the allsky37 benchmark sweep in Documentation/BENCHMARK_RESULTS_2.0.txt:
+of the sizes swept there (top_5/10/15/20/24/37 of the 37
 All_Sky-style features), top_37 (i.e. no further trimming, use the whole
 restricted pool) scored best (R^2=0.9805), beating the top_20 pick that
 select_best_practical_model()'s hardcoded preference order would otherwise
@@ -247,7 +255,8 @@ python3 python/guy_model_2.0.py --feature-source allsky37 \
   --data-root data/paired/Pacific_2014-2015
 
 --- Data used ---
-Same 2163 moments+scalars NPZ pairs as sections 1 and 4.
+Same 2163 moments+scalars NPZ pairs as section 1 and the allsky37 benchmark
+sweep in Documentation/BENCHMARK_RESULTS_2.0.txt.
 X.shape=(5,260,208, 37), y.shape=(5,260,208,) - all 37 features used directly,
 no importance-based trimming (top_37 of 37 is the full pool itself).
 Test split: 20% -> ~4,208,166 train rows / ~1,052,042 test rows.
@@ -266,10 +275,10 @@ ANN (Normalization + Dense(18) + Dense(9) + output, up to 150 epochs,
      early stop patience=15, stopped ~epoch 63, GPU-accelerated via cuDNN)
                     |    15.33     |    10.79    | 0.9907
 
-Matches section 4's benchmark-sweep estimate for top_37 almost exactly
-(Ridge RMSE 22.27 vs 22.27, R^2 0.9805 vs 0.9805) - confirms the sweep number
-wasn't a fluke and the locked-down script reproduces it directly. The ANN is
-also slightly better than the benchmark run's ANN-on-top_20 from section 4
+Matches the benchmark-sweep estimate for top_37 in Documentation/BENCHMARK_RESULTS_2.0.txt
+almost exactly (Ridge RMSE 22.27 vs 22.27, R^2 0.9805 vs 0.9805) - confirms the
+sweep number wasn't a fluke and the locked-down script reproduces it directly.
+The ANN is also slightly better than that sweep's ANN-on-top_20
 (RMSE 15.33 vs 15.73), as expected from having 37 features instead of 20.
 
 Artifacts: benchmark_outputs/final_model_allsky37/
@@ -295,19 +304,50 @@ ann_model.keras from each recipe's output dir to the same random_state=42
 test split used at training time - no retraining needed). Stats also saved
 to benchmark_outputs/guy_vs_allsky_scatter_comparison_stats.json.
 
---- Standing comparison to the production recipe (section 1, unchanged) ---
-                          | RMSE (W/m^2) | MAE (W/m^2) | R^2
-------------------------------------------------------------------------------
-Production: top-20 of 129 (Ridge)  |    11.03     |    8.38     | 0.9796
-This: all 37 allsky feats (Ridge)  |    22.27     |    16.40    | 0.9805
-Production: top-20 of 129 (ANN)    |     5.76     |    4.06     | 0.9944
-This: all 37 allsky feats (ANN)    |    15.33     |    10.79    | 0.9907
-
-Conclusion unchanged from section 4: restricting to moments + image/solar
-geometry only (dropping Isw/Ilw/AOD/Clrf/CF/CTH/Lat/Lon) roughly doubles
-Ridge's RMSE and roughly triples the ANN's RMSE versus the full 129-feature
-production recipe. guy_model_2.0.py's default (--feature-source full, i.e. no
-flag) remains the recommended production recipe; --feature-source allsky37
-is kept as a documented, reproducible comparison point, not a replacement.
-
 ================================================================================
+4. COMPARISON: guy_model_1.0.py vs. guy_model_2.0.py vs. All_Sky_AIflux.py
+================================================================================
+All three run on the same 2163 moments+scalars NPZ pairs from
+data/paired/Pacific_2014-2015 (target Fsw, W/m^2), but on different feature
+pools/row filters - see sections 1-3 above for each one's full data/model
+details. Summary:
+
+Model                                    | RMSE (W/m^2) | MAE (W/m^2) | R^2
+------------------------------------------------------------------------------
+guy_model_1.0.py Ridge (top-20 of 129)   |    11.03     |    8.38     | 0.9796
+guy_model_1.0.py ANN   (top-20 of 129)   |     5.76     |    4.06     | 0.9944
+guy_model_2.0.py Ridge (--feature-source
+  allsky37, all 37)                      |    22.27     |    16.40    | 0.9805
+guy_model_2.0.py ANN   (--feature-source
+  allsky37, all 37)                      |    15.33     |    10.79    | 0.9907
+All_Sky_AIflux.py ANN (37 hand-picked)   |    17.72     | not printed | not printed
+                                                          (~0.97, see section 2)
+
+- guy_model_1.0.py's ANN (RMSE=5.76) is the clear winner overall - roughly 3x
+  lower error than All_Sky_AIflux.py's ANN (17.72) and guy_model_2.0.py's
+  allsky37 ANN (15.33). Its Ridge baseline alone (11.03) already beats both
+  of the other scripts' ANNs.
+- guy_model_2.0.py's allsky37 mode isolates the architecture/training-setup
+  effect from the feature-set effect: restricted to (almost) the same 37
+  hand-picked features as All_Sky_AIflux.py, its ANN still beats
+  All_Sky_AIflux.py's ANN (15.33 vs 17.72, ~14% lower RMSE) - guy_model's two
+  hidden layers (18, 9 units) with early stopping generalize a bit better
+  than All_Sky_AIflux.py's single 18-unit layer trained for a fixed 200
+  epochs, but the gap here is modest compared to guy_model_1.0.py's lead
+  below.
+- Contrast that ~14% architecture-only gap against guy_model_1.0.py's ~3x
+  advantage over both 37-feature runs: the dominant contributor to
+  guy_model_1.0.py's overall lead is feature-set breadth (Isw/Ilw radiance,
+  AOD/Clrf/CF/CTH cloud-aerosol scalars, Lat/Lon - 129 candidate features
+  vs. 37), not architecture. Losing that pool (guy_model_2.0.py's allsky37
+  mode) costs roughly as much accuracy as switching away from guy_model
+  entirely to All_Sky_AIflux.py's simpler network.
+- Other differences that keep this from being a fully controlled experiment:
+  train/test split (80/20 for both guy_model versions vs. 70/30 for
+  All_Sky_AIflux.py); row counts/filters differ (1,703,803 all-finite rows
+  for guy_model_1.0.py vs. 5,260,208 for guy_model_2.0.py's allsky37 mode vs.
+  2,909,419 cloud-height-filtered rows for All_Sky_AIflux.py - same
+  underlying 2163 NPZ pairs, different row-level filtering per script). All
+  three scripts were run with their original regression logic intact (per
+  project rules), so this reflects the existing pipelines as-is, not a
+  tuned apples-to-apples experiment.
