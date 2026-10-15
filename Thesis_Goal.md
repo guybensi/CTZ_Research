@@ -122,18 +122,6 @@ A good map makes it possible to compute RE_ctz independently, from the map itsel
 
 The model is not trained on these numbers. If it still reproduces them, that is strong evidence it captures the physics of the CTZ, rather than just fitting averages.
 
-### Additional sanity checks
-
-- Flux **decays with distance from cloud** (D), similar to Figure 1b-c of the paper.
-- No visible "seams" at footprint boundaries when stitching a full granule map.
-- Retraining with a different seed produces similar maps.
-
-| Test | What it shows | Strength |
-|---|---|---|
-| 1. Reproducing CERES on new granules | The level is right | Necessary |
-| 2. Overlapping footprints | The spatial distribution is right | Strong |
-| 3. Reproducing the paper's RE_ctz | The CTZ physics is captured | Strong and convincing |
-
 ## Scope and risks
 
 A validated all-sky flux map at 1 km resolution is an ambitious goal for a two-year thesis. It has no direct ground truth, the aggregation constraint does not determine a unique distribution within each footprint, and pixel-level image data is currently limited to six granules. Even so, with the right structure the work can reach a satisfactory result even if the full goal is not completely achieved. It is built in layers, each of which stands on its own:
