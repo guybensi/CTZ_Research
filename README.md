@@ -12,7 +12,7 @@ CTZ_Research is a research-oriented project for improving the quality and predic
 - [python/Details_of_npz.py](python/Details_of_npz.py): NPZ inspection and visualization utility.
 - [BENCHMARKING.md](BENCHMARKING.md): detailed run instructions and output descriptions.
 - [CLAUDE.md](CLAUDE.md): project rules for future edits.
-- [Documentation](Documentation): planning docs and result writeups — [Documentation/plan_CV.txt](Documentation/plan_CV.txt) (current implementation plan), [Documentation/GUY_MODEL_VS_ALLSKY_COMPARISON.txt](Documentation/GUY_MODEL_VS_ALLSKY_COMPARISON.txt), [Documentation/BENCHMARK_RESULTS_1.0.txt](Documentation/BENCHMARK_RESULTS_1.0.txt), and [Documentation/Ideas_For_guy_model_2.0.txt](Documentation/Ideas_For_guy_model_2.0.txt).
+- [Documentation](Documentation): planning docs and result writeups — [Documentation/plan_CV.txt](Documentation/plan_CV.txt) (current implementation plan), [Documentation/GUY_MODEL_VS_ALLSKY_COMPARISON.txt](Documentation/GUY_MODEL_VS_ALLSKY_COMPARISON.txt), [Documentation/BENCHMARK_RESULTS_1.0.txt](Documentation/BENCHMARK_RESULTS_1.0.txt), [Documentation/Ideas_For_guy_model_2.0.txt](Documentation/Ideas_For_guy_model_2.0.txt), and [Documentation/LITERATURE_LESSONS.md](Documentation/LITERATURE_LESSONS.md) (lessons from the literature for the 1 km CNN model: architecture, overfitting, validation without 1 km truth).
 - [data](data): consolidated local datasets and legacy copies.
 
 ## Quick start
