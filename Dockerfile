@@ -37,4 +37,4 @@ RUN python3 -m pip install --no-cache-dir -r /app/requirements.txt
 
 COPY . /app
 
-CMD ["python3", "python/benchmark_pipeline.py"]
+CMD ["python3", "legacy/python/benchmark_pipeline.py"]

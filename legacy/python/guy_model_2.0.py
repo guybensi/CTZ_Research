@@ -83,7 +83,7 @@ def main() -> None:
         print("🔬 Using synthetic demo data...")
         X, y = demo_data(RANDOM_SEED)
     else:
-        repo_root = Path(__file__).resolve().parents[1]
+        repo_root = Path(__file__).resolve().parents[2]
         data_root = args.data_root if args.data_root else str(repo_root / "data" / "paired" / "Pacific_2014-2015")
         print(f"Loading from {data_root}...")
         if args.feature_source == "allsky37":

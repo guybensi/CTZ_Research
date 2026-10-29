@@ -42,17 +42,17 @@ The question is no longer whether the CTZ matters, which the paper already showe
 
 ## Work done so far
 
-1. **Benchmarking infrastructure.** A framework that systematically compares classical models (Ridge, tree ensembles, SVM) against neural networks, with importance-based feature selection. Everything runs on Pacific Ocean data for 2014–2015, about 5 million footprints. See [`python/guys_benchmark_models.py`](python/guys_benchmark_models.py) and [`python/guy_model_2.0.py`](python/guy_model_2.0.py).
+1. **Benchmarking infrastructure.** A framework that systematically compares classical models (Ridge, tree ensembles, SVM) against neural networks, with importance-based feature selection. Everything runs on Pacific Ocean data for 2014–2015, about 5 million footprints. See [`legacy/python/guys_benchmark_models.py`](legacy/python/guys_benchmark_models.py) and [`legacy/python/guy_model_2.0.py`](legacy/python/guy_model_2.0.py).
 
-2. **Initial improvement over the existing all-sky model.** On the same 37-feature set used by [`python/All_Sky_AIflux.py`](python/All_Sky_AIflux.py), a deeper architecture with early stopping reduced the error by about **14%**: RMSE of 15.33 vs. 17.72 W/m².
+2. **Initial improvement over the existing all-sky model.** On the same 37-feature set used by [`legacy/python/All_Sky_AIflux.py`](legacy/python/All_Sky_AIflux.py), a deeper architecture with early stopping reduced the error by about **14%**: RMSE of 15.33 vs. 17.72 W/m².
 
-   > This is not yet a fully controlled comparison: row filtering and the train/test split ratio differ between the scripts. Details in [`Documentation/GUY_MODEL_VS_ALLSKY_COMPARISON.txt`](Documentation/GUY_MODEL_VS_ALLSKY_COMPARISON.txt).
+   > This is not yet a fully controlled comparison: row filtering and the train/test split ratio differ between the scripts. Details in [`legacy/Documentation/GUY_MODEL_VS_ALLSKY_COMPARISON.txt`](legacy/Documentation/GUY_MODEL_VS_ALLSKY_COMPARISON.txt).
 
 3. **Methodological lesson: no CERES-resolution features.** A 129-feature version reached an RMSE of 5.76, but most of that gain came from the CERES radiance itself (`Isw`). CERES flux is computed directly from that radiance (Fsw = π·Isw/R), so the model mostly relearned the CERES conversion tables (ADMs). It also cannot be applied at 1 km resolution.
 
    **Conclusion:** model inputs must come from MODIS alone, and CERES serves only as the label and as a constraint.
 
-4. **A work plan for a CNN** on per-footprint image cubes (27×55 pixels), including an analysis of the existing data. See [`Documentation/plan_CV.txt`](Documentation/plan_CV.txt).
+4. **A work plan for a CNN** on per-footprint image cubes (27×55 pixels), including an analysis of the existing data. See [`legacy/Documentation/plan_CV.txt`](legacy/Documentation/plan_CV.txt).
 
 ## Main next directions
 

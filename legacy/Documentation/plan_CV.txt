@@ -93,7 +93,7 @@ script trains on. Verified directly (not guessed):
   sun) rather than junk. IMPORTANT CAVEAT for section 4 below: verify what
   this actually means before doing anything (like flip-augmentation) that
   assumes footprints are orientation-symmetric.
-- No existing code trains on images/*.npz. Only python/Details_of_npz.py
+- No existing code trains on images/*.npz. Only legacy/python/Details_of_npz.py
   reads it, and only to call plt.imshow() on one channel of one footprint at
   a time for visual inspection - there is no CNN, Conv2D, or any spatial-
   aggregation code anywhere in this repository today. Every existing model
@@ -205,7 +205,7 @@ pipeline trains on. Prioritized mitigations, cheapest/highest-value first:
 
   D. Open question, not an assumption: can more image granules be
      generated? It's unknown from this repo alone whether the upstream
-     pipeline that produced these 6 files (nothing in python/ generates
+     pipeline that produced these 6 files (nothing in legacy/python/ generates
      images/*.npz - only Details_of_npz.py reads them) could be re-run on
      more MODIS/CERES overpasses. This is worth asking Eshkol/whoever
      produced these 6 files directly - even 5-10x more image granules would
@@ -317,13 +317,13 @@ exists, full stop):
      and guys_benchmark_models.py, on the same held-out-FILE test split
      (section 4E). Plot it in the same X=Y/histogram style as
      benchmark_outputs/guy_vs_allsky_scatter_comparison.png (see
-     python/plot_guy_vs_allsky_comparison.py) for direct, apples-to-apples
+     legacy/python/plot_guy_vs_allsky_comparison.py) for direct, apples-to-apples
      comparability against every model already benchmarked in
      GUY_MODEL_VS_ALLSKY_COMPARISON.txt.
 
   2. Spatial plausibility checks. Visually overlay predicted per-pixel flux
      maps against the input ImSW/ImLW channels (reuse
-     python/Details_of_npz.py's imshow pattern) for a handful of hand-picked
+     legacy/python/Details_of_npz.py's imshow pattern) for a handful of hand-picked
      footprints that visibly span a cloud edge. Check that predicted flux
      transitions track the visible cloud edge structure, rather than looking
      noisy or spatially arbitrary (a real risk given the identifiability
@@ -351,7 +351,7 @@ exists, full stop):
 8. CONCRETE FILE/MODULE NAMING (follow existing conventions, don't invent new
    ones)
 ================================================================================
-  - New file: python/guy_image_model.py
+  - New file: legacy/python/guy_image_model.py
     Parallels guy_model.py's naming and role (a locked-down recipe script),
     kept SEPARATE from the production tabular pipeline rather than modifying
     guy_model.py/guys_benchmark_models.py in place - consistent with this
@@ -361,7 +361,7 @@ exists, full stop):
 
   - New loader function: load_paired_images(data_root)
     Follow load_paired_moments_scalars()/load_allsky37_subset()'s exact
-    filename-pairing convention in python/guys_benchmark_models.py: glob
+    filename-pairing convention in legacy/python/guys_benchmark_models.py: glob
     images/*.npz, match each to scalars/*.npz (and optionally moments/*.npz)
     by filename (scalar_file = scalars_dir / image_file.name, skip with a
     warning if missing - same pattern already used everywhere else in this

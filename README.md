@@ -4,15 +4,15 @@ CTZ_Research is a research-oriented project for improving the quality and predic
 
 ## What is in this repository
 
-- [python/benchmark_pipeline.py](python/benchmark_pipeline.py): main training and benchmarking entry point.
-- [python/guys_benchmark_models.py](python/guys_benchmark_models.py): feature combination benchmark with model selection, hyperparameter tuning, and ANN training. Target is `Fsw` (shortwave flux) from the scalars data.
-- [python/guy_model_2.0.py](python/guy_model_2.0.py): locked-down production recipe from the benchmark (Ridge + ANN on the top-20 importance-selected features) — trains and saves both models directly, no grid search. Adds a `--feature-source {full,allsky37}` option over [python/guy_model_1.0.py](python/guy_model_1.0.py) (kept for reference); default `full` reproduces 1.0 exactly.
-- [python/sample_paired_data.py](python/sample_paired_data.py): samples a fraction of a paired moments/scalars data directory and saves it as a single NPZ, for quick local iteration on the full dataset.
-- [python/All_Sky_AIflux.py](python/All_Sky_AIflux.py): original ANN/linear regression workflow.
-- [python/Details_of_npz.py](python/Details_of_npz.py): NPZ inspection and visualization utility.
+- [legacy/python/benchmark_pipeline.py](legacy/python/benchmark_pipeline.py): main training and benchmarking entry point.
+- [legacy/python/guys_benchmark_models.py](legacy/python/guys_benchmark_models.py): feature combination benchmark with model selection, hyperparameter tuning, and ANN training. Target is `Fsw` (shortwave flux) from the scalars data.
+- [legacy/python/guy_model_2.0.py](legacy/python/guy_model_2.0.py): locked-down production recipe from the benchmark (Ridge + ANN on the top-20 importance-selected features) — trains and saves both models directly, no grid search. Adds a `--feature-source {full,allsky37}` option over [legacy/python/guy_model_1.0.py](legacy/python/guy_model_1.0.py) (kept for reference); default `full` reproduces 1.0 exactly.
+- [legacy/python/sample_paired_data.py](legacy/python/sample_paired_data.py): samples a fraction of a paired moments/scalars data directory and saves it as a single NPZ, for quick local iteration on the full dataset.
+- [legacy/python/All_Sky_AIflux.py](legacy/python/All_Sky_AIflux.py): original ANN/linear regression workflow.
+- [legacy/python/Details_of_npz.py](legacy/python/Details_of_npz.py): NPZ inspection and visualization utility.
 - [BENCHMARKING.md](BENCHMARKING.md): detailed run instructions and output descriptions.
 - [CLAUDE.md](CLAUDE.md): project rules for future edits.
-- [Documentation](Documentation): planning docs and result writeups — [Documentation/plan_CV.txt](Documentation/plan_CV.txt) (current implementation plan), [Documentation/GUY_MODEL_VS_ALLSKY_COMPARISON.txt](Documentation/GUY_MODEL_VS_ALLSKY_COMPARISON.txt), [Documentation/BENCHMARK_RESULTS_1.0.txt](Documentation/BENCHMARK_RESULTS_1.0.txt), [Documentation/Ideas_For_guy_model_2.0.txt](Documentation/Ideas_For_guy_model_2.0.txt), and [Documentation/LITERATURE_LESSONS.md](Documentation/LITERATURE_LESSONS.md) (lessons from the literature for the 1 km CNN model: architecture, overfitting, validation without 1 km truth).
+- [Documentation](Documentation): planning docs and result writeups — [legacy/Documentation/plan_CV.txt](legacy/Documentation/plan_CV.txt) (current implementation plan), [legacy/Documentation/GUY_MODEL_VS_ALLSKY_COMPARISON.txt](legacy/Documentation/GUY_MODEL_VS_ALLSKY_COMPARISON.txt), [legacy/Documentation/BENCHMARK_RESULTS_1.0.txt](legacy/Documentation/BENCHMARK_RESULTS_1.0.txt), [legacy/Documentation/Ideas_For_guy_model_2.0.txt](legacy/Documentation/Ideas_For_guy_model_2.0.txt), and [Documentation/LITERATURE_LESSONS.md](Documentation/LITERATURE_LESSONS.md) (lessons from the literature for the 1 km CNN model: architecture, overfitting, validation without 1 km truth).
 - [data](data): consolidated local datasets and legacy copies.
 
 ## Quick start
@@ -20,60 +20,60 @@ CTZ_Research is a research-oriented project for improving the quality and predic
 Demo run:
 
 ```bash
-python3 python/benchmark_pipeline.py --demo --output-dir benchmark_outputs
+python3 legacy/python/benchmark_pipeline.py --demo --output-dir benchmark_outputs
 ```
 
 Original-model run with pre-load tuning (paired moments/scalars data):
 
 ```bash
-python3 python/All_Sky_AIflux.py --data-path data/March_2014N15_momentsNscalars/2014 --preload-tuning
+python3 legacy/python/All_Sky_AIflux.py --data-path data/March_2014N15_momentsNscalars/2014 --preload-tuning
 ```
 
 To tune first and exit before loading the real dataset:
 
 ```bash
-python3 python/All_Sky_AIflux.py --preload-tuning --preload-only
+python3 legacy/python/All_Sky_AIflux.py --preload-tuning --preload-only
 ```
 
 Run benchmark on real data (tabular NPZ/CSV or paired moments/scalars folders):
 
 ```bash
-python3 python/benchmark_pipeline.py --data-path /path/to/data --output-dir benchmark_outputs
+python3 legacy/python/benchmark_pipeline.py --data-path /path/to/data --output-dir benchmark_outputs
 ```
 
 Inspect NPZ files from the consolidated dataset:
 
 ```bash
-python3 python/Details_of_npz.py --data-root data/test --file-type images --file-name A2014060.0245.npz
+python3 legacy/python/Details_of_npz.py --data-root data/test --file-type images --file-name A2014060.0245.npz
 ```
 
 Guy's Model - feature combination benchmark with automatic model selection and ANN training:
 
 ```bash
 # Demo mode (synthetic data)
-python3 python/guys_benchmark_models.py --demo
+python3 legacy/python/guys_benchmark_models.py --demo
 
 # With real paired data (default), target is Fsw (shortwave flux)
-python3 python/guys_benchmark_models.py
+python3 legacy/python/guys_benchmark_models.py
 
 # Rank features by Random Forest importance and benchmark top-N subsets instead of the fixed combinations
-python3 python/guys_benchmark_models.py --feature-selection importance
+python3 legacy/python/guys_benchmark_models.py --feature-selection importance
 ```
 
 Train the final locked-down model (Ridge + ANN on the top-20 importance-selected features, no grid search):
 
 ```bash
-python3 python/guy_model_2.0.py --demo
-python3 python/guy_model_2.0.py --data-root data/paired/Pacific_2014-2015
+python3 legacy/python/guy_model_2.0.py --demo
+python3 legacy/python/guy_model_2.0.py --data-root data/paired/Pacific_2014-2015
 
 # Compare against the restricted 37-feature All_Sky_AIflux-style pool
-python3 python/guy_model_2.0.py --feature-source allsky37 --data-root data/paired/Pacific_2014-2015
+python3 legacy/python/guy_model_2.0.py --feature-source allsky37 --data-root data/paired/Pacific_2014-2015
 ```
 
 Sample a fraction of a large paired data directory into a single NPZ for faster local iteration:
 
 ```bash
-python3 python/sample_paired_data.py data/paired/Pacific_2014-2015 benchmark_outputs/sampled_data.npz
+python3 legacy/python/sample_paired_data.py data/paired/Pacific_2014-2015 benchmark_outputs/sampled_data.npz
 ```
 
 ## Original model tuning flags
@@ -97,8 +97,8 @@ The ANN benchmark will require GPU access inside the container.
 
 ## Notes For Current Data Layout
 
-- The code now lives in [python](python), so all script invocations should use `python/<script>.py`.
-- [python/All_Sky_AIflux.py](python/All_Sky_AIflux.py) now defaults to [data/test](data/test), and still accepts `--data-path` for explicit dataset selection.
-- [python/All_Sky_AIflux.py](python/All_Sky_AIflux.py) expects a folder containing `moments/` and `scalars/` (for example [data/test](data/test) or [data/paired/North15_March2014/2014](data/paired/North15_March2014/2014)).
-- [python/benchmark_pipeline.py](python/benchmark_pipeline.py) supports both single CSV/NPZ tabular files with a target key (`Flux`/`target`/etc.) and paired folder layouts containing `moments/` and `scalars/` NPZ files (including nested `test/moments` and `test/scalars`).
-- [python/Details_of_npz.py](python/Details_of_npz.py) defaults to [data/test](data/test), and `--data-root` can still be used to inspect other datasets.
+- The code now lives in [legacy/python](legacy/python), so all script invocations should use `legacy/python/<script>.py`.
+- [legacy/python/All_Sky_AIflux.py](legacy/python/All_Sky_AIflux.py) now defaults to [data/test](data/test), and still accepts `--data-path` for explicit dataset selection.
+- [legacy/python/All_Sky_AIflux.py](legacy/python/All_Sky_AIflux.py) expects a folder containing `moments/` and `scalars/` (for example [data/test](data/test) or [data/paired/North15_March2014/2014](data/paired/North15_March2014/2014)).
+- [legacy/python/benchmark_pipeline.py](legacy/python/benchmark_pipeline.py) supports both single CSV/NPZ tabular files with a target key (`Flux`/`target`/etc.) and paired folder layouts containing `moments/` and `scalars/` NPZ files (including nested `test/moments` and `test/scalars`).
+- [legacy/python/Details_of_npz.py](legacy/python/Details_of_npz.py) defaults to [data/test](data/test), and `--data-root` can still be used to inspect other datasets.

@@ -5,7 +5,7 @@ GUY BENCHMARK RESTRICTED TO THE ALL_SKY_AIFLUX 37-FEATURE POOL
 Date: 2026-08-02
 
 Command:
-python3 python/guys_benchmark_models.py --feature-selection importance \
+python3 legacy/python/guys_benchmark_models.py --feature-selection importance \
   --feature-source allsky37 --importance-models Ridge \
   --data-root data/paired/Pacific_2014-2015 \
   --output-dir benchmark_outputs/guys_benchmark_allsky37_full

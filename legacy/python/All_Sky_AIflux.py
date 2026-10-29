@@ -93,7 +93,7 @@ fname='mrch_2014_Pacific.npz'
 # datapath=r'C:/Users/eeytan/Documents/Projects/F1km'
 # fname=datapath+'/DFs/'+fname
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DATAPATH=str(REPO_ROOT / 'data' / 'test')
 datapath=ARGS.data_path if ARGS.data_path else DEFAULT_DATAPATH
 fname=ARGS.data_file if ARGS.data_file else fname

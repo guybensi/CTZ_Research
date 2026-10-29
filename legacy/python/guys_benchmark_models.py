@@ -819,7 +819,7 @@ def main():
         X, y = demo_data(args.random_seed)
     else:
         # Use paired moments/scalars
-        repo_root = Path(__file__).resolve().parents[1]
+        repo_root = Path(__file__).resolve().parents[2]
         data_root = args.data_root if args.data_root else str(repo_root / "data" / "paired" / "Pacific_2014-2015")
 
         print(f"Loading from {data_root}...")

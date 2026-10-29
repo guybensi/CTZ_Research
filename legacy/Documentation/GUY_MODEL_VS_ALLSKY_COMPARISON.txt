@@ -6,7 +6,7 @@ Dataset: data/paired/Pacific_2014-2015 (full, 2163 moments/scalars NPZ file pair
 Target: Fsw (shortwave flux), units W/m^2
 Random seed: 42
 
-Script versions referenced below (archived under python/ for documentation):
+Script versions referenced below (archived under legacy/python/ for documentation):
   guy_model_1.0.py = original locked recipe (top-20 of 129 features, Ridge +
     ANN only; no --feature-source flag) - section 1.
   guy_model_2.0.py = guy_model_1.0.py + a --feature-source {full,allsky37}
@@ -16,9 +16,9 @@ Section 4 (COMPARISON) covers both versions plus All_Sky_AIflux.py (section 2)
 together.
 
 ================================================================================
-1. python/guy_model_1.0.py
+1. legacy/python/guy_model_1.0.py
 ================================================================================
-Command: python3 python/guy_model_1.0.py --data-root data/paired/Pacific_2014-2015
+Command: python3 legacy/python/guy_model_1.0.py --data-root data/paired/Pacific_2014-2015
 
 --- Data used ---
 Folder: data/paired/Pacific_2014-2015/{moments,scalars}/  (images/ subfolder not read)
@@ -138,9 +138,9 @@ Stage 5 - Summary:
   Output: final_model_summary.json (feature indices + both models' metrics)
 
 ================================================================================
-2. python/All_Sky_AIflux.py
+2. legacy/python/All_Sky_AIflux.py
 ================================================================================
-Command: python3 python/All_Sky_AIflux.py --data-path data/paired/Pacific_2014-2015
+Command: python3 legacy/python/All_Sky_AIflux.py --data-path data/paired/Pacific_2014-2015
 
 --- Data used ---
 Folder: data/paired/Pacific_2014-2015/{moments,scalars}/  (same folder/files as
@@ -239,7 +239,7 @@ ARTIFACTS
 3. guy_model_2.0.py LOCKED RECIPE ON ALL 37 ALLSKY FEATURES (FULL PACIFIC DATA)
 ================================================================================
 Date: 2026-08-02
-Follows up the allsky37 benchmark sweep in Documentation/BENCHMARK_RESULTS_2.0.txt:
+Follows up the allsky37 benchmark sweep in legacy/Documentation/BENCHMARK_RESULTS_2.0.txt:
 of the sizes swept there (top_5/10/15/20/24/37 of the 37
 All_Sky-style features), top_37 (i.e. no further trimming, use the whole
 restricted pool) scored best (R^2=0.9805), beating the top_20 pick that
@@ -251,12 +251,12 @@ All_Sky-style features, no Random Forest trimming, Ridge (alpha=1.0) baseline
 + ANN.
 
 Command:
-python3 python/guy_model_2.0.py --feature-source allsky37 \
+python3 legacy/python/guy_model_2.0.py --feature-source allsky37 \
   --data-root data/paired/Pacific_2014-2015
 
 --- Data used ---
 Same 2163 moments+scalars NPZ pairs as section 1 and the allsky37 benchmark
-sweep in Documentation/BENCHMARK_RESULTS_2.0.txt.
+sweep in legacy/Documentation/BENCHMARK_RESULTS_2.0.txt.
 X.shape=(5,260,208, 37), y.shape=(5,260,208,) - all 37 features used directly,
 no importance-based trimming (top_37 of 37 is the full pool itself).
 Test split: 20% -> ~4,208,166 train rows / ~1,052,042 test rows.
@@ -275,7 +275,7 @@ ANN (Normalization + Dense(18) + Dense(9) + output, up to 150 epochs,
      early stop patience=15, stopped ~epoch 63, GPU-accelerated via cuDNN)
                     |    15.33     |    10.79    | 0.9907
 
-Matches the benchmark-sweep estimate for top_37 in Documentation/BENCHMARK_RESULTS_2.0.txt
+Matches the benchmark-sweep estimate for top_37 in legacy/Documentation/BENCHMARK_RESULTS_2.0.txt
 almost exactly (Ridge RMSE 22.27 vs 22.27, R^2 0.9805 vs 0.9805) - confirms the
 sweep number wasn't a fluke and the locked-down script reproduces it directly.
 The ANN is also slightly better than that sweep's ANN-on-top_20
@@ -298,7 +298,7 @@ annotated in black and the fit's own R^2 in red)
 All 4 panels share the same axis range (based on the true-Fsw distribution)
 so the accuracy gap is directly comparable by eye - (b) and (d) are visibly
 more scattered around the X=Y line than (a) and (c), consistent with the
-RMSE/MAE numbers above. Regenerate with: python3 python/plot_guy_vs_allsky_comparison.py (re-loads
+RMSE/MAE numbers above. Regenerate with: python3 legacy/python/plot_guy_vs_allsky_comparison.py (re-loads
 both datasets, applies the saved ridge_model.joblib/ridge_scaler.joblib/
 ann_model.keras from each recipe's output dir to the same random_state=42
 test split used at training time - no retraining needed). Stats also saved

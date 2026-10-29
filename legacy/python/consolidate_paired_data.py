@@ -12,7 +12,7 @@ from typing import Iterable, Tuple
 
 
 def parse_args() -> argparse.Namespace:
-    repo_root = Path(__file__).resolve().parents[1]
+    repo_root = Path(__file__).resolve().parents[2]
     parser = argparse.ArgumentParser(description="Consolidate paired dataset folders into one root")
     parser.add_argument(
         "--roots",

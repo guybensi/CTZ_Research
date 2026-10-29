@@ -19,7 +19,7 @@ WAVELENGTHS = ["0.47", "0.66", "0.86", "1.375", "2.13", "3.96", "4.05", "4.5", "
 
 
 def parse_args() -> argparse.Namespace:
-    repo_root = Path(__file__).resolve().parents[1]
+    repo_root = Path(__file__).resolve().parents[2]
     parser = argparse.ArgumentParser(description="Build legacy PKL/NPZ bundle from paired moments/scalars data")
     parser.add_argument(
         "--data-root",
