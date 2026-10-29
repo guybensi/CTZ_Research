@@ -2,7 +2,11 @@
 
 CTZ_Research is a research-oriented project for improving the quality and predictive modeling of cloud and atmospheric datasets. The repository now includes a GPU-aware benchmarking pipeline that compares a tuned linear baseline, five additional classical regressors, and a configurable ANN.
 
-## What is in this repository
+## Current phase: 1 km flux map
+
+The thesis goal ([Thesis_Goal.md](Thesis_Goal.md)) is a 1 km all-sky TOA flux map from MODIS, anchored to CERES. The new phase follows [PLAN.md](PLAN.md): benchmark every candidate direction under one leakage-safe protocol, then focus on the best. New code goes in [flux1km/](flux1km/). The old footprint-level work below is frozen under [legacy/](legacy/).
+
+## What is in this repository (legacy footprint-level work)
 
 - [legacy/python/benchmark_pipeline.py](legacy/python/benchmark_pipeline.py): main training and benchmarking entry point.
 - [legacy/python/guys_benchmark_models.py](legacy/python/guys_benchmark_models.py): feature combination benchmark with model selection, hyperparameter tuning, and ANN training. Target is `Fsw` (shortwave flux) from the scalars data.
@@ -10,9 +14,9 @@ CTZ_Research is a research-oriented project for improving the quality and predic
 - [legacy/python/sample_paired_data.py](legacy/python/sample_paired_data.py): samples a fraction of a paired moments/scalars data directory and saves it as a single NPZ, for quick local iteration on the full dataset.
 - [legacy/python/All_Sky_AIflux.py](legacy/python/All_Sky_AIflux.py): original ANN/linear regression workflow.
 - [legacy/python/Details_of_npz.py](legacy/python/Details_of_npz.py): NPZ inspection and visualization utility.
-- [BENCHMARKING.md](BENCHMARKING.md): detailed run instructions and output descriptions.
+- [legacy/BENCHMARKING.md](legacy/BENCHMARKING.md): detailed run instructions and output descriptions.
 - [CLAUDE.md](CLAUDE.md): project rules for future edits.
-- [Documentation](Documentation): planning docs and result writeups — [legacy/Documentation/plan_CV.txt](legacy/Documentation/plan_CV.txt) (current implementation plan), [legacy/Documentation/GUY_MODEL_VS_ALLSKY_COMPARISON.txt](legacy/Documentation/GUY_MODEL_VS_ALLSKY_COMPARISON.txt), [legacy/Documentation/BENCHMARK_RESULTS_1.0.txt](legacy/Documentation/BENCHMARK_RESULTS_1.0.txt), [legacy/Documentation/Ideas_For_guy_model_2.0.txt](legacy/Documentation/Ideas_For_guy_model_2.0.txt), and [Documentation/LITERATURE_LESSONS.md](Documentation/LITERATURE_LESSONS.md) (lessons from the literature for the 1 km CNN model: architecture, overfitting, validation without 1 km truth).
+- [legacy/Documentation](legacy/Documentation): old planning docs and result writeups — [legacy/Documentation/plan_CV.txt](legacy/Documentation/plan_CV.txt) (earlier CNN plan, superseded by [PLAN.md](PLAN.md)), [legacy/Documentation/GUY_MODEL_VS_ALLSKY_COMPARISON.txt](legacy/Documentation/GUY_MODEL_VS_ALLSKY_COMPARISON.txt), [legacy/Documentation/BENCHMARK_RESULTS_1.0.txt](legacy/Documentation/BENCHMARK_RESULTS_1.0.txt), [legacy/Documentation/Ideas_For_guy_model_2.0.txt](legacy/Documentation/Ideas_For_guy_model_2.0.txt), and [Documentation/LITERATURE_LESSONS.md](Documentation/LITERATURE_LESSONS.md) (lessons from the literature for the 1 km CNN model: architecture, overfitting, validation without 1 km truth).
 - [data](data): consolidated local datasets and legacy copies.
 
 ## Quick start

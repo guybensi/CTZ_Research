@@ -1,6 +1,6 @@
 # Benchmarking Guide
 
-This repository now includes a reusable benchmark pipeline at [benchmark_pipeline.py](benchmark_pipeline.py).
+This repository now includes a reusable benchmark pipeline at [python/benchmark_pipeline.py](python/benchmark_pipeline.py).
 
 ## What it does
 
@@ -15,7 +15,7 @@ This repository now includes a reusable benchmark pipeline at [benchmark_pipelin
 Use demo mode until the final dataset is available:
 
 ```bash
-python3 benchmark_pipeline.py --demo --output-dir benchmark_outputs
+python3 legacy/python/benchmark_pipeline.py --demo --output-dir benchmark_outputs
 ```
 
 ## Real data mode
@@ -23,7 +23,7 @@ python3 benchmark_pipeline.py --demo --output-dir benchmark_outputs
 Point the script at a CSV file, an NPZ file, or a directory containing data files:
 
 ```bash
-python3 benchmark_pipeline.py --data-path /path/to/data --output-dir benchmark_outputs
+python3 legacy/python/benchmark_pipeline.py --data-path /path/to/data --output-dir benchmark_outputs
 ```
 
 ## GPU behavior

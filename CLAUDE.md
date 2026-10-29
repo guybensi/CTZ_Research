@@ -1,6 +1,23 @@
 # CLAUDE.md
 
-## Project Rules
+## Repository Layout (new phase)
+
+The repo is split into **new work** and **old work**:
+
+- [Thesis_Goal.md](Thesis_Goal.md) and [PLAN.md](PLAN.md): the goal (1 km all-sky TOA flux map) and the explore-then-focus plan for the new phase. Read PLAN.md before starting new-phase work.
+- [flux1km/](flux1km/): all NEW code (pixel-level / UNet / hybrid methods, split manifests, aggregation operators, evaluation). See [flux1km/README.md](flux1km/README.md).
+- [legacy/](legacy/): the OLD footprint-level work (Guy model, benchmarks, All_Sky_AIflux), frozen. Use it as the M0 baseline and as a source of reusable pieces; do not extend it.
+- [Documentation/LITERATURE_LESSONS.md](Documentation/LITERATURE_LESSONS.md), [reports/](reports/) and [research_notes/](research_notes/): literature lessons and the deep-research report the plan is built on.
+
+## New-Phase Rules
+
+- Model inputs are MODIS-only: radiances (channel identity via wavelength), sun/view geometry and glint. Never feed CERES-derived quantities (`Isw`, `Ilw`, `mSum*`) as inputs; CERES is the label and the aggregation constraint only.
+- Aggregate predictions in flux (`mean(f(x))`), never in inputs, and score every method through the same footprint aggregation operator.
+- Never split train/test by random footprint: overlapping footprints leak. Use the frozen split manifest (granule groups / day / region / time holdouts, buffered spatial blocks) described in PLAN.md §4.
+- Give every method the same tuning budget and report the result with several seeds and paired significance tests.
+- Keep a `--demo` mode so new code runs before the real data is unpacked.
+
+## Legacy Project Rules (apply to `legacy/` only)
 
 - Keep the original regression logic intact. Improve the training workflow by tuning parameters, cross-validation, and model selection rather than changing the scientific target.
 - Prefer changes in [legacy/python/benchmark_pipeline.py](legacy/python/benchmark_pipeline.py) for all ML workflow updates.
