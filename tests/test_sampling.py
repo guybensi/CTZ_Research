@@ -53,8 +53,8 @@ class TestApply:
             sampling.apply("S3", t, method="nope")
 
     def test_s4_bright_only(self, t):
-        m, _ = sampling.apply("S4", t, fsw_min=400)
-        assert set(np.flatnonzero(m)) == {4, 5, 8, 9}
+        with pytest.raises(KeyError):  # S4 (Fsw >= 400) was dropped from the plan
+            sampling.apply("S4", t, fsw_min=400)
 
     def test_s5_stratified_weights_balance_regimes(self, t):
         m, w = sampling.apply("S5", t)
@@ -102,6 +102,6 @@ class TestSimilarity:
 
 class TestCompareStrategies:
     def test_compare_strategies(self, t):
-        res = sampling.compare_strategies(t, ["S0", "S4"], columns=("Fsw", "CF"))
-        assert res["jaccard"][("S0", "S4")] == pytest.approx(4 / 11)
-        assert ("S4", "Fsw") in res["ks_vs_reference"]
+        res = sampling.compare_strategies(t, ["S0", "S3"], columns=("Fsw", "CF"))
+        assert res["jaccard"][("S0", "S3")] == pytest.approx(6 / 11)
+        assert ("S3", "Fsw") in res["ks_vs_reference"]

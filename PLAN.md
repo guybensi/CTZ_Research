@@ -27,6 +27,8 @@ This is learning from aggregate observations (LLP / multiple-instance regression
 
 SW comes first. LW (`Flw`) is a second head on the same framework once SW works.
 
+**Data scope.** The first phase uses **Pacific Ocean data only**: 2014–2015, the March, June, September and December files. Ocean-only means a single dark surface, so surface type and land/snow ADM issues are out of the problem at first. Global data (Atlantic, North15, land) comes only in the focus phase F, and only if the Pacific results are good. At that point the regional holdout becomes the generalisation test, and surface type has to enter the model (`landf`, the per-surface regressions of M8).
+
 ## 2. Stage E0: data and infrastructure (prerequisite)
 
 Nothing is benchmarked until these items are done:
@@ -101,7 +103,8 @@ MODIS retrieval products (CF, CTH, AOD) and Lat/Lon are **not** inputs. They are
 - **Arena B (secondary, moments-based methods M0–M2):**
   - group k-fold by day;
   - temporal holdout: train 2014, test 2015;
-  - regional holdout: train Pacific, test North15 or Atlantic.
+  - seasonal holdout: leave one month out (March / June / September / December), which tests generalisation across solar geometry and cloud regimes inside the Pacific;
+  - regional holdout (train Pacific, test Atlantic / North15) is deferred to phase F, when global data is added.
   - The days of the Arena A granules are **always excluded** from M1/M2 training.
 - **Spatial blocks** of at least 100 km, with a buffer at least the size of the footprint's 95% PSF ellipse and scaled with VZA. They give more independent units than 4 groups.
 - **Interleave test:** train on every other footprint and scan line, and predict those in between from the map. It tests within-footprint distribution. It is leaky by design, so it is reported separately and **never** used to rank methods.
@@ -149,10 +152,11 @@ Sampling changes **only the training set**. The test population is fixed, and br
 | S1 | geometry limits (SZA < 70–75°, VZA < 50–55°) |
 | S2 | glint exclusion (high `glintf`, or glint angle < 25°, Bertrand's threshold; up to 40°) |
 | S3 | homogeneity filter: legacy (`meanCTH<3000`, `stdCTH<1000`) or radiometric (Gao `cv < 0.2` from the moments) |
-| S4 | `Fsw ≥ 400` (advisor's newest script). This conflicts with the thesis goal because it removes clear and broken scenes. |
 | S5 | stratified by cloud-fraction regime |
 | S6 | overlap thinning (every 2nd–3rd footprint). Mostly relevant for evaluation, since overlap *helps* aggregation-loss training. |
 | S7 | weighting instead of filtering, with loss weight `1/σ²_ADM(regime)` and a glint weight |
+
+S4 (`Fsw ≥ 400`, from the advisor's newest script) was **dropped**: it removes the clear and broken scenes where the CTZ lives, so it works against the thesis goal. The IDs of the other strategies are kept unchanged.
 
 Run the sampling strategies crossed with the 2–3 leading methods only.
 
@@ -188,17 +192,16 @@ If τ > 0.8, sampling does not change the winner: fix S7 (or S5) and move on. Ot
 | E1 | ~2 weeks | null baselines, M0, M1, M2 and M9 in Arenas A and B; input ablation |
 | E2 | 3–4 weeks | M3, M4, M5, M6b, M6c and M6f with the same budget; synthetic truth; sampling study |
 | E3 | ~1 week | decision, using the rule above |
-| F | rest | focus on the winner: more granules, M7 if the PSF arrives, full-granule maps, CTZ analysis, LW head |
+| F | rest | focus on the winner: more Pacific granules, M7 if the PSF arrives, full-granule maps, CTZ analysis, LW head; if the Pacific results are good, global data and the regional holdout |
 
 ## 7. Open questions and risks
 
 **Open questions (for the advisor):**
-1. Can more `images/` granules be produced (other seasons, Atlantic, 2015)? Today there are 6 granules from 2 days in March 2014, about 12k footprints, against 2,163 moments/scalars granules (about 5.26M footprints).
+1. Can more Pacific `images/` granules be produced (other seasons, 2015)? Atlantic and other regions come later. Today there are 6 granules from 2 days in March 2014, about 12k footprints, against 2,163 moments/scalars granules (about 5.26M footprints).
 2. Is there PSF code or parameters? Are the moments PSF-weighted or uniform over the patch?
 3. What are the `Imviews` channels, and what does `FOVorientation` mean? The answer decides whether flip and rotation augmentation is allowed.
 4. How does a fixed 27×55 patch represent footprints that grow with VZA?
 5. What do `glintf`, `landf`, `Clrf`, `LiqPhsf` and `mDFNC` mean? Why do CF and Clrf correlate so weakly (r ≈ 0.25)?
-6. Is the `Fsw ≥ 400` cut in the newest script meant for this thesis?
 
 **Risks:**
 - **Too little image data.** This is the main risk. Mitigations: M2 and M1 use all 5.26M footprints, and more granules are requested early.
@@ -237,7 +240,7 @@ Nothing is run on real data until it arrives. Meanwhile the shared machinery is 
   ├─► geometry    glint angle, angle encoding, S0·cosSZA normalisation
   ├─► moments     raw moments from mean/std/skew/kurt (M2), Gao cv (M9, S3)
   ├─► sampling    S0–S7 masks/weights + similarity (Jaccard, KS, Kendall τ)
-  ├─► splits      granule groups, LOGO / day / time / region folds, spatial blocks with buffer,
+  ├─► splits      granule groups, LOGO / day / month / year folds, spatial blocks with buffer,
   │               interleave, pixel-reuse leakage check, JSON manifest
   │
   ▼

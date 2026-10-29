@@ -18,7 +18,7 @@ class FootprintTable:
     """Column arrays of equal length N, one row per footprint.
 
     Columns: granule (str), index (row within its granule), group (granule group label),
-    day ("A2014-03-01"), minutes (since 2000-01-01), year, plus the scalar columns present in the
+    day ("A2014-03-01"), month ("2014-03"), minutes (since 2000-01-01), year, plus the scalar columns present in the
     data, "glint" (deg, from footprint-mean geometry) and "cv" (Gao homogeneity, SW bands) when
     moments are available.
     """
@@ -56,7 +56,7 @@ def build_table(granules: list[Granule], groups: dict[str, str] | None = None) -
     Returns:
         FootprintTable.
     """
-    cols: dict[str, list] = {k: [] for k in ("granule", "index", "group", "day", "minutes", "year")}
+    cols: dict[str, list] = {k: [] for k in ("granule", "index", "group", "day", "month", "minutes", "year")}
     present = [c for c in _SCALAR_COLUMNS if all(c in g.scalars for g in granules)]
     cols.update({c: [] for c in present})
     with_cv = all(g.moments is not None for g in granules)
@@ -69,6 +69,7 @@ def build_table(granules: list[Granule], groups: dict[str, str] | None = None) -
         cols["index"].append(np.arange(n))
         cols["group"].append(np.full(n, (groups or {}).get(g.granule_id, g.granule_id), dtype=object))
         cols["day"].append(np.full(n, gid.day, dtype=object))
+        cols["month"].append(np.full(n, f"{gid.time:%Y-%m}", dtype=object))
         cols["minutes"].append(np.full(n, (gid.time - _EPOCH).total_seconds() / 60.0))
         cols["year"].append(np.full(n, gid.time.year))
         for c in present:

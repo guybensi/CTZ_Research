@@ -13,15 +13,19 @@ from . import benchmark, io, splits, synthetic
 from .models import MODELS
 from .table import build_table
 
-SPLITS = ("logo", "day", "block")
+SPLITS = ("logo", "day", "month", "year", "block")
 
 
 def make_folds(table, kind: str, k: int, seed: int, block_km: float, buffer_km: float):
     """Folds of the requested kind plus the (leaky, separately reported) interleave test."""
     if kind == "logo":
         folds = splits.logo_folds(table)
-    elif kind == "day":
-        folds = splits.group_kfold(table, key="day", k=k, seed=seed)
+    elif kind in ("day", "month"):
+        n_units = len(set(table[kind]))
+        folds = splits.group_kfold(table, key=kind, k=min(k, n_units), seed=seed)
+    elif kind == "year":
+        last = max(table["year"])
+        folds = [splits.holdout(table, test_mask=table["year"] == last, name=f"year:{last}", seed=seed)]
     elif kind == "block":
         folds = splits.spatial_block_folds(table, block_km=block_km, buffer_km=buffer_km, k=k, seed=seed)
     else:
@@ -36,7 +40,7 @@ def parse_args(argv=None):
     p.add_argument("--out", default="benchmark_outputs/flux1km", help="output folder")
     p.add_argument("--models", nargs="+", default=sorted(MODELS), help=f"registered: {sorted(MODELS)}")
     p.add_argument("--split", choices=SPLITS, default="logo")
-    p.add_argument("--k", type=int, default=5, help="folds for day / block splits")
+    p.add_argument("--k", type=int, default=5, help="folds for day / month / block splits")
     p.add_argument("--block-km", type=float, default=100.0)
     p.add_argument("--buffer-km", type=float, default=40.0)
     p.add_argument("--manifest", help="load folds from this JSON if it exists, else create and save it")

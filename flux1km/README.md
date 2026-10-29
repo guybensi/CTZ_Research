@@ -35,8 +35,8 @@ The demo writes the six image-granule names as synthetic granules, groups them b
 | `synthetic` | synthetic scenes with known flux, overlapping 27×55 footprints, CTZ on/off | §4.3 |
 | `aggregation` | operators H: uniform, approximate Gaussian PSF, ±1 px jitter, random-subset | §4.2 |
 | `table` | one flat footprint table (granule, group, day, geometry, CF, glint, cv) | §4.1 |
-| `splits` | overpass grouping, nested LOGO, day k-fold, holdout, buffered spatial blocks, interleave, **pixel-reuse leakage check**, JSON manifest | §4.1 |
-| `sampling` | strategies S0–S7 and their similarity (Jaccard, KS, Kendall τ) | §5 |
+| `splits` | overpass grouping, nested LOGO, day / month k-fold, year holdout, buffered spatial blocks, interleave, **pixel-reuse leakage check**, JSON manifest | §4.1 |
+| `sampling` | strategies S0–S7 (S4, `Fsw ≥ 400`, dropped) and their similarity (Jaccard, KS, Kendall τ) | §5 |
 | `features` | `Batch` of footprints; MODIS-only pixel and footprint features | §3 |
 | `models` | `FluxModel` interface and baselines: B-clim, B-const (uniTR), M0-ridge, B-bagpixel, M2 | §3 |
 | `metrics` | scores by regime, macro RMSE, residual trends, swath-side asymmetry, bootstrap / Wilcoxon / DM / Holm, pixel RMSE / corr / SSIM | §4.2 |

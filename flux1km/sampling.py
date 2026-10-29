@@ -1,5 +1,8 @@
 """Training-data selection strategies S0-S7 and how similar they are (PLAN.md section 5).
 
+S4 (Fsw >= 400) was dropped: it removes the clear and broken scenes where the CTZ lives.
+The other IDs are kept stable.
+
 Sampling changes only the training set; the test population stays fixed. Each strategy returns
 (mask, weights) over table rows: mask says which rows are used, weights are loss weights.
 """
@@ -65,11 +68,6 @@ def _s3(t, method: str = "cth", cth_max: float = 3000.0, std_cth_max: float = 10
     raise ValueError(f"unknown homogeneity method {method!r}")
 
 
-def _s4(t, fsw_min: float = 400.0, **_):
-    m = _valid(t) & (np.nan_to_num(t["Fsw"], nan=-np.inf) >= fsw_min)
-    return m, m.astype(float)
-
-
 def _s5(t, **_):
     m = _valid(t)
     reg = regime(t["CF"])
@@ -96,7 +94,7 @@ def _s7(t, sigma: dict | None = None, **_):
     return m, w
 
 
-STRATEGIES: dict[str, Callable] = {"S0": _s0, "S1": _s1, "S2": _s2, "S3": _s3, "S4": _s4, "S5": _s5, "S6": _s6, "S7": _s7}
+STRATEGIES: dict[str, Callable] = {"S0": _s0, "S1": _s1, "S2": _s2, "S3": _s3, "S5": _s5, "S6": _s6, "S7": _s7}
 
 
 def apply(name: str, table: FootprintTable, rows: np.ndarray | None = None, **params) -> tuple[np.ndarray, np.ndarray]:
@@ -106,10 +104,10 @@ def apply(name: str, table: FootprintTable, rows: np.ndarray | None = None, **pa
         >>> # mask, weights = apply("S7", table, rows=fold.train)
 
     Args:
-        name: "S0".."S7" (see PLAN.md section 5).
+        name: "S0".."S7" except the dropped "S4" (see PLAN.md section 5).
         table: Footprint table.
         rows: Optional row indices (e.g. a fold's training rows); outputs are aligned with them.
-        **params: Strategy parameters (sza_max, min_glint, method, fsw_min, period, sigma, ...).
+        **params: Strategy parameters (sza_max, min_glint, method, period, sigma, ...).
 
     Returns:
         (mask, weights): bool and float arrays; weights are 0 where mask is False.
