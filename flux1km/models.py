@@ -24,6 +24,7 @@ class FluxModel(ABC):
     name = "base"
     produces_map = True
     uses_test_labels = False  # True only for diagnostics that read the footprint's own label
+    complexity = 0  # decision rule: a more complex model must beat a simpler one significantly
 
     def __init__(self, **params):
         self.params = params
@@ -68,12 +69,13 @@ class _Ridge:
         return self
 
     def predict(self, X: np.ndarray) -> np.ndarray:
-        """X (..., F) or (N, F, H, W) with feature axis 1 when `pixel=True` is handled by caller."""
+        """X (..., F) -> (...)."""
         return self.y0 + ((X - self.mu) / self.sd) @ self.coef
 
     def predict_pixels(self, P: np.ndarray) -> np.ndarray:
-        """P (N, F, H, W) -> (N, H, W)."""
-        return self.predict(np.moveaxis(P, 1, -1))
+        """P (N, F, H, W) -> (N, H, W), without materialising a standardised copy."""
+        c = self.coef / self.sd
+        return np.einsum("nfhw,f->nhw", P, c, optimize=True) + (self.y0 - self.mu @ c)
 
 
 def _target(batch: Batch, kind: str) -> np.ndarray:
@@ -142,6 +144,7 @@ class FootprintRidge(_RidgeModel):
     """M0 (Ridge baseline): footprint mean/std + geometry. Footprint-level only, no map."""
 
     name = "M0-ridge"
+    complexity = 1
     produces_map = False
 
     def fit(self, train, val=None):
@@ -162,6 +165,7 @@ class BagPixelPoly(_RidgeModel):
     """
 
     name = "B-bagpixel"
+    complexity = 2
     defaults = {**_RidgeModel.defaults, "degree": 2}
 
     @classmethod
@@ -194,6 +198,7 @@ class PixelPoly(_RidgeModel):
     """
 
     name = "M2"
+    complexity = 2
     defaults = {**_RidgeModel.defaults, "degree": 2}
 
     @classmethod

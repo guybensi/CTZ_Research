@@ -1,0 +1,52 @@
+name: CI (flux1km)
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # needed to diff against previous commits
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Lint
+        run: ruff check .
+
+      - name: Select tests
+        id: select
+        run: |
+          if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            echo "tests=ALL" >> "$GITHUB_OUTPUT"
+          else
+            if [ "${{ github.event_name }}" = "pull_request" ]; then
+              BASE="origin/${{ github.base_ref }}"
+            else
+              BASE="${{ github.event.before }}"
+            fi
+            echo "tests=$(python scripts/select_tests.py --base "$BASE")" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run tests
+        run: |
+          T="${{ steps.select.outputs.tests }}"
+          echo "Selected: $T"
+          if [ "$T" = "ALL" ]; then
+            pytest -q flux1km tests
+          elif [ "$T" = "NONE" ]; then
+            echo "No relevant test changes."
+          else
+            pytest -q $T
+          fi

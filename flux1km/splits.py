@@ -287,19 +287,18 @@ def pixel_reuse_fraction(table: FootprintTable, train: np.ndarray, test: np.ndar
         tr = train[groups[train] == g]
         if len(tr) == 0:
             continue
-        tree = cKDTree(_xyz(table, tr))
-        rmax = _km_to_chord(radius[tr].max())
-        for j in np.flatnonzero(groups[test] == g):
-            row = test[j]
-            dlat = offs[:, 1] * radius[row] / 110.57
-            dlon = offs[:, 0] * radius[row] / (111.32 * np.cos(np.radians(lat_all[row])))
-            plat, plon = np.radians(lat_all[row] + dlat), np.radians(lon_all[row] + dlon)
-            pts = np.column_stack([np.cos(plat) * np.cos(plon), np.cos(plat) * np.sin(plon), np.sin(plat)])
-            covered = 0
-            for p, cand in zip(pts, tree.query_ball_point(pts, rmax)):
-                if cand and np.any(_chord_to_km(np.linalg.norm(tree.data[cand] - p, axis=1)) < radius[tr[cand]]):
-                    covered += 1
-            out[j] = covered / len(pts)
+        sel = np.flatnonzero(groups[test] == g)
+        rows = test[sel]
+        r = radius[rows][:, None]
+        plat = lat_all[rows][:, None] + offs[None, :, 1] * r / 110.57
+        plon = lon_all[rows][:, None] + offs[None, :, 0] * r / (111.32 * np.cos(np.radians(lat_all[rows]))[:, None])
+        plat, plon = np.radians(plat.ravel()), np.radians(plon.ravel())
+        pts = np.column_stack([np.cos(plat) * np.cos(plon), np.cos(plat) * np.sin(plon), np.sin(plat)])
+        k = min(16, len(tr))
+        d, j = cKDTree(_xyz(table, tr)).query(pts, k=k)
+        d, j = d.reshape(len(pts), k), j.reshape(len(pts), k)
+        covered = np.any(_chord_to_km(d) < radius[tr][j], axis=1)
+        out[sel] = covered.reshape(len(rows), -1).mean(axis=1)
     return out
 
 

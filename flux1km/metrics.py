@@ -141,7 +141,10 @@ def paired_bootstrap(loss_a, loss_b, n_boot: int = 10000, seed: int = 0, alpha: 
 
 
 def wilcoxon_p(loss_a, loss_b) -> float:
-    """Two-sided Wilcoxon signed-rank p-value of paired unit losses."""
+    """Two-sided Wilcoxon signed-rank p-value of paired unit losses (NaN if all differences are 0)."""
+    d = np.asarray(loss_a, float) - np.asarray(loss_b, float)
+    if not np.any(d[np.isfinite(d)] != 0):
+        return np.nan
     return float(stats.wilcoxon(np.asarray(loss_a, float), np.asarray(loss_b, float)).pvalue)
 
 

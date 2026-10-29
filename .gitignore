@@ -27,3 +27,7 @@ data/
 # Local OS files
 .DS_Store
 Thumbs.db
+
+# Python packaging
+*.egg-info/
+build/

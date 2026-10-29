@@ -46,6 +46,8 @@ def make_batch(granules: list[Granule], table: FootprintTable, rows: np.ndarray,
         KeyError: If a row refers to a granule that is not in `granules`.
     """
     rows = np.asarray(rows, int)
+    if len(rows) == 0:
+        return _empty_batch(granules[0], table)
     by_id = {g.granule_id: g for g in granules}
     gids, idx = np.asarray(table["granule"])[rows], np.asarray(table["index"])[rows]
     used = list(dict.fromkeys(gids.tolist()))
@@ -80,6 +82,21 @@ def make_batch(granules: list[Granule], table: FootprintTable, rows: np.ndarray,
         group=np.asarray(table["group"])[rows],
         weight=np.ones(len(rows)) if weights is None else np.asarray(weights, float),
     )
+
+
+def _empty_batch(template: Granule, table: FootprintTable) -> Batch:
+    """A zero-row batch with the same keys and trailing shapes as `template`."""
+
+    def empty(d):
+        return None if d is None else {k: v[:0] for k, v in d.items() if k not in ("SWwavlngs", "LWwavlngs")}
+
+    tru = empty(template.truth)
+    scal = empty(template.scalars)
+    return Batch(rows=np.array([], int), label=np.asarray(scal["Fsw"], float), scalars=scal,
+                 moments=empty(template.moments), images=empty(template.images),
+                 truth=None if tru is None else tru["flux"].astype(float),
+                 dist_km=None if tru is None else tru["dist_km"].astype(float),
+                 group=np.array([], dtype=object), weight=np.array([]))
 
 
 def _channel_ids(iset: schema.InputSet):

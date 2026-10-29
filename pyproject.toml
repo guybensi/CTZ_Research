@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ctz-flux1km"
+version = "0.1.0"
+description = "Infrastructure for a 1 km all-sky TOA flux map from MODIS, anchored to CERES (see PLAN.md)"
+requires-python = ">=3.10"
+dependencies = ["numpy>=1.24", "scipy>=1.10"]
+
+[project.optional-dependencies]
+dev = ["pytest>=7", "ruff>=0.4"]
+
+[tool.setuptools]
+packages = ["flux1km"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--doctest-modules --import-mode=importlib"
+# doctests live in flux1km/; collect them with: pytest flux1km tests
+
+[tool.ruff]
+line-length = 150
+extend-exclude = ["legacy"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = ["E702", "B905"]  # compact test fixtures; zip(strict=) is noise for paired numpy arrays
