@@ -4,7 +4,21 @@ CTZ_Research is a research-oriented project for improving the quality and predic
 
 ## Current phase: 1 km flux map
 
-The thesis goal ([Thesis_Goal.md](Thesis_Goal.md)) is a 1 km all-sky TOA flux map from MODIS, anchored to CERES. The new phase follows [PLAN.md](PLAN.md): benchmark every candidate direction under one leakage-safe protocol, then focus on the best. New code goes in [flux1km/](flux1km/). The old footprint-level work below is frozen under [legacy/](legacy/).
+The thesis goal ([Thesis_Goal.md](Thesis_Goal.md)) is a 1 km all-sky TOA flux map from MODIS, anchored to CERES. The new phase follows [PLAN.md](PLAN.md): benchmark every candidate direction under one leakage-safe protocol, then focus on the best. New code goes in [flux1km/](flux1km/), the shared, tested infrastructure (data loading, leakage-safe splits, aggregation operators, sampling strategies, metrics, physics checks, baselines, benchmark runner). The old footprint-level work below is frozen under [legacy/](legacy/).
+
+```bash
+pip install -e ".[dev]"
+```
+
+```bash
+python3 -m flux1km.cli --demo
+```
+
+```bash
+pytest -q flux1km tests
+```
+
+See [flux1km/README.md](flux1km/README.md) for the module map and how to add a method.
 
 ## What is in this repository (legacy footprint-level work)
 

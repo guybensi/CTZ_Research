@@ -17,6 +17,14 @@ The repo is split into **new work** and **old work**:
 - Give every method the same tuning budget and report the result with several seeds and paired significance tests.
 - Keep a `--demo` mode so new code runs before the real data is unpacked.
 
+### New-phase code workflow
+
+- Install and test: `pip install -e ".[dev]"`, then `pytest -q flux1km tests` (this includes the doctests); lint with `ruff check .` (`legacy/` is excluded).
+- Run: `python3 -m flux1km.cli --demo`, or `python3 -m flux1km.cli --data-root <dir> --manifest <json>`.
+- For every function: docstring with an example, then signature, then edge-case tests, then the implementation. Curate the tests into `tests/test_<module>.py`, one class per function. CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) uses that naming to run only the tests of changed modules ([scripts/select_tests.py](scripts/select_tests.py)). Core modules (schema, io, table, aggregation, features, models) trigger the full suite.
+- Conventional commit messages (`feat(flux1km): ...`, `fix(splits): ...`, `docs: ...`).
+- Module map and how to add a method: [flux1km/README.md](flux1km/README.md).
+
 ## Legacy Project Rules (apply to `legacy/` only)
 
 - Keep the original regression logic intact. Improve the training workflow by tuning parameters, cross-validation, and model selection rather than changing the scientific target.
@@ -33,7 +41,7 @@ docker build -t ctz_research:gpu .
 docker run --gpus all --rm -it -v "$PWD":/app ctz_research:gpu
 ```
 
-Inside the container, the default command runs the benchmark script. To use the demo dataset:
+Inside the container, the default command runs the new-phase benchmark in demo mode (`python3 -m flux1km.cli --demo`). The legacy benchmark script with its demo dataset:
 
 ```bash
 python3 legacy/python/benchmark_pipeline.py --demo

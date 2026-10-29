@@ -36,5 +36,8 @@ COPY requirements.txt /app/requirements.txt
 RUN python3 -m pip install --no-cache-dir -r /app/requirements.txt
 
 COPY . /app
+RUN python3 -m pip install --no-cache-dir -e ".[dev]"
 
-CMD ["python3", "legacy/python/benchmark_pipeline.py"]
+# New phase: the flux1km benchmark (demo until the real data is mounted under /app/data).
+# Legacy: python3 legacy/python/benchmark_pipeline.py
+CMD ["python3", "-m", "flux1km.cli", "--demo"]

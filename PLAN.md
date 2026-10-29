@@ -214,8 +214,9 @@ PLAN.md               this plan
 Documentation/        shared docs: LITERATURE_LESSONS.md
 reports/              deep-research reports (Hebrew), the basis for this plan
 research_notes/       source notes behind the reports
-flux1km/              NEW work: 1 km pipeline (see §9)
+flux1km/              NEW work: 1 km pipeline, flat modules (see §9 and flux1km/README.md)
 tests/                tests for flux1km (tests/test_<module>.py)
+scripts/, .github/     CI: lint + tests of changed modules (full suite on main)
 legacy/               OLD footprint-level work, frozen for reference and baselines
   python/             All_Sky_AIflux, guys_benchmark_models, guy_model_1.0/2.0, ...
   Documentation/      benchmark results, comparisons, plan_CV, ideas
