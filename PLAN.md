@@ -58,9 +58,15 @@ Every method outputs a per-pixel map. Footprint-level methods output one value p
 | **M3** | Per-pixel MLP with aggregation loss | per-pixel channels + geometry + glint | `MSE(Σ w f, F)` | pixel-only skill, with no spatial context |
 | **M4** | GBM with spatial-context features (window mean/std, distance to bright/cloudy pixel, local cloud fraction, ψ-like index) | pixel + neighbourhood features | custom aggregate gradient `g_i = 2 w_i (Σ w f − F)` | value of hand-crafted context |
 | **M5** | **UNet** (CS-SUNet style) on 27×55 patches | 3 geometry + 11 SW + 16 LW channels | aggregation loss + edge-aware smoothness | value of learned spatial context and 3D effects |
-| **M6** | **Hybrids**: (a) CNN plus a tabular branch; (b) pixel MLP plus a residual context encoder; (c) UNet initialised from M2; (d) soft distillation from M1; (e) post-hoc per-footprint normalisation (scored only on the overlap test) | mixes | mixes | whether combining helps, and why |
+| **M6** | **Hybrids**: (a) CNN plus a tabular branch; (b) pixel MLP plus a residual context encoder; (c) UNet initialised from M2; (d) soft distillation from M1; (e) post-hoc per-footprint normalisation, multiplicative and scene-dependent as in GERB-HR. Uniform redistribution creates footprint-shaped boxes (Gao, Bertrand), so (e) is scored only on the overlap test; (f) **mediated pseudo-labels** (Chau 2021): the footprint moments are the mediating variable. M1 is learned on 5.26M labelled footprints, then supplies targets for MODIS image bags that have no CERES label (any MODIS L1B granule). This lifts the 6-granule limit on image data. | mixes | mixes | whether combining helps, and why |
 | **M7** | ATPRK / area-to-point kriging of footprint residuals on top of M2/M3 | trend model + PSF | coherence-preserving downscaling | needs PSF and geolocation, so it runs in the focus phase |
-| **M8** | Two-stage narrowband→broadband→ADM, with `Isw` used as a **label** in stage 1 | channels → broadband radiance → flux | MSE vs `Isw`, then ADM | the physics-route alternative |
+| **M8** | Two-stage narrowband→broadband→ADM, with `Isw` used as a **label** in stage 1. Starting form from Bertrand 2006 Eq. 14: `L_BB = c0 + c1 L0.66 + c2 L0.66² + c3 L0.86 + c4 L1.64 + c5 θs + c6 γ`, fitted per surface type, with homogeneous, glint-free (γ > 25°) training footprints | channels → broadband radiance → flux | MSE vs `Isw`, then ADM | the physics-route alternative |
+| **M9** | **Homogeneous-footprint transfer** (Gao 2012 DMS). Train a footprint model (regression tree / GBM) only on homogeneous footprints, then apply it to single pixels. On a homogeneous footprint, `f(mean x) ≈ mean f(x)`, so the transfer is valid. Homogeneity is measured by `cv = mean_b(σ_b/μ_b)` < 0.2, computable from the moments; training samples are weighted by 1/cv. Global and local (per-granule) models are blended per footprint with weights ∝ 1/residual² (Gao Eq. 2–3). | footprint moments of homogeneous footprints → applied per pixel | footprint MSE | the cheapest legitimate way to turn the Guy model into a map; uses all 5.26M footprints |
+| **M10** | GP aggregate models: VBAgg (Law 2018) and mediated/deconditional downscaling (VarCMP, Chau 2021) | pixel features + footprint covariates | aggregate likelihood / deconditional posterior | per-pixel uncertainty. Low priority: scaling to ~1,500 pixels per bag is hard. |
+
+**Null baselines** (always reported, with no tuning):
+- **B-const** (uniTR in Gao, "constant in bag" in Law): every pixel gets its footprint's CERES value, or for held-out footprints the PSF-weighted interpolation of neighbouring footprints. Any method must beat it on the interleave test and on synthetic truth.
+- **B-bagpixel** (Law): the legacy footprint model `f(mean x)` applied to single pixels. It is the naïve way to "use the Guy model for a map". Law found it worse than a constant (NLL 2.4 vs 2.22).
 
 **Input ablation (which inputs are really needed).** Each leading method is run on nested input sets:
 
@@ -77,6 +83,11 @@ Wavelengths are channel identities, not features.
 Bad channels are excluded. In the sample image, 1.64 µm (Aqua band 6) and 14.23 µm show only stripes.
 
 MODIS retrieval products (CF, CTH, AOD) and Lat/Lon are **not** inputs. They are used only for stratification and analysis.
+
+**Regularisation choices to compare:**
+- Spatial smoothness (TV, Gonzalez/GERB) spreads cloud signal into neighbouring clear pixels, so it can create an artificial CTZ.
+- **Feature-space (manifold) regularisation** (Law 2018) penalises different outputs only for pixels with similar inputs. It does not use spatial proximity, so it should not create a CTZ.
+- Random-subset aggregation (Fan).
 
 **Fine-tuning:** every method gets the same tuning budget, for example 40 Optuna trials on inner folds. The best configuration is then retrained with 5 seeds.
 
@@ -102,7 +113,10 @@ MODIS retrieval products (CF, CTH, AOD) and Lat/Lon are **not** inputs. They are
   - **uniform patch mean** (primary);
   - **approximate Gaussian PSF** (sensitivity check). The ranking must not flip between the two.
 - Breakdown by regime (clear / broken / overcast), SZA, VZA and glint bins, shown next to the CERES ADM noise floor. The floor is about 1.9 W m⁻² for clear ocean and up to about 10 W m⁻² for all-sky (Su et al. 2015). These values are still to be verified.
-- Residuals must be flat against SZA, VZA, RAA and glint.
+- Residuals must be flat against SZA, VZA, RAA and glint. Bertrand 2006 found the GERB diurnal asymmetry exactly this way, by plotting the correction factor in bins of each angle.
+- **Swath-side asymmetry test.** Aqua passes at a fixed local time, so GERB's morning/afternoon test becomes a comparison of forward-scatter and backscatter sides of the swath (RAA < 90° vs > 90°) at matched VZA. A systematic difference means geometry is missing from the model.
+- **Geolocation-jitter sensitivity.** Shift the aggregation weights by ±1 pixel and re-score. MODIS–CERES co-registration errors are largest at cloud edges (Bertrand), which is exactly where the CTZ is.
+- When enough independent units exist (Arena B), keep separate early-stop, tuning and test sets, as in Law 2018 (train / early-stop / validation / test). Balance the label distribution across splits.
 - Significance on per-unit loss differences:
   - paired bootstrap;
   - Wilcoxon;
@@ -114,8 +128,9 @@ MODIS retrieval products (CF, CTH, AOD) and Lat/Lon are **not** inputs. They are
 - **Synthetic truth:**
   1. Build a known 1 km field (e.g. frozen M2 or NB→BB+ADM applied per pixel).
   2. Aggregate it with H and add CERES-level noise.
-  3. Retrain each method and measure pixel RMSE and the flux-vs-distance-to-cloud curve.
-  4. Include a **no-CTZ** scene, where that curve must come out flat. This checks that regularisation does not invent a CTZ.
+  3. Retrain each method and measure pixel RMSE, MAE, correlation and SSIM (Chau 2021), and the flux-vs-distance-to-cloud curve. Compare against B-const.
+  4. Repeat for several numbers of footprints and several aggregation sizes, as Law (number and size of bags) and Gao (several coarse resolutions) did. This shows how recovery degrades as the resolution gap grows.
+  5. Include a **no-CTZ** scene, where that curve must come out flat. This checks that regularisation does not invent a CTZ.
 - **Physics checks**, monitored during training and used for epoch selection:
   - far-field pure clear sky is about 80 W m⁻² SW;
   - flux decays monotonically with distance from cloud;
@@ -132,8 +147,8 @@ Sampling changes **only the training set**. The test population is fixed, and br
 |---|---|
 | S0 | all valid footprints (reference) |
 | S1 | geometry limits (SZA < 70–75°, VZA < 50–55°) |
-| S2 | glint exclusion (high `glintf`, or glint angle < 25–40°) |
-| S3 | homogeneity filter (`meanCTH<3000`, `stdCTH<1000`, as in legacy) |
+| S2 | glint exclusion (high `glintf`, or glint angle < 25°, Bertrand's threshold; up to 40°) |
+| S3 | homogeneity filter: legacy (`meanCTH<3000`, `stdCTH<1000`) or radiometric (Gao `cv < 0.2` from the moments) |
 | S4 | `Fsw ≥ 400` (advisor's newest script). This conflicts with the thesis goal because it removes clear and broken scenes. |
 | S5 | stratified by cloud-fraction regime |
 | S6 | overlap thinning (every 2nd–3rd footprint). Mostly relevant for evaluation, since overlap *helps* aggregation-loss training. |
@@ -170,8 +185,8 @@ If τ > 0.8, sampling does not change the winner: fix S7 (or S5) and move on. Ot
 | Stage | Duration (rough) | Content |
 |---|---|---|
 | E0 | 2–3 weeks | data verification, split manifest, baseline re-runs (§2) |
-| E1 | ~2 weeks | M0, M1 and M2 in Arenas A and B; input ablation |
-| E2 | 3–4 weeks | M3, M4, M5, M6b and M6c with the same budget; synthetic truth; sampling study |
+| E1 | ~2 weeks | null baselines, M0, M1, M2 and M9 in Arenas A and B; input ablation |
+| E2 | 3–4 weeks | M3, M4, M5, M6b, M6c and M6f with the same budget; synthetic truth; sampling study |
 | E3 | ~1 week | decision, using the rule above |
 | F | rest | focus on the winner: more granules, M7 if the PSF arrives, full-granule maps, CTZ analysis, LW head |
 
@@ -199,10 +214,63 @@ PLAN.md               this plan
 Documentation/        shared docs: LITERATURE_LESSONS.md
 reports/              deep-research reports (Hebrew), the basis for this plan
 research_notes/       source notes behind the reports
-flux1km/              NEW work: 1 km pipeline (data, splits, models, evaluation)
+flux1km/              NEW work: 1 km pipeline (see §9)
+tests/                tests for flux1km (tests/test_<module>.py)
 legacy/               OLD footprint-level work, frozen for reference and baselines
   python/             All_Sky_AIflux, guys_benchmark_models, guy_model_1.0/2.0, ...
   Documentation/      benchmark results, comparisons, plan_CV, ideas
   projects/, outputs/ old run artefacts
 data/                 local data (git-ignored): paired/, test/, consolidated/
 ```
+
+## 9. Infrastructure (`flux1km/`, built before the data arrives)
+
+Nothing is run on real data until it arrives. Meanwhile the shared machinery is built and tested on synthetic data, so that on day one every method plugs into the same protocol.
+
+### Architecture
+
+```
+ io ──► GranuleData(images, moments, scalars, granule_id)
+  │
+  ├─► schema      channel tables, forbidden CERES keys, input guard
+  ├─► geometry    glint angle, angle encoding, S0·cosSZA normalisation
+  ├─► moments     raw moments from mean/std/skew/kurt (M2), Gao cv (M9, S3)
+  ├─► sampling    S0–S7 masks/weights + similarity (Jaccard, KS, Kendall τ)
+  ├─► splits      granule groups, LOGO / day / time / region folds, spatial blocks with buffer,
+  │               interleave, pixel-reuse leakage check, JSON manifest
+  │
+  ▼
+ models (interface: fit(train) / predict_map(patches) / predict_footprint)
+  │      baselines in numpy now; M1–M10 added as the data arrives (TF/PyTorch in Docker)
+  ▼
+ aggregation   uniform patch mean, approximate Gaussian PSF, ±1 px jitter  ──►  footprint predictions
+  ▼
+ metrics       RMSE/MAE/bias/R², regime breakdown, macro RMSE, binned residuals, swath-side asymmetry,
+ │             paired bootstrap, Wilcoxon, Diebold–Mariano, Holm
+ physics       distance to cloud, flux-vs-distance curve, S0·μ0 bound, percentile spread, spectrum peak
+ synthetic     synthetic granules with known 1 km truth (with or without CTZ), used for demo mode and tests
+  ▼
+ benchmark     runs every method over every fold of a manifest → benchmark_outputs/flux1km/run_*/
+```
+
+### Build order
+
+1. `schema`, `geometry`, `moments` (no dependencies)
+2. `synthetic` (demo data in the real file layout)
+3. `io` (reads real or synthetic NPZ triplets)
+4. `aggregation`
+5. `splits`, `sampling`
+6. `metrics`, `physics`
+7. `models` (interface + null baselines + a pixel-linear aggregate model)
+8. `benchmark` + `scripts/run_benchmark.py --demo`
+
+The core is NumPy/SciPy only, so the tests run in CI without a GPU. Neural models (M3, M5, M6) live in their own modules, which import TF/PyTorch lazily.
+
+### Decisions taken without the data (revisit in E0)
+
+- The band order follows the advisor's script:
+  - SW: 0.47, 0.55, 0.66, 0.86, 0.905, 0.935, 0.940, 1.24, 1.64, 2.13, 1.375
+  - LW: 3.75 … 14.23
+- `Imviews` channels are assumed to be SZA, VZA, RAA in degrees.
+- Moments kurtosis is assumed to be Pearson (not excess); this is a flag in `moments`.
+- Granules from the same day and satellite, less than 10 minutes apart, are one group.
