@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import numpy as np
@@ -40,7 +40,7 @@ def parse_granule_id(name: str) -> GranuleId:
     Example:
         >>> g = parse_granule_id("A2014060.0245")
         >>> g.satellite, g.time.isoformat(), g.day
-        ('Aqua', '2014-03-01T02:45:00', 'A2014-03-01')
+        ('Aqua', '2014-03-01T02:45:00+00:00', 'A2014-03-01')
 
     Raises:
         ValueError: If the name does not match the MODIS pattern or the time is invalid.
@@ -52,7 +52,7 @@ def parse_granule_id(name: str) -> GranuleId:
     sat, year, doy, hh, mm = m.groups()
     if not 1 <= int(doy) <= 366 or int(hh) > 23 or int(mm) > 59:
         raise ValueError(f"invalid date/time in granule id {name!r}")
-    t = datetime(int(year), 1, 1) + timedelta(days=int(doy) - 1, hours=int(hh), minutes=int(mm))
+    t = datetime(int(year), 1, 1, tzinfo=timezone.utc) + timedelta(days=int(doy) - 1, hours=int(hh), minutes=int(mm))
     return GranuleId(stem, "Aqua" if sat == "A" else "Terra", t)
 
 

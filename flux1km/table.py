@@ -2,14 +2,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 
 import numpy as np
 
 from . import geometry, moments
 from .io import Granule, parse_granule_id
 
-_EPOCH = datetime(2000, 1, 1)
+_EPOCH = datetime(2000, 1, 1, tzinfo=timezone.utc)
 _SCALAR_COLUMNS = ("Fsw", "Flw", "SZA", "VZA", "RAA", "Lat", "Lon", "CF", "Clrf", "glintf", "landf", "meanCTH", "stdCTH")
 
 
