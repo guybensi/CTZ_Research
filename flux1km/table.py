@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 
 import numpy as np
 
-from . import geometry, moments
+from . import geometry, moments, schema
 from .io import Granule, parse_granule_id
 
 _EPOCH = datetime(2000, 1, 1, tzinfo=timezone.utc)
@@ -19,7 +19,7 @@ class FootprintTable:
 
     Columns: granule (str), index (row within its granule), group (granule group label),
     day ("A2014-03-01"), month ("2014-03"), minutes (since 2000-01-01), year, plus the scalar columns present in the
-    data, "glint" (deg, from footprint-mean geometry) and "cv" (Gao homogeneity, SW bands) when
+    data (CF converted to percent), "glint" (deg, from footprint-mean geometry) and "cv" (Gao homogeneity, SW bands) when
     moments are available.
     """
 
@@ -73,7 +73,8 @@ def build_table(granules: list[Granule], groups: dict[str, str] | None = None) -
         cols["minutes"].append(np.full(n, (gid.time - _EPOCH).total_seconds() / 60.0))
         cols["year"].append(np.full(n, gid.time.year))
         for c in present:
-            cols[c].append(np.asarray(g.scalars[c], dtype=float))
+            col = np.asarray(g.scalars[c], dtype=float)
+            cols[c].append(col * schema.CF_TO_PERCENT if c == "CF" else col)
         if with_cv:
             cols["cv"].append(moments.homogeneity_cv(g.moments["mSWspec"], g.moments["stdSWspec"]))
     out = {k: np.concatenate(v) if v else np.array([]) for k, v in cols.items()}

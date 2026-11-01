@@ -36,17 +36,68 @@ Nothing is benchmarked until these items are done:
 - [ ] Unpack `Data_toGuy.zip` (on Drive, shared folder `Guy_Fluxes1KM/Old_codes_data`) into `data/` and inventory it:
   - granules and footprints
   - keys and shapes for `moments/`, `scalars/` and `images/`
-- [ ] Confirm what is in each file:
-  - the 3 `Imviews` channels: SZA, VZA, RAA?
+- [x] Format checked on a sample granule (§2.1). Remaining checks on the full data:
   - the meaning of `FOVorientation`
   - the units of `ImSW` and `ImLW`
-  - the meaning of `glintf`, `landf`, `Clrf` and `CF`
-- [ ] Check whether `moments` equal patch statistics of `images` for the same footprints. This tells us whether the moments are PSF-weighted or uniform, and it gates method M2.
-- [ ] Compute a per-pixel glint angle from geometry: `cos γ = μs μv + sin θs sin θv cos φ`.
-- [ ] Map footprint overlap from footprint-centre Lat/Lon.
+  - the meaning and units of `glintf`, `landf`, `Clrf`, `LiqPhsf`, `mDFNC`, `mSumIsw`
+- [x] Moments vs image patch statistics, on the sample: means agree to about 2–3%, but the std is about 0.8 of the patch std, so the moments are **not** uniform patch statistics.
+- [ ] Fit the aggregation weights H that reproduce the stored moments from the patches. H becomes the primary operator and also gates M2.
+- [x] Per-pixel glint angle from `Imviews` (`features.pixel_geometry` + `geometry.glint_angle`). Which RAA convention is specular still needs a glint scene.
+- [x] Footprint overlap on the sample: centres about 12.6 km apart, up to 72% shared pixels. Still to repeat on a full overpass.
 - [ ] Build one frozen **split manifest** (§4.1) and an automatic pixel-reuse leakage check.
 - [ ] Re-run the legacy baselines inside the new protocol. The old numbers (17.72 and 15.33 W m⁻²) used random row splits, and early stopping on the test set, so they are optimistic.
 - [ ] Ask the advisor for more image granules and for the PSF (see §7).
+
+### 2.1 What the data looks like
+
+This section is based on one sample granule, `A2014060.0245`, stored in `data/sample/`. It has 9 footprints and is a **format sample only**: it sits at about 50°N, 138°E, so it is not necessarily the training region. Every granule is three NPZ files with the same name, and footprints are in the same order in all three. The facts below are pinned by `tests/test_real_sample.py`.
+
+**`images/<granule>.npz`**: one 27×55 patch per footprint, at about 1 km per pixel.
+
+| Key | Shape | Content (sample range) |
+|---|---|---|
+| `Imviews` | (N, 3, 27, 55) | per-pixel SZA, VZA, RAA in degrees. **RAA here is 180° − the scalars RAA** (≈110° vs ≈70°). |
+| `ImSW` | (N, 11, 27, 55) | SW radiances (0.09–279) |
+| `ImLW` | (N, 16, 27, 55) | LW radiances (−0.06–7.5; small negative values exist) |
+| `FOVorientation` | (N,) | 0/1 flag, mixed within a granule (meaning unknown) |
+
+**`moments/<granule>.npz`**: footprint statistics of the MODIS pixels.
+
+| Key | Shape | Content |
+|---|---|---|
+| `mSWspec`, `stdSWspec`, `skewSWspec`, `kurtSWspec` | (N, 11) | mean / std / skewness / **excess** kurtosis (values < 1 occur) |
+| `mLWspec`, `stdLWspec`, `skewLWspec`, `kurtLWspec` | (N, 16) | same for LW |
+| `SWwavlngs` | (11,) | 0.47, 0.55, 0.66, **0.85**, 0.905, 0.935, 0.94, 1.24, 1.64, 2.13, 1.375 µm (the last channel is out of wavelength order) |
+| `LWwavlngs` | (16,) | 3.75, 3.96, 3.96, 4.05, 4.46, 4.5, 6.7, **7.32**, **8.55**, 9.7, 11, 12, 13.33, 13.63, 13.93, 14.23 µm (3.96 appears twice) |
+
+**`scalars/<granule>.npz`**: one value per footprint (23 keys).
+
+| Group | Keys | Notes from the sample |
+|---|---|---|
+| CERES label / leakage (never inputs) | `Fsw`, `Flw`, `Isw`, `Ilw` | `Fsw/Isw` = π/R ≈ 3.0–3.5 |
+| Unclear origin (treated as CERES-derived until verified) | `mSumIsw`, `stdSumIsw`, `mSumIlw`, `stdSumIlw` | same order as the per-pixel sum of `ImSW` channels, so possibly a MODIS-derived broadband reconstruction (Eq. 11), which would make it a legal input |
+| Geometry | `SZA`, `VZA`, `RAA` | match the patch means of `Imviews` (RAA as 180° − image value) |
+| Location | `Lat`, `Lon` | footprint centres |
+| MODIS products (stratification only) | `CF` (**fraction 0–1**), `Clrf` (0–10 here), `meanCTH`, `stdCTH` (m), `LiqPhsf` (≈370–460, not a percentage), `AOD` (all NaN in this cloudy granule), `mDFNC`, `stdDFNC` (≈1.0–1.2) | units and meaning of `Clrf`, `LiqPhsf` and `mDFNC` to be confirmed |
+| Flags | `glintf` (0 here), `landf` (1.9–2.6 here: not a 0/1 flag, probably percent land) | |
+
+**What the sample confirms or changes in this plan**
+
+- **Inputs exist as planned**: radiances in 11 SW + 16 LW channels, per-pixel geometry, and per-pixel glint computed from `Imviews` (§3, F1–F5). Wavelengths are channel identities only.
+- **Footprint overlap is real and large.** Neighbouring footprint centres are about 12.6 km apart, and two patches share up to 72% of their pixels (1,063 of 1,485 identical 0.66 µm values). Random footprint splits are therefore leaky, and the 20 km leakage radius in `splits` is a sensible start (§4.1).
+- **Moments ≠ uniform patch statistics.**
+  - Footprint means match the patch means to about 2–3%, but the moments' std is only about 0.8 of the patch std.
+  - The moments were probably computed on the CERES field of view (PSF-weighted, or a central ellipse) rather than on the whole 27×55 rectangle. The patch is larger than the footprint.
+  - Consequences:
+    1. The primary aggregation operator H must be the one that reproduces the stored moments. Fitting it is an E0 task, and the uniform patch mean is only a fallback.
+    2. The M2 bridge (train on moments, apply to pixels) is exact only under that same operator. Until H is known, M2 can also be trained on moments recomputed from the images with H.
+- **Storage conventions now encoded in `flux1km.schema`**:
+  - `MOMENTS_EXCESS_KURTOSIS`;
+  - `CF_TO_PERCENT` (CF is converted to percent in the footprint table, so the regime thresholds 5/95 hold);
+  - `IMVIEWS_RAA_IS_SUPPLEMENT` (pixel RAA is converted to the scalars convention, so pixel and footprint geometry agree).
+- **Which RAA convention puts the specular point at 0°** still needs a glint scene to settle; `glintf` is 0 in this sample.
+- **Ocean-only phase:** `landf` is non-zero even in an ocean granule, so phase 1 needs an explicit `landf` threshold once its unit is confirmed.
+- **Not inputs:** `AOD` is NaN under cloud and `CF` / `CTH` are retrieval products. They are used only for regimes and filters, as already planned.
 
 ## 3. Candidate methods (exploration phase)
 
@@ -198,10 +249,11 @@ If τ > 0.8, sampling does not change the winner: fix S7 (or S5) and move on. Ot
 
 **Open questions (for the advisor):**
 1. Can more Pacific `images/` granules be produced (other seasons, 2015)? Atlantic and other regions come later. Today there are 6 granules from 2 days in March 2014, about 12k footprints, against 2,163 moments/scalars granules (about 5.26M footprints).
-2. Is there PSF code or parameters? Are the moments PSF-weighted or uniform over the patch?
-3. What are the `Imviews` channels, and what does `FOVorientation` mean? The answer decides whether flip and rotation augmentation is allowed.
+2. Is there PSF code or parameters? How exactly were the moments computed from the pixels? The sample shows they are not uniform patch statistics (the std is about 0.8 of the patch std).
+3. What does `FOVorientation` (0/1) mean? The answer decides whether flip and rotation augmentation is allowed. (`Imviews` is now known: SZA, VZA, 180° − RAA.)
 4. How does a fixed 27×55 patch represent footprints that grow with VZA?
-5. What do `glintf`, `landf`, `Clrf`, `LiqPhsf` and `mDFNC` mean? Why do CF and Clrf correlate so weakly (r ≈ 0.25)?
+5. What are the units and meaning of `glintf`, `landf` (≈2 in an ocean granule), `Clrf` (0–10), `LiqPhsf` (≈400) and `mDFNC` (≈1.0–1.2)? Why do CF and Clrf correlate so weakly (r ≈ 0.25)?
+6. Is `mSumIsw` a MODIS-derived broadband reconstruction (then it is a legal input) or CERES-derived (then it stays excluded)?
 
 **Risks:**
 - **Too little image data.** This is the main risk. Mitigations: M2 and M1 use all 5.26M footprints, and more granules are requested early.
@@ -270,11 +322,15 @@ Nothing is run on real data until it arrives. Meanwhile the shared machinery is 
 
 The core is NumPy/SciPy only, so the tests run in CI without a GPU. Neural models (M3, M5, M6) live in their own modules, which import TF/PyTorch lazily.
 
-### Decisions taken without the data (revisit in E0)
+### Decisions taken without the data, and their status after the sample
 
-- The band order follows the advisor's script:
-  - SW: 0.47, 0.55, 0.66, 0.86, 0.905, 0.935, 0.940, 1.24, 1.64, 2.13, 1.375
-  - LW: 3.75 … 14.23
-- `Imviews` channels are assumed to be SZA, VZA, RAA in degrees.
-- Moments kurtosis is assumed to be Pearson (not excess); this is a flag in `moments`.
-- Granules from the same day and satellite, less than 10 minutes apart, are one group.
+| Decision | Status |
+|---|---|
+| Band order and wavelengths | **confirmed** from `SWwavlngs`/`LWwavlngs` (labels corrected to 0.85, 7.32, 8.55) |
+| `Imviews` = SZA, VZA, RAA in degrees | **confirmed**, with RAA stored as 180° − scalars RAA |
+| Moments kurtosis type | **excess** (was assumed Pearson; fixed) |
+| CF scale | **fraction 0–1** (converted to percent in the table) |
+| Primary aggregation operator = uniform patch mean | **doubtful**: the moments' std is about 0.8 of the patch std; fit H to the stored moments in E0 |
+| RAA convention for glint (specular at 0° vs 180°) | open: needs a glint scene |
+| Footprint radius for the leakage check (20 km) | plausible: centres are about 12.6 km apart and neighbouring patches share up to 72% of pixels |
+| Granules of one satellite less than 10 minutes apart are one group | unchanged |

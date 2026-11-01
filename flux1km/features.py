@@ -99,6 +99,19 @@ def _empty_batch(template: Granule, table: FootprintTable) -> Batch:
                  group=np.array([], dtype=object), weight=np.array([]))
 
 
+def pixel_geometry(images: dict[str, np.ndarray]) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Per-pixel (SZA, VZA, RAA) from Imviews, with RAA converted to the scalars convention.
+
+    Example:
+        >>> v = {"Imviews": np.array([[[[57.0]], [[60.0]], [[110.0]]]])}
+        >>> [float(a[0, 0, 0]) for a in pixel_geometry(v)]
+        [57.0, 60.0, 70.0]
+    """
+    v = images["Imviews"].astype(float)
+    raa = 180.0 - v[:, 2] if schema.IMVIEWS_RAA_IS_SUPPLEMENT else v[:, 2]
+    return v[:, 0], v[:, 1], raa
+
+
 def _channel_ids(iset: schema.InputSet):
     return ([schema.channel_index(c)[1] for c in iset.sw], [schema.channel_index(c)[1] for c in iset.lw])
 
@@ -116,8 +129,7 @@ def pixel_features(batch: Batch, input_set: str = "F5") -> tuple[np.ndarray, lis
         raise ValueError("pixel features need images; this batch is moments-only")
     iset = schema.input_set(input_set)
     sw_i, lw_i = _channel_ids(iset)
-    views = batch.images["Imviews"].astype(float)
-    sza, vza, raa = views[:, 0], views[:, 1], views[:, 2]
+    sza, vza, raa = pixel_geometry(batch.images)
     blocks = [batch.images["ImSW"][:, sw_i].astype(float)]
     names = [f"SW_{c}" for c in iset.sw]
     if lw_i:
@@ -182,7 +194,8 @@ def footprint_features(batch: Batch, input_set: str = "F5", stats: tuple[str, ..
     return np.concatenate(blocks, axis=1), names
 
 
-def footprint_poly_features(batch: Batch, input_set: str, degree: int, excess_kurtosis: bool = False):
+def footprint_poly_features(batch: Batch, input_set: str, degree: int,
+                            excess_kurtosis: bool = schema.MOMENTS_EXCESS_KURTOSIS):
     """M2 footprint features: raw moments E[x^k] (k <= degree) per channel + footprint geometry.
 
     Column order matches pixel_poly_features, so a linear model fitted on these features and

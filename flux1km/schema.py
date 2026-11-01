@@ -1,7 +1,8 @@
 """Data schema: MODIS band tables, MODIS-only input sets, and the CERES leakage guard.
 
-Band order follows the advisor's script (train_Allsky_moments_narrow_values.py).
-To be confirmed against the real files in stage E0 of PLAN.md.
+Band order and wavelengths match the real files (SWwavlngs / LWwavlngs in moments/, checked on
+the sample granule data/sample/*/A2014060.0245.npz). LW has two 3.96 um channels; the first is
+labelled "3.96a".
 """
 from __future__ import annotations
 
@@ -9,15 +10,20 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 
 SW_LABELS: tuple[str, ...] = (
-    "0.47", "0.55", "0.66", "0.86", "0.905", "0.935", "0.940", "1.24", "1.64", "2.13", "1.375",
+    "0.47", "0.55", "0.66", "0.85", "0.905", "0.935", "0.940", "1.24", "1.64", "2.13", "1.375",
 )
 LW_LABELS: tuple[str, ...] = (
-    "3.75", "3.96a", "3.96", "4.05", "4.46", "4.5", "6.7", "7.3", "8.5", "9.7",
+    "3.75", "3.96a", "3.96", "4.05", "4.46", "4.5", "6.7", "7.32", "8.55", "9.7",
     "11.0", "12.0", "13.33", "13.63", "13.93", "14.23",
 )
 SW_WAVELENGTHS: tuple[float, ...] = tuple(float(x) for x in SW_LABELS)
 LW_WAVELENGTHS: tuple[float, ...] = tuple(float(x.rstrip("a")) for x in LW_LABELS)
 VIEW_CHANNELS: tuple[str, ...] = ("SZA", "VZA", "RAA")
+
+# Storage conventions seen in the real files (PLAN.md section 2.1).
+MOMENTS_EXCESS_KURTOSIS = True   # kurt*spec is Fisher (excess) kurtosis: the files contain values < 1
+CF_TO_PERCENT = 100.0            # scalars CF is a fraction 0-1; the table stores it in percent
+IMVIEWS_RAA_IS_SUPPLEMENT = True  # Imviews RAA = 180 - scalars RAA (e.g. ~110 vs ~70 in the sample)
 
 # Channels that look like stripes in the sample image (Aqua band 6 dead detectors, 14.23 um).
 BAD_CHANNELS: tuple[str, ...] = ("1.64", "14.23")
@@ -88,7 +94,7 @@ class InputSet:
     use_glint: bool
 
 
-_VIS = ("0.47", "0.55", "0.66", "0.86")
+_VIS = ("0.47", "0.55", "0.66", "0.85")
 _SWIR = ("1.24", "1.375", "2.13")
 _WV = ("0.905", "0.935", "0.940")
 _THERMAL = tuple(c for c in LW_LABELS if c not in BAD_CHANNELS)
@@ -107,7 +113,7 @@ def input_set(name: str) -> InputSet:
 
     Example:
         >>> input_set("F1").sw
-        ('0.47', '0.55', '0.66', '0.86')
+        ('0.47', '0.55', '0.66', '0.85')
 
     Raises:
         KeyError: If name is not one of F1..F5.

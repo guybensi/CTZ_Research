@@ -57,11 +57,11 @@ The demo writes the six image-granule names as synthetic granules, groups them b
 ## Assumptions to verify in stage E0
 
 These are the guesses made before the real data arrived (see PLAN.md §9):
-- band order;
-- `Imviews` = SZA/VZA/RAA in degrees;
-- Pearson kurtosis in the moments files;
+- band order (confirmed on the sample);
+- `Imviews` = SZA/VZA/(180° − RAA) in degrees (confirmed on the sample);
+- excess kurtosis in the moments files (confirmed on the sample);
 - the RAA convention for glint;
 - the footprint radius used by the leakage check;
-- the PSF width.
+- the PSF width (the sample suggests the moments are not uniform patch means).
 
 Each one is a single constant or argument to change.

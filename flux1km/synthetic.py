@@ -117,7 +117,8 @@ def make_synthetic_granule(granule_id: str, rng: np.random.Generator, n_rows: in
     def cut(a):
         return np.stack([a[..., r:r + ph, c:c + pw] for r, c in zip(r0, c0)])
 
-    views = np.stack([cut(scene["sza"]), cut(scene["vza"]), cut(scene["raa"])], axis=1).astype(np.float32)
+    raa_img = 180.0 - scene["raa"] if schema.IMVIEWS_RAA_IS_SUPPLEMENT else scene["raa"]  # real-file convention
+    views = np.stack([cut(scene["sza"]), cut(scene["vza"]), cut(raa_img)], axis=1).astype(np.float32)
     im_sw, im_lw = cut(scene["sw"]), cut(scene["lw"])
     flux, cloud = cut(scene["flux"]), cut(scene["cloud"])
     weights = aggregation.get_operator(operator, ph, pw)
@@ -126,6 +127,7 @@ def make_synthetic_granule(granule_id: str, rng: np.random.Generator, n_rows: in
     mom = {}
     for band, im in (("SW", im_sw), ("LW", im_lw)):
         m, s, sk, ku = moments.moments_from_pixels(im)
+        ku = ku - 3.0 if schema.MOMENTS_EXCESS_KURTOSIS else ku
         mom.update({f"m{band}spec": m, f"std{band}spec": s, f"skew{band}spec": sk, f"kurt{band}spec": ku})
     mom["SWwavlngs"] = np.array(schema.SW_WAVELENGTHS)
     mom["LWwavlngs"] = np.array(schema.LW_WAVELENGTHS)
@@ -135,9 +137,9 @@ def make_synthetic_granule(granule_id: str, rng: np.random.Generator, n_rows: in
     lat = lat0 + rc * 0.009
     scalars = {
         "Fsw": fsw, "Flw": 260.0 - 0.8 * cf, "Isw": fsw / np.pi, "Ilw": (260.0 - 0.8 * cf) / np.pi,
-        "SZA": views[:, 0].mean(axis=(1, 2)), "VZA": views[:, 1].mean(axis=(1, 2)), "RAA": views[:, 2].mean(axis=(1, 2)),
+        "SZA": views[:, 0].mean(axis=(1, 2)), "VZA": views[:, 1].mean(axis=(1, 2)), "RAA": cut(scene["raa"]).mean(axis=(1, 2)),
         "Lat": lat, "Lon": lon0 + cc * 0.009 / np.cos(np.radians(lat)),
-        "CF": cf, "Clrf": 100.0 - cf, "glintf": 100.0 * (cut(scene["glint"]) < 25).mean(axis=(1, 2)),
+        "CF": cf / schema.CF_TO_PERCENT, "Clrf": 100.0 - cf, "glintf": 100.0 * (cut(scene["glint"]) < 25).mean(axis=(1, 2)),
         "landf": np.zeros(len(r0)), "AOD": np.full(len(r0), 0.1),
         "meanCTH": 2000.0 * (cf > 0), "stdCTH": np.zeros(len(r0)), "LiqPhsf": np.full(len(r0), 100.0),
     }
