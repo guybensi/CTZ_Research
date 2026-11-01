@@ -22,7 +22,8 @@ benchmark_outputs/
 # Local NPZ datasets
 Data_toGuy/
 test/
-data/
+data/*
+!data/sample/
 
 # Local OS files
 .DS_Store
