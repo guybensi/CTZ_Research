@@ -27,7 +27,7 @@ This is learning from aggregate observations (LLP / multiple-instance regression
 
 SW comes first. LW (`Flw`) is a second head on the same framework once SW works.
 
-**Data scope.** The first phase uses **Pacific Ocean data only**: 2014–2015, the March, June, September and December files. Ocean-only means a single dark surface, so surface type and land/snow ADM issues are out of the problem at first. Global data (Atlantic, North15, land) comes only in the focus phase F, and only if the Pacific results are good. At that point the regional holdout becomes the generalisation test, and surface type has to enter the model (`landf`, the per-surface regressions of M8).
+**Data scope.** Data will be plentiful: as much as needed, from any region and time (advisor, Nov 2026). Unlabelled MODIS granules can also be pulled directly from NASA, which makes the mediated pseudo-label hybrid (M6f) feasible. The first phase still starts small, with **Pacific Ocean data only**: 2014–2015, the March, June, September and December files. Ocean-only means a single dark surface, so surface type and land/snow ADM issues are out of the problem at first. Global data (Atlantic, North15, land) comes only in the focus phase F, and only if the Pacific results are good. At that point the regional holdout becomes the generalisation test, and surface type has to enter the model (`landf`, the per-surface regressions of M8).
 
 ## 2. Stage E0: data and infrastructure (prerequisite)
 
@@ -133,9 +133,9 @@ Every method outputs a per-pixel map. Footprint-level methods output one value p
 
 Wavelengths are channel identities, not features.
 
-Bad channels are excluded. In the sample image, 1.64 µm (Aqua band 6) and 14.23 µm show only stripes.
+Channels that are **systematically** bad are excluded (agreed with the advisor). In the sample image, 1.64 µm (Aqua band 6) and 14.23 µm show only stripes; E0 confirms on the full data which channels are systematically bad.
 
-MODIS retrieval products (CF, CTH, AOD) and Lat/Lon are **not** inputs. They are used only for stratification and analysis.
+**Model inputs, as agreed with the advisor:** MODIS channel radiances (identified by wavelength) and the geometric angles. These are the same input types as `All_Sky_AIflux.py`. The glint angle is a function of SZA, VZA and RAA, so it is a derived geometric feature, not a new data source. MODIS retrieval products (CF, CTH, AOD) and Lat/Lon are **not** inputs. They are used only for stratification and analysis.
 
 **Regularisation choices to compare:**
 - Spatial smoothness (TV, Gonzalez/GERB) spreads cloud signal into neighbouring clear pixels, so it can create an artificial CTZ.
@@ -191,7 +191,7 @@ MODIS retrieval products (CF, CTH, AOD) and Lat/Lon are **not** inputs. They are
   - no value exceeds S₀·μ₀;
   - map extremes stay bounded;
   - the power spectrum shows no peak at the footprint spacing.
-- **Paper reproduction** (focus phase): the CTZ contribution from the map should be about −9 W m⁻² SW and +1.4 W m⁻² LW.
+- **Paper reproduction** (focus phase): the CTZ contribution from the map should be about −9 W m⁻² SW and +1.4 W m⁻² LW. The reference numbers are those of Eshkol Eytan's CTZ paper (Table B1), as agreed with the advisor; other published values (e.g. −2.5 W m⁻²) are not used as targets.
 
 ## 5. Data-selection (sampling) strategies
 
@@ -248,7 +248,7 @@ If τ > 0.8, sampling does not change the winner: fix S7 (or S5) and move on. Ot
 ## 7. Open questions and risks
 
 **Open questions (for the advisor):**
-1. Can more Pacific `images/` granules be produced (other seasons, 2015)? Atlantic and other regions come later. Today there are 6 granules from 2 days in March 2014, about 12k footprints, against 2,163 moments/scalars granules (about 5.26M footprints).
+1. ~~Can more `images/` granules be produced?~~ **Answered:** as much data as needed, any region and time; we start small (Pacific, 2014–2015, edge months). Unlabelled MODIS granules can be pulled from NASA.
 2. Is there PSF code or parameters? How exactly were the moments computed from the pixels? The sample shows they are not uniform patch statistics (the std is about 0.8 of the patch std).
 3. What does `FOVorientation` (0/1) mean? The answer decides whether flip and rotation augmentation is allowed. (`Imviews` is now known: SZA, VZA, 180° − RAA.)
 4. How does a fixed 27×55 patch represent footprints that grow with VZA?
@@ -256,8 +256,8 @@ If τ > 0.8, sampling does not change the winner: fix S7 (or S5) and move on. Ot
 6. Is `mSumIsw` a MODIS-derived broadband reconstruction (then it is a legal input) or CERES-derived (then it stays excluded)?
 
 **Risks:**
-- **Too little image data.** This is the main risk. Mitigations: M2 and M1 use all 5.26M footprints, and more granules are requested early.
-- **Unverified CERES numbers:** the Su 2015 noise floor, the CTZ magnitude (−9 vs −2.5 W m⁻² in different sources) and the footprint size.
+- **Too little image data.** Largely resolved: the advisor will supply as much data as needed. The remaining risk is timing, so the infrastructure stays testable on synthetic data and on `data/sample/`.
+- **Unverified CERES numbers:** the Su 2015 noise floor and the footprint size. The CTZ magnitude is fixed to the values of Eytan's CTZ paper.
 - **Unpinned `requirements.txt`.**
 - **The new phase needs PyTorch or TF for UNet work.** Pin versions when the first new-phase code lands.
 
