@@ -63,3 +63,19 @@ class TestPipelineOnRealSample:
         m = models.get_model("M2", degree=1, alpha=10.0).fit(b)
         assert m.predict_map(b).shape == (len(b), 27, 55)
         assert np.all(np.isfinite(m.predict_footprint(b, aggregation.uniform_weights(27, 55))))
+
+
+class TestAggregationOperator:
+    def test_fov_ellipse_reproduces_stored_moments_better_than_uniform(self, gran):
+        from flux1km.moments import moments_from_pixels
+        X = np.concatenate([gran.images["ImSW"], gran.images["ImLW"]], axis=1).astype(float)
+        mean = np.concatenate([gran.moments["mSWspec"], gran.moments["mLWspec"]], axis=1)
+        std = np.concatenate([gran.moments["stdSWspec"], gran.moments["stdLWspec"]], axis=1)
+
+        def rms(weights):
+            m, s, _, _ = moments_from_pixels(X, weights)
+            return float(np.sqrt(np.nanmean(np.concatenate([(m / mean - 1).ravel(), (s / std - 1).ravel()]) ** 2)))
+
+        uniform = rms(None)
+        fov = rms(aggregation.fov_weights(gran.images["FOVorientation"])[:, None])
+        assert fov < 0.1 < 0.2 < uniform

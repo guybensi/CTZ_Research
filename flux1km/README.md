@@ -33,7 +33,7 @@ The demo writes the six image-granule names as synthetic granules, groups them b
 | `moments` | patch statistics, raw moments from mean/std/skew/kurt, polynomial features that aggregate exactly (M2), Gao cv | §3, §5 |
 | `io` | granule triplets `moments/ scalars/ images/` (+ `truth/` for synthetic), granule-id parsing | §2 |
 | `synthetic` | synthetic scenes with known flux, overlapping 27×55 footprints, CTZ on/off | §4.3 |
-| `aggregation` | operators H: uniform, approximate Gaussian PSF, ±1 px jitter, random-subset | §4.2 |
+| `aggregation` | operators H: `fov_ellipse` (primary, tilt from FOVorientation), uniform, Gaussian PSF; ellipse fitting to stored moments; ±1 px jitter; random-subset | §4.2 |
 | `table` | one flat footprint table (granule, group, day, geometry, CF, glint, cv) | §4.1 |
 | `splits` | overpass grouping, nested LOGO, day / month k-fold, year holdout, buffered spatial blocks, interleave, **pixel-reuse leakage check**, JSON manifest | §4.1 |
 | `sampling` | strategies S0–S7 (S4, `Fsw ≥ 400`, dropped) and their similarity (Jaccard, KS, Kendall τ) | §5 |
@@ -62,6 +62,6 @@ These are the guesses made before the real data arrived (see PLAN.md §9):
 - excess kurtosis in the moments files (confirmed on the sample);
 - the RAA convention for glint;
 - the footprint radius used by the leakage check;
-- the PSF width (the sample suggests the moments are not uniform patch means).
+- the FOV ellipse weights (`fov_ellipse`, fitted to the sample; exact weights expected from the advisor's code).
 
 Each one is a single constant or argument to change.

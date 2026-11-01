@@ -57,11 +57,13 @@ class TestPixelPoly:
         """Exactness of the M2 bridge: aggregated map == moments-based prediction (up to geometry)."""
         train, test = data
         m = models.get_model("M2", degree=2, target="flux").fit(train)
-        from_map = m.predict_footprint(test, W)
+        w = aggregation.fov_weights(test.images["FOVorientation"])  # the operator the moments were built with
+        from_map = m.predict_footprint(test, w)
         import copy
         no_img = copy.copy(test); no_img.images = None
-        from_moments = m.predict_footprint(no_img, W)
-        np.testing.assert_allclose(from_map, from_moments, atol=1.0)
+        from_moments = m.predict_footprint(no_img, w)
+        # exact for the radiance terms; geometry enters through cos/sin of averaged angles (~1%)
+        np.testing.assert_allclose(from_map, from_moments, rtol=0.01)
 
     def test_learned_models_beat_climatology_on_synthetic(self, data):
         train, test = data

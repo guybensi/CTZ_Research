@@ -60,7 +60,7 @@ This section is based on one sample granule, `A2014060.0245`, stored in `data/sa
 | `Imviews` | (N, 3, 27, 55) | per-pixel SZA, VZA, RAA in degrees. **RAA here is 180° − the scalars RAA** (≈110° vs ≈70°). |
 | `ImSW` | (N, 11, 27, 55) | SW radiances (0.09–279) |
 | `ImLW` | (N, 16, 27, 55) | LW radiances (−0.06–7.5; small negative values exist) |
-| `FOVorientation` | (N,) | 0/1 flag, mixed within a granule (meaning unknown) |
+| `FOVorientation` | (N,) | 0/1: which side the footprint ellipse inside the patch is tilted to (advisor) |
 
 **`moments/<granule>.npz`**: footprint statistics of the MODIS pixels.
 
@@ -76,28 +76,31 @@ This section is based on one sample granule, `A2014060.0245`, stored in `data/sa
 | Group | Keys | Notes from the sample |
 |---|---|---|
 | CERES label / leakage (never inputs) | `Fsw`, `Flw`, `Isw`, `Ilw` | `Fsw/Isw` = π/R ≈ 3.0–3.5 |
-| Unclear origin (treated as CERES-derived until verified) | `mSumIsw`, `stdSumIsw`, `mSumIlw`, `stdSumIlw` | same order as the per-pixel sum of `ImSW` channels, so possibly a MODIS-derived broadband reconstruction (Eq. 11), which would make it a legal input |
+| MODIS broadband sanity check | `mSumIsw`, `stdSumIsw`, `mSumIlw`, `stdSumIlw` | sum of the MODIS narrowband radiances, meant to mimic the integral CERES measures; a sanity check (advisor). MODIS-derived, so not leakage, but it adds nothing beyond the channels the models already see |
 | Geometry | `SZA`, `VZA`, `RAA` | match the patch means of `Imviews` (RAA as 180° − image value) |
 | Location | `Lat`, `Lon` | footprint centres |
-| MODIS products (stratification only) | `CF` (**fraction 0–1**), `Clrf` (0–10 here), `meanCTH`, `stdCTH` (m), `LiqPhsf` (≈370–460, not a percentage), `AOD` (all NaN in this cloudy granule), `mDFNC`, `stdDFNC` (≈1.0–1.2) | units and meaning of `Clrf`, `LiqPhsf` and `mDFNC` to be confirmed |
-| Flags | `glintf` (0 here), `landf` (1.9–2.6 here: not a 0/1 flag, probably percent land) | |
+| CERES product (stratification only, never an input) | `Clrf` (0–10 here) | clear-area percentage from CERES's own cloud mask |
+| MODIS-derived products (stratification only) | `CF` (**fraction 0–1**), `meanCTH`, `stdCTH` (m), `LiqPhsf`, `AOD` (all NaN in this cloudy granule), `mDFNC`, `stdDFNC` | `LiqPhsf`: liquid fraction of the cloud, summed over MODIS pixels by the advisor; sample values ≈370–460 do not look like a percentage, so check against the code. `mDFNC`/`stdDFNC`: mean/std distance of the footprint's MODIS pixels to the nearest cloud pixel (advisor's calculation; ≈1.0–1.2 here, unit presumably pixels ≈ km) |
+| Flags | `glintf` (0 here), `landf` (1.9–2.6 here) | `glintf`: fraction of the footprint area in sun glint (MODIS). `landf`: percent land, from coordinates |
 
 **What the sample confirms or changes in this plan**
 
 - **Inputs exist as planned**: radiances in 11 SW + 16 LW channels, per-pixel geometry, and per-pixel glint computed from `Imviews` (§3, F1–F5). Wavelengths are channel identities only.
 - **Footprint overlap is real and large.** Neighbouring footprint centres are about 12.6 km apart, and two patches share up to 72% of their pixels (1,063 of 1,485 identical 0.66 µm values). Random footprint splits are therefore leaky, and the 20 km leakage radius in `splits` is a sensible start (§4.1).
-- **Moments ≠ uniform patch statistics.**
-  - Footprint means match the patch means to about 2–3%, but the moments' std is only about 0.8 of the patch std.
-  - The moments were probably computed on the CERES field of view (PSF-weighted, or a central ellipse) rather than on the whole 27×55 rectangle. The patch is larger than the footprint.
-  - Consequences:
-    1. The primary aggregation operator H must be the one that reproduces the stored moments. Fitting it is an E0 task, and the uniform patch mean is only a fallback.
-    2. The M2 bridge (train on moments, apply to pixels) is exact only under that same operator. Until H is known, M2 can also be trained on moments recomputed from the images with H.
+- **The moments are a weighted average over the footprint ellipse inside the patch** (advisor), not uniform patch statistics.
+  - On the sample, the uniform patch mean/std miss the stored moments by 23% RMS, mostly because the stored std is about 0.8 of the patch std.
+  - A tilted elliptical Gaussian (σ ≈ 9.6 × 5.6 px, tilt ≈ 48°, side set by `FOVorientation`) reproduces them to 8.6% (`aggregation.fit_fov_ellipse`).
+  - This is now the primary operator H (`fov_ellipse`); `uniform` and `gaussian_psf` are sensitivity checks.
+  - The remaining 8.6% suggests the real weights are not exactly Gaussian (the CERES PSF is skewed along scan). Refit on the full data in E0, or take the exact weights from the advisor's data-building code when it arrives.
+  - On 9 similar cloudy footprints the fit cannot tell which `FOVorientation` value is which tilt; a larger, more varied granule will.
+  - The M2 bridge (train on moments, apply to pixels) is exact only under this same operator, which is why the synthetic generator now builds its labels and moments with it too.
 - **Storage conventions now encoded in `flux1km.schema`**:
   - `MOMENTS_EXCESS_KURTOSIS`;
   - `CF_TO_PERCENT` (CF is converted to percent in the footprint table, so the regime thresholds 5/95 hold);
   - `IMVIEWS_RAA_IS_SUPPLEMENT` (pixel RAA is converted to the scalars convention, so pixel and footprint geometry agree).
 - **Which RAA convention puts the specular point at 0°** still needs a glint scene to settle; `glintf` is 0 in this sample.
-- **Ocean-only phase:** `landf` is non-zero even in an ocean granule, so phase 1 needs an explicit `landf` threshold once its unit is confirmed.
+- **Ocean-only phase:** `landf` (percent land) is about 2% even in this "ocean" granule, so phase 1 uses an explicit `landf` threshold (e.g. `landf = 0`, or < 1% if that removes too much).
+- **`FOVorientation` and augmentation:** a horizontal or vertical flip of a patch mirrors the ellipse tilt, so the flag must flip with it. Flip augmentation is allowed only together with that flag update.
 - **Not inputs:** `AOD` is NaN under cloud and `CF` / `CTH` are retrieval products. They are used only for regimes and filters, as already planned.
 
 ### 2.2 Data sources (raw products)
@@ -281,11 +284,13 @@ If τ > 0.8, sampling does not change the winner: fix S7 (or S5) and move on. Ot
 
 **Open questions (for the advisor):**
 1. ~~Can more `images/` granules be produced?~~ **Answered:** as much data as needed, any region and time; we start small (Pacific, 2014–2015, edge months). Unlabelled MODIS granules can be pulled from NASA.
-2. Is there PSF code or parameters? How exactly were the moments computed from the pixels? The sample shows they are not uniform patch statistics (the std is about 0.8 of the patch std).
-3. What does `FOVorientation` (0/1) mean? The answer decides whether flip and rotation augmentation is allowed. (`Imviews` is now known: SZA, VZA, 180° − RAA.)
+2. ~~How were the moments computed?~~ **Answered:** a weighted average over the footprint ellipse. Still pending: the code that built the triplets, which the advisor will send. It gives the exact weights and the meaning of the 0/1 tilt.
+3. ~~What does `FOVorientation` mean?~~ **Answered:** the side to which the footprint ellipse is tilted in the patch.
 4. How does a fixed 27×55 patch represent footprints that grow with VZA?
-5. What are the units and meaning of `glintf`, `landf` (≈2 in an ocean granule), `Clrf` (0–10), `LiqPhsf` (≈400) and `mDFNC` (≈1.0–1.2)? Why do CF and Clrf correlate so weakly (r ≈ 0.25)?
-6. Is `mSumIsw` a MODIS-derived broadband reconstruction (then it is a legal input) or CERES-derived (then it stays excluded)?
+5. ~~Meaning of `glintf`, `landf`, `Clrf`, `LiqPhsf`, `mDFNC`?~~ **Answered** (see §2.1). Two details remain for the code:
+   - `LiqPhsf` values of about 400 do not look like a percentage;
+   - `CF` (MODIS) and `Clrf` (CERES cloud mask) correlate weakly, which is now explained by their two different cloud masks.
+6. ~~Origin of `mSumIsw`?~~ **Answered:** a MODIS sum built as a sanity check of the CERES integral.
 
 **Risks:**
 - **Too little image data.** Largely resolved: the advisor will supply as much data as needed. The remaining risk is timing, so the infrastructure stays testable on synthetic data and on `data/sample/`.
@@ -362,7 +367,7 @@ The core is NumPy/SciPy only, so the tests run in CI without a GPU. Neural model
 | `Imviews` = SZA, VZA, RAA in degrees | **confirmed**, with RAA stored as 180° − scalars RAA |
 | Moments kurtosis type | **excess** (was assumed Pearson; fixed) |
 | CF scale | **fraction 0–1** (converted to percent in the table) |
-| Primary aggregation operator = uniform patch mean | **doubtful**: the moments' std is about 0.8 of the patch std; fit H to the stored moments in E0 |
+| Primary aggregation operator | **changed** to `fov_ellipse` (weighted ellipse, confirmed by the advisor; fitted to the sample to 8.6% RMS); exact weights expected from the advisor's code |
 | RAA convention for glint (specular at 0° vs 180°) | open: needs a glint scene |
 | Footprint radius for the leakage check (20 km) | plausible: centres are about 12.6 km apart and neighbouring patches share up to 72% of pixels |
 | Granules of one satellite less than 10 minutes apart are one group | unchanged |

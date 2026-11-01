@@ -1,8 +1,11 @@
 """Footprint aggregation operators H: pixel flux map -> footprint flux.
 
-Every method is scored through the same operator (PLAN.md section 4.2). Until the CERES PSF used
-to build the data is known, the primary operator is the uniform patch mean and an approximate
-Gaussian PSF is the sensitivity check.
+Every method is scored through the same operator (PLAN.md section 4.2). The stored moments are a
+weighted average over the footprint ellipse inside the 27x55 patch (advisor, Nov 2026), so the
+primary operator is "fov_ellipse": a tilted elliptical Gaussian whose tilt side follows
+FOVorientation. Its shape is provisional, fitted to the stored moments of the sample granule with
+fit_fov_ellipse; refit it on the full data in E0, or replace it with the real CERES PSF once the
+data-building code arrives. "uniform" and "gaussian_psf" are sensitivity checks.
 """
 from __future__ import annotations
 
@@ -49,6 +52,89 @@ def gaussian_psf_weights(h: int, w: int, fwhm_y: float, fwhm_x: float) -> np.nda
     sy, sx = fwhm_y / 2.3548, fwhm_x / 2.3548
     g = np.exp(-0.5 * (((yy - (h - 1) / 2) / sy) ** 2 + ((xx - (w - 1) / 2) / sx) ** 2))
     return g / g.sum()
+
+
+# (sigma_major, sigma_minor, tilt in degrees) in pixels, fitted on data/sample (A2014060.0245):
+# relative error of mean/std vs the stored moments drops from 0.23 (uniform) to 0.09.
+FOV_ELLIPSE_DEFAULT = (9.6, 5.6, 47.7)
+OPERATORS = ("fov_ellipse", "uniform", "gaussian_psf")
+
+
+def elliptical_gaussian_weights(h: int, w: int, sigma_major: float, sigma_minor: float, angle_deg: float) -> np.ndarray:
+    """Normalised tilted elliptical Gaussian centred on the patch.
+
+    The major axis is rotated by angle_deg from the patch x axis (towards +y for a positive angle).
+
+    Example:
+        >>> wts = elliptical_gaussian_weights(5, 9, 3.0, 1.0, 0.0)
+        >>> int(wts.argmax()), round(float(wts.sum()), 6), bool(wts[2, 0] > wts[0, 4])
+        (22, 1.0, True)
+
+    Raises:
+        ValueError: If a sigma is not positive.
+    """
+    if sigma_major <= 0 or sigma_minor <= 0:
+        raise ValueError("sigmas must be positive")
+    yy, xx = np.mgrid[0:h, 0:w].astype(float)
+    yy -= (h - 1) / 2
+    xx -= (w - 1) / 2
+    th = np.radians(angle_deg)
+    u = xx * np.cos(th) + yy * np.sin(th)
+    v = -xx * np.sin(th) + yy * np.cos(th)
+    g = np.exp(-0.5 * ((u / sigma_major) ** 2 + (v / sigma_minor) ** 2))
+    return g / g.sum()
+
+
+def fov_weights(orientation, h: int = 27, w: int = 55, params=FOV_ELLIPSE_DEFAULT) -> np.ndarray:
+    """Per-footprint ellipse weights (N, h, w); FOVorientation 1 tilts by +angle, 0 by -angle.
+
+    Which flag value means which side is not verified yet (PLAN.md section 2.1); on the sample
+    both mappings fit equally well.
+
+    Example:
+        >>> fov_weights(np.array([0, 1])).shape
+        (2, 27, 55)
+    """
+    o = np.asarray(orientation).astype(int).ravel()
+    a, b, th = params
+    pos = elliptical_gaussian_weights(h, w, a, b, th)
+    neg = elliptical_gaussian_weights(h, w, a, b, -th)
+    return np.where(o[:, None, None] == 1, pos, neg)
+
+
+def fit_fov_ellipse(patches: np.ndarray, mean: np.ndarray, std: np.ndarray, orientation,
+                    x0=FOV_ELLIPSE_DEFAULT) -> tuple[tuple[float, float, float], float]:
+    """Fit (sigma_major, sigma_minor, angle) so weighted patch mean/std reproduce stored moments.
+
+    The E0 tool for recovering the aggregation operator from the data itself.
+
+    Args:
+        patches: (N, C, H, W) radiances.
+        mean, std: (N, C) stored moments of the same footprints.
+        orientation: (N,) FOVorientation flags.
+        x0: Starting parameters.
+
+    Returns:
+        (fitted parameters, RMS relative error of mean and std).
+    """
+    from scipy import optimize
+
+    from .moments import moments_from_pixels
+
+    x = np.asarray(patches, float)
+    h, w = x.shape[-2:]
+
+    def loss(p):
+        if p[0] <= 0.5 or p[1] <= 0.5:
+            return 1e9
+        wts = fov_weights(orientation, h, w, tuple(p))[:, None]
+        m, s, _, _ = moments_from_pixels(x, wts)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            e = np.concatenate([(m / mean - 1).ravel(), (s / std - 1).ravel()])
+        return float(np.nanmean(e**2))
+
+    res = optimize.minimize(loss, np.asarray(x0, float), method="Nelder-Mead", options={"maxiter": 800})
+    return tuple(float(v) for v in res.x), float(np.sqrt(res.fun))
 
 
 def aggregate(maps: np.ndarray, weights: np.ndarray, nan_policy: str = "renormalize") -> np.ndarray:
@@ -132,16 +218,24 @@ def random_subset_weights(weights: np.ndarray, fraction: float, rng: np.random.G
     return out / out.sum()
 
 
-def get_operator(name: str, h: int, w: int) -> np.ndarray:
-    """Return the named aggregation weights: "uniform" or "gaussian_psf".
+def get_operator(name: str, h: int, w: int, orientation=None) -> np.ndarray:
+    """Return the named aggregation weights: "fov_ellipse", "uniform" or "gaussian_psf".
+
+    "fov_ellipse" needs the footprints' FOVorientation flags and returns (N, h, w); without them
+    it falls back to the untilted ellipse (h, w). The others return shared (h, w) weights.
 
     Example:
-        >>> get_operator("uniform", 27, 55).shape
-        (27, 55)
+        >>> get_operator("uniform", 27, 55).shape, get_operator("fov_ellipse", 27, 55, [0, 1, 1]).shape
+        ((27, 55), (3, 27, 55))
 
     Raises:
         KeyError: For an unknown operator name.
     """
+    if name == "fov_ellipse":
+        if orientation is None:
+            a, b, _ = FOV_ELLIPSE_DEFAULT
+            return elliptical_gaussian_weights(h, w, a, b, 0.0)
+        return fov_weights(orientation, h, w)
     if name == "uniform":
         return uniform_weights(h, w)
     if name == "gaussian_psf":

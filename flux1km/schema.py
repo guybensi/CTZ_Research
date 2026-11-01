@@ -30,17 +30,26 @@ LW_MODIS_BANDS: tuple[int, ...] = (20, 21, 22, 23, 24, 25, 27, 28, 29, 30, 31, 3
 MOMENTS_EXCESS_KURTOSIS = True   # kurt*spec is Fisher (excess) kurtosis: the files contain values < 1
 CF_TO_PERCENT = 100.0            # scalars CF is a fraction 0-1; the table stores it in percent
 IMVIEWS_RAA_IS_SUPPLEMENT = True  # Imviews RAA = 180 - scalars RAA (e.g. ~110 vs ~70 in the sample)
+# FOVorientation (0/1) says whether the footprint ellipse inside the 27x55 patch is tilted to one
+# side or the other (advisor). Which value is which tilt is not yet verified.
 
 # Channels that look like stripes in the sample image (Aqua band 6 dead detectors, 14.23 um).
 BAD_CHANNELS: tuple[str, ...] = ("1.64", "14.23")
 
-# Quantities derived from CERES: allowed as labels, never as model inputs.
-CERES_DERIVED_KEYS: frozenset[str] = frozenset(
-    {"Fsw", "Flw", "Isw", "Ilw", "mSumIsw", "stdSumIsw", "mSumIlw", "stdSumIlw"}
-)
-# MODIS retrieval products / metadata: allowed for filtering and stratification, not as inputs.
+# Quantities from CERES: allowed as labels (Fsw, Flw) or for stratification (Clrf), never as model
+# inputs. Clrf is the CERES clear-area percentage from CERES's own cloud mask (advisor, Nov 2026).
+CERES_DERIVED_KEYS: frozenset[str] = frozenset({"Fsw", "Flw", "Isw", "Ilw", "Clrf"})
+# Sums of the MODIS narrowband radiances in the footprint, built to mimic the CERES broadband
+# integral as a sanity check (advisor). MODIS-derived, so not leakage; a linear combination of
+# channels the models already see.
+MODIS_BROADBAND_SANITY_KEYS: frozenset[str] = frozenset({"mSumIsw", "stdSumIsw", "mSumIlw", "stdSumIlw"})
+# MODIS-derived footprint products / metadata: filtering and stratification only, not inputs.
+#   landf    percent land in the footprint, from coordinates
+#   glintf   fraction of the footprint area in sun glint (MODIS)
+#   LiqPhsf  liquid fraction of the cloud (advisor's sum over MODIS pixels; sample values ~400, units TBC)
+#   mDFNC, stdDFNC  mean/std distance of the footprint's MODIS pixels to the nearest cloud pixel
 STRATIFICATION_KEYS: frozenset[str] = frozenset(
-    {"CF", "Clrf", "meanCTH", "stdCTH", "LiqPhsf", "AOD", "Lat", "Lon", "glintf", "landf", "mDFNC"}
+    {"CF", "meanCTH", "stdCTH", "LiqPhsf", "AOD", "Lat", "Lon", "glintf", "landf", "mDFNC", "stdDFNC"}
 )
 
 

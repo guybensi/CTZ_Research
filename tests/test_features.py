@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from flux1km import features, synthetic
+from flux1km import aggregation, features, synthetic
 from flux1km.table import build_table
 
 
@@ -74,4 +74,5 @@ class TestPolyFeatures:
         P, pn = features.pixel_poly_features(b, "F2", degree=2)
         assert fn == pn
         n_poly = 7 * 2
-        np.testing.assert_allclose(P[:, :n_poly].mean(axis=(-2, -1)), F[:, :n_poly], rtol=1e-4)
+        w = aggregation.fov_weights(b.images["FOVorientation"])[:, None]  # moments are FOV-weighted
+        np.testing.assert_allclose((P[:, :n_poly] * w).sum(axis=(-2, -1)), F[:, :n_poly], rtol=1e-4)

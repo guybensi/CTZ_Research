@@ -19,11 +19,11 @@ class TestMakeSyntheticGranule:
 
     def test_labels_are_aggregated_truth(self):
         g = synthetic.make_synthetic_granule("A2014060.0245", np.random.default_rng(1), n_rows=2, n_cols=2, label_noise=0.0)
-        expected = aggregation.aggregate(g.truth["flux"], aggregation.uniform_weights(27, 55))
+        expected = aggregation.aggregate(g.truth["flux"], aggregation.fov_weights(g.images["FOVorientation"]))
         np.testing.assert_allclose(g.scalars["Fsw"], expected, rtol=1e-5)
 
-    def test_moments_equal_image_stats(self, gran):
-        m, _, _, _ = moments.moments_from_pixels(gran.images["ImSW"])
+    def test_moments_equal_fov_weighted_image_stats(self, gran):
+        m, _, _, _ = moments.moments_from_pixels(gran.images["ImSW"], aggregation.fov_weights(gran.images["FOVorientation"])[:, None])
         np.testing.assert_allclose(gran.moments["mSWspec"], m, rtol=1e-6)
 
     def test_neighbouring_footprints_overlap(self, gran):

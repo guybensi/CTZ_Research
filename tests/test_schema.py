@@ -29,9 +29,9 @@ class TestChannelIndex:
 
 class TestAssertNoCeresInputs:
     def test_modis_only_passes(self):
-        schema.assert_no_ceres_inputs(["SZA", "mSWspec_0.66", "glint"])
+        schema.assert_no_ceres_inputs(["SZA", "mSWspec_0.66", "glint", "mSumIsw"])
 
-    @pytest.mark.parametrize("bad", [["Isw"], ["SZA", "Fsw"], ["mSumIsw"], ["stdSumIlw"], ["scalars/Isw"]])
+    @pytest.mark.parametrize("bad", [["Isw"], ["SZA", "Fsw"], ["Clrf"], ["Ilw"], ["scalars/Isw"]])
     def test_ceres_keys_rejected(self, bad):
         with pytest.raises(schema.LeakageError):
             schema.assert_no_ceres_inputs(bad)

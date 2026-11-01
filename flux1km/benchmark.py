@@ -27,8 +27,8 @@ TREND_COLUMNS = ("SZA", "VZA", "RAA", "glint")
 @dataclass
 class BenchmarkConfig:
     models: list[str]
-    operator: str = "uniform"
-    sensitivity_operators: tuple[str, ...] = ("gaussian_psf",)
+    operator: str = "fov_ellipse"
+    sensitivity_operators: tuple[str, ...] = ("uniform", "gaussian_psf")
     budget: int = 40
     seeds: tuple[int, ...] = (0,)
     sampling: str = "S0"
@@ -43,8 +43,9 @@ class BenchmarkConfig:
     patch: tuple[int, int] = (27, 55)
 
 
-def _weights(name: str, cfg: BenchmarkConfig) -> np.ndarray:
-    return aggregation.get_operator(name, *cfg.patch)
+def _weights(name: str, cfg: BenchmarkConfig, batch: Batch) -> np.ndarray:
+    orientation = batch.images["FOVorientation"] if batch.has_images and "FOVorientation" in batch.images else None
+    return aggregation.get_operator(name, *cfg.patch, orientation=orientation)
 
 
 def _footprint_pred(model, batch: Batch, w: np.ndarray, maps: np.ndarray | None) -> np.ndarray:
@@ -62,7 +63,7 @@ def tune(name: str, train: Batch, val: Batch, cfg: BenchmarkConfig, seed: int = 
     fixed = cfg.model_params.get(name, {})
     if len(val) == 0 or len(grid) == 1:
         return {**grid[0], **fixed}, np.nan
-    w = _weights(cfg.operator, cfg)
+    w = _weights(cfg.operator, cfg, val)
     best, best_score = None, np.inf
     for params in grid:
         p = {**params, **fixed}
@@ -107,7 +108,7 @@ def run_benchmark(granules: list[Granule], table: FootprintTable, folds: list[sp
                 params, val_rmse = tune(name, train, val, cfg, seed)
                 model = get_model(name, **params).fit(train, val)
                 maps = model.predict_map(test) if (cls.produces_map and test.has_images) else None
-                preds = {op: _footprint_pred(model, test, _weights(op, cfg), maps)
+                preds = {op: _footprint_pred(model, test, _weights(op, cfg, test), maps)
                          for op in (cfg.operator, *cfg.sensitivity_operators)}
                 if maps is not None:
                     maps_store[(name, fold.name, seed)] = maps

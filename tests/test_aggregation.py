@@ -91,3 +91,29 @@ class TestGetOperator:
         assert ag.get_operator("gaussian_psf", 27, 55).sum() == pytest.approx(1.0)
         with pytest.raises(KeyError):
             ag.get_operator("nope", 27, 55)
+
+
+class TestFovEllipse:
+    def test_orientation_mirrors_tilt(self):
+        w = ag.fov_weights([0, 1])
+        np.testing.assert_allclose(w[0], w[1][::-1, :])
+        assert w.sum(axis=(1, 2)) == pytest.approx([1.0, 1.0])
+
+    def test_operator_shapes_and_fallback(self):
+        assert ag.get_operator("fov_ellipse", 27, 55).shape == (27, 55)
+        assert ag.get_operator("fov_ellipse", 27, 55, orientation=[1, 0, 1]).shape == (3, 27, 55)
+
+    def test_bad_sigma(self):
+        with pytest.raises(ValueError):
+            ag.elliptical_gaussian_weights(5, 5, 0.0, 1.0, 0.0)
+
+    def test_fit_recovers_known_ellipse(self):
+        from flux1km.moments import moments_from_pixels
+        rng = np.random.default_rng(0)
+        patches = rng.gamma(2.0, 10.0, size=(20, 4, 27, 55)) + np.linspace(0, 40, 55)
+        orient = rng.integers(0, 2, 20)
+        true = (8.0, 4.0, 30.0)
+        m, s, _, _ = moments_from_pixels(patches, ag.fov_weights(orient, params=true)[:, None])
+        params, rms = ag.fit_fov_ellipse(patches, m, s, orient, x0=(10.0, 6.0, 20.0))
+        assert rms < 0.01
+        assert params[2] == pytest.approx(30.0, abs=5)
