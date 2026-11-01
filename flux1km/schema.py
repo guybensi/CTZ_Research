@@ -20,6 +20,12 @@ SW_WAVELENGTHS: tuple[float, ...] = tuple(float(x) for x in SW_LABELS)
 LW_WAVELENGTHS: tuple[float, ...] = tuple(float(x.rstrip("a")) for x in LW_LABELS)
 VIEW_CHANNELS: tuple[str, ...] = ("SZA", "VZA", "RAA")
 
+# MODIS (MYD021KM) band number of each channel. The 27 channels are bands 1-7, 17-19, 26 (SW) and
+# 20-25, 27-36 (LW); the ocean-colour bands 8-16 are not used. "3.96a" is band 21 (low-gain fire
+# channel), "3.96" is band 22.
+SW_MODIS_BANDS: tuple[int, ...] = (3, 4, 1, 2, 17, 19, 18, 5, 6, 7, 26)
+LW_MODIS_BANDS: tuple[int, ...] = (20, 21, 22, 23, 24, 25, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36)
+
 # Storage conventions seen in the real files (PLAN.md section 2.1).
 MOMENTS_EXCESS_KURTOSIS = True   # kurt*spec is Fisher (excess) kurtosis: the files contain values < 1
 CF_TO_PERCENT = 100.0            # scalars CF is a fraction 0-1; the table stores it in percent

@@ -9,6 +9,13 @@ class TestBandTables:
         assert len(schema.LW_LABELS) == len(schema.LW_WAVELENGTHS) == 16
 
 
+class TestModisBands:
+    def test_one_band_per_channel_and_no_ocean_colour(self):
+        bands = schema.SW_MODIS_BANDS + schema.LW_MODIS_BANDS
+        assert len(schema.SW_MODIS_BANDS) == 11 and len(schema.LW_MODIS_BANDS) == 16
+        assert len(set(bands)) == 27 and not set(bands) & set(range(8, 17))
+
+
 class TestChannelIndex:
     def test_known(self):
         assert schema.channel_index("0.66") == ("SW", 2)

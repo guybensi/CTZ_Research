@@ -46,7 +46,8 @@ Nothing is benchmarked until these items are done:
 - [x] Footprint overlap on the sample: centres about 12.6 km apart, up to 72% shared pixels. Still to repeat on a full overpass.
 - [ ] Build one frozen **split manifest** (§4.1) and an automatic pixel-reuse leakage check.
 - [ ] Re-run the legacy baselines inside the new protocol. The old numbers (17.72 and 15.33 W m⁻²) used random row splits, and early stopping on the test set, so they are optimistic.
-- [ ] Ask the advisor for more image granules and for the PSF (see §7).
+- [ ] Ask the advisor for the PSF / the code that built the triplets (see §7); the raw products are listed in §2.2.
+- [ ] Settle the RAA/glint convention with a glint granule and the MYD35 sun-glint bit (§2.2).
 
 ### 2.1 What the data looks like
 
@@ -98,6 +99,37 @@ This section is based on one sample granule, `A2014060.0245`, stored in `data/sa
 - **Which RAA convention puts the specular point at 0°** still needs a glint scene to settle; `glintf` is 0 in this sample.
 - **Ocean-only phase:** `landf` is non-zero even in an ocean granule, so phase 1 needs an explicit `landf` threshold once its unit is confirmed.
 - **Not inputs:** `AOD` is NaN under cloud and `CF` / `CTH` are retrieval products. They are used only for regimes and filters, as already planned.
+
+### 2.2 Data sources (raw products)
+
+The granule triplets of §2.1 are built from public NASA products. Where to get them (advisor's email):
+
+- **MODIS (Aqua)** from LAADS DAAC: <https://ladsweb.modaps.eosdis.nasa.gov/search/>
+- **CERES** from the CERES data portal: <https://ceres.larc.nasa.gov/data/>
+
+| Product | What it holds | Role in this thesis |
+|---|---|---|
+| **MYD021KM** (MODIS/Aqua L1B 1 km calibrated radiances, 5-min swath) | radiances/reflectances of 36 bands | the image inputs: `ImSW`/`ImLW` and the moments are 27 of these bands |
+| **MYD03** (geolocation) | per-pixel lat/lon, solar and sensor zenith and azimuth, land/sea mask, height | the per-pixel geometry (`Imviews`) and, presumably, `landf` |
+| **MYD35_L2** (cloud mask) | per-pixel cloud-mask confidence, day/night, **sun-glint flag**, snow/ice and land/water bits | cloud regimes, distance to cloud, `Clrf`/`glintf` (presumably) |
+| **MYD06_L2** (cloud properties) | cloud-top height/pressure/temperature, phase, optical thickness, effective radius | stratification only (`meanCTH`, `stdCTH`, `LiqPhsf`, presumably); never model inputs |
+| **CERES SSF Level 2, Aqua** (Single Scanner Footprint, Edition 4A, FM3/FM4) | per footprint: time, location, viewing geometry, unfiltered radiances, TOA SW/LW flux from the ADMs, scene information | the label (`Fsw`, `Flw`) and the CERES-side scalars (`Isw`, `Ilw`, `SZA`, `VZA`, `RAA`). Only a subset of the SSF variables is needed; to be agreed with the advisor. |
+
+**Channel ↔ MODIS band mapping** (`schema.SW_MODIS_BANDS`, `schema.LW_MODIS_BANDS`):
+
+| Group | Channels and bands |
+|---|---|
+| SW | 0.47 = B3, 0.55 = B4, 0.66 = B1, 0.85 = B2, 0.905 = B17, 0.935 = B19, 0.94 = B18, 1.24 = B5, 1.64 = B6, 2.13 = B7, 1.375 = B26 |
+| LW | 3.75 = B20, 3.96 = B21 (low-gain fire channel) and B22, 4.05 = B23, 4.46 = B24, 4.5 = B25, 6.7 = B27, 7.32 = B28, 8.55 = B29, 9.7 = B30, 11 = B31, 12 = B32, 13.33–14.23 = B33–B36 |
+
+The ocean-colour bands 8–16 are not used. Aqua band 6 (1.64 µm) has known dead detectors, which explains its stripes.
+
+**What this explains, and what it changes in the plan**
+
+- **The two RAA conventions** most likely come from two sources. The scalars `RAA` is the CERES SSF relative azimuth; `Imviews` is computed from the MYD03 solar and sensor azimuths, where the specular direction sits at the opposite end. **E0 can settle the glint convention without waiting for the advisor**: in a glint granule, the convention whose glint angle is small exactly where the MYD35 sun-glint bit is set is the right one.
+- **The CERES-side and MODIS-side variables can now be separated by origin.** The leakage guard (`schema.CERES_DERIVED_KEYS`) excludes everything that comes from SSF. Products from MYD35/MYD06 are retrieval products, so they serve stratification only, as already planned.
+- **We are not limited to the advisor's pre-built triplets.** With MYD021KM + MYD03 + SSF footprint centres and the CERES PSF, footprints can be built in-house, with a **known** aggregation operator H, which removes the moments-vs-patch ambiguity of §2.1. This is a candidate E0/F task if the advisor's construction code is not available.
+- **Unlabelled MODIS granules** (MYD021KM + MYD03 without SSF) are freely available, which makes the mediated pseudo-label hybrid M6f practical.
 
 ## 3. Candidate methods (exploration phase)
 
