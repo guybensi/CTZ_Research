@@ -76,3 +76,11 @@ class TestPolyFeatures:
         n_poly = 7 * 2
         w = aggregation.fov_weights(b.images["FOVorientation"])[:, None]  # moments are FOV-weighted
         np.testing.assert_allclose((P[:, :n_poly] * w).sum(axis=(-2, -1)), F[:, :n_poly], rtol=1e-4)
+
+
+class TestPixelGeometry:
+    def test_converts_imviews_raa_to_ceres_convention_and_folds(self):
+        v = np.zeros((1, 3, 1, 3))
+        v[0, 2, 0] = [110.0, 0.0, 270.0]  # 270 can come out of the advisor's fold; it means 90
+        _, _, raa = features.pixel_geometry({"Imviews": v})
+        np.testing.assert_allclose(raa[0, 0], [70.0, 180.0, 90.0])

@@ -14,6 +14,8 @@ class TestModisBands:
         bands = schema.SW_MODIS_BANDS + schema.LW_MODIS_BANDS
         assert len(schema.SW_MODIS_BANDS) == 11 and len(schema.LW_MODIS_BANDS) == 16
         assert len(set(bands)) == 27 and not set(bands) & set(range(8, 17))
+        assert schema.SW_MODIS_BANDS[schema.channel_index("0.935")[1]] == 18  # 0.936 um
+        assert schema.SW_MODIS_BANDS[schema.channel_index("0.940")[1]] == 19
 
 
 class TestChannelIndex:

@@ -44,7 +44,9 @@ def parse_args(argv=None):
     p.add_argument("--block-km", type=float, default=100.0)
     p.add_argument("--buffer-km", type=float, default=40.0)
     p.add_argument("--manifest", help="load folds from this JSON if it exists, else create and save it")
-    p.add_argument("--operator", default="fov_ellipse", choices=aggregation.OPERATORS)
+    p.add_argument("--operator", default=None, choices=aggregation.OPERATORS,
+                   help="primary aggregation operator (default: ceres_psf with --psf, else fov_ellipse)")
+    p.add_argument("--psf", help="path to ceres_psf.csv (the advisor's CERES PSF)")
     p.add_argument("--budget", type=int, default=40, help="max tuning candidates per model")
     p.add_argument("--sampling", default="S0", help="training-data strategy S0..S7")
     p.add_argument("--input-set", default="F5", help="F1..F5 (PLAN.md section 3)")
@@ -79,9 +81,13 @@ def main(argv=None) -> dict:
             Path(args.manifest).parent.mkdir(parents=True, exist_ok=True)
             splits.save_manifest(args.manifest, table, folds, meta={"split": args.split, "seed": args.seed})
     map_models = [m for m in args.models if m in MODELS]
+    operator = args.operator or ("ceres_psf" if args.psf else "fov_ellipse")
+    available = [o for o in aggregation.OPERATORS if args.psf or o != "ceres_psf"]
+    if operator not in available:
+        raise SystemExit("--operator ceres_psf needs --psf path/to/ceres_psf.csv")
     cfg = benchmark.BenchmarkConfig(
-        models=map_models, operator=args.operator,
-        sensitivity_operators=tuple(o for o in aggregation.OPERATORS if o != args.operator), budget=args.budget, sampling=args.sampling,
+        models=map_models, operator=operator, psf_path=args.psf,
+        sensitivity_operators=tuple(o for o in available if o != operator), budget=args.budget, sampling=args.sampling,
         model_params={m: {"input_set": args.input_set} for m in map_models if m not in ("B-clim", "B-const")},
         leakage_radius_km=args.leakage_radius_km)
     res = benchmark.run_benchmark(granules, table, folds, cfg, out_dir=args.out)

@@ -108,7 +108,9 @@ def pixel_geometry(images: dict[str, np.ndarray]) -> tuple[np.ndarray, np.ndarra
         [57.0, 60.0, 70.0]
     """
     v = images["Imviews"].astype(float)
-    raa = 180.0 - v[:, 2] if schema.IMVIEWS_RAA_IS_SUPPLEMENT else v[:, 2]
+    raa = np.abs(v[:, 2]) % 360.0
+    raa = np.minimum(raa, 360.0 - raa)  # the advisor's fold can exceed 180 when SolAz - SenAz < -180
+    raa = 180.0 - raa if schema.IMVIEWS_RAA_IS_SUPPLEMENT else raa
     return v[:, 0], v[:, 1], raa
 
 

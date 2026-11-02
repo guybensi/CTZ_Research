@@ -42,12 +42,13 @@ Nothing is benchmarked until these items are done:
   - the meaning and units of `glintf`, `landf`, `Clrf`, `LiqPhsf`, `mDFNC`, `mSumIsw`
 - [x] Moments vs image patch statistics, on the sample: means agree to about 2–3%, but the std is about 0.8 of the patch std, so the moments are **not** uniform patch statistics.
 - [ ] Fit the aggregation weights H that reproduce the stored moments from the patches. H becomes the primary operator and also gates M2.
-- [x] Per-pixel glint angle from `Imviews` (`features.pixel_geometry` + `geometry.glint_angle`). Which RAA convention is specular still needs a glint scene.
+- [x] Per-pixel glint angle from `Imviews` (`features.pixel_geometry` + `geometry.glint_angle`). The RAA convention is settled by the advisor's code (§2.3).
 - [x] Footprint overlap on the sample: centres about 12.6 km apart, up to 72% shared pixels. Still to repeat on a full overpass.
 - [ ] Build one frozen **split manifest** (§4.1) and an automatic pixel-reuse leakage check.
 - [ ] Re-run the legacy baselines inside the new protocol. The old numbers (17.72 and 15.33 W m⁻²) used random row splits, and early stopping on the test set, so they are optimistic.
-- [ ] Ask the advisor for the PSF / the code that built the triplets (see §7); the raw products are listed in §2.2.
-- [ ] Settle the RAA/glint convention with a glint granule and the MYD35 sun-glint bit (§2.2).
+- [x] The advisor's data-building code received (§2.3, `legacy/advisor_code/`).
+- [ ] Get `ceres_psf.csv` from the advisor and switch the primary operator to `ceres_psf`. Fallback: `aggregation.recover_psf_from_moments` on ≥ 60 footprints.
+- [ ] Report the `LiqPhsf` bug (and the minor ones) to the advisor (§2.3).
 
 ### 2.1 What the data looks like
 
@@ -60,7 +61,7 @@ This section is based on one sample granule, `A2014060.0245`, stored in `data/sa
 | `Imviews` | (N, 3, 27, 55) | per-pixel SZA, VZA, RAA in degrees. **RAA here is 180° − the scalars RAA** (≈110° vs ≈70°). |
 | `ImSW` | (N, 11, 27, 55) | SW radiances (0.09–279) |
 | `ImLW` | (N, 16, 27, 55) | LW radiances (−0.06–7.5; small negative values exist) |
-| `FOVorientation` | (N,) | 0/1: which side the footprint ellipse inside the patch is tilted to (advisor) |
+| `FOVorientation` | (N,) | 1 = the next CERES footprint lies at a larger MODIS column (PSF used as stored); 0 = at a smaller column (PSF mirrored left-right). It encodes the scan direction. |
 
 **`moments/<granule>.npz`**: footprint statistics of the MODIS pixels.
 
@@ -79,28 +80,25 @@ This section is based on one sample granule, `A2014060.0245`, stored in `data/sa
 | MODIS broadband sanity check | `mSumIsw`, `stdSumIsw`, `mSumIlw`, `stdSumIlw` | sum of the MODIS narrowband radiances, meant to mimic the integral CERES measures; a sanity check (advisor). MODIS-derived, so not leakage, but it adds nothing beyond the channels the models already see |
 | Geometry | `SZA`, `VZA`, `RAA` | match the patch means of `Imviews` (RAA as 180° − image value) |
 | Location | `Lat`, `Lon` | footprint centres |
-| CERES product (stratification only, never an input) | `Clrf` (0–10 here) | clear-area percentage from CERES's own cloud mask |
-| MODIS-derived products (stratification only) | `CF` (**fraction 0–1**), `meanCTH`, `stdCTH` (m), `LiqPhsf`, `AOD` (all NaN in this cloudy granule), `mDFNC`, `stdDFNC` | `LiqPhsf`: liquid fraction of the cloud, summed over MODIS pixels by the advisor; sample values ≈370–460 do not look like a percentage, so check against the code. `mDFNC`/`stdDFNC`: mean/std distance of the footprint's MODIS pixels to the nearest cloud pixel (advisor's calculation; ≈1.0–1.2 here, unit presumably pixels ≈ km) |
-| Flags | `glintf` (0 here), `landf` (1.9–2.6 here) | `glintf`: fraction of the footprint area in sun glint (MODIS). `landf`: percent land, from coordinates |
+| CERES product (stratification only, never an input) | `Clrf` (0–10 here) | SSF `Cloud_mask_clear_strong_percent_coverage`: percent of the footprint that CERES's own cloud mask calls strongly clear |
+| MODIS-derived products (stratification only) | `CF` (**fraction 0–1**), `meanCTH`, `stdCTH` (m), `LiqPhsf`, `AOD` (all NaN in this cloudy granule), `mDFNC`, `stdDFNC` | exact definitions from the code in §2.3. In short: `CF` is the unweighted cloudy fraction of the patch (MYD35, "relaxed" mask); `meanCTH`/`stdCTH` and `mDFNC`/`stdDFNC` are PSF-weighted over cloudy and clear pixels respectively; `mDFNC` is in pixels. **`LiqPhsf` is unusable in the current files** (a bug, §2.3). `AOD` is the SSF PSF-weighted MOD04 ocean AOD. |
+| Flags | `glintf` (0 here), `landf` (1.9–2.6 here) | `glintf`: unweighted fraction of patch pixels with the MYD35 sun-glint flag. `landf`: patch mean of the MYD35 2-bit land/water code, **not a percentage**; `landf == 0` means all pixels are water (§2.3) |
 
 **What the sample confirms or changes in this plan**
 
 - **Inputs exist as planned**: radiances in 11 SW + 16 LW channels, per-pixel geometry, and per-pixel glint computed from `Imviews` (§3, F1–F5). Wavelengths are channel identities only.
 - **Footprint overlap is real and large.** Neighbouring footprint centres are about 12.6 km apart, and two patches share up to 72% of their pixels (1,063 of 1,485 identical 0.66 µm values). Random footprint splits are therefore leaky, and the 20 km leakage radius in `splits` is a sensible start (§4.1).
-- **The moments are a weighted average over the footprint ellipse inside the patch** (advisor), not uniform patch statistics.
-  - On the sample, the uniform patch mean/std miss the stored moments by 23% RMS, mostly because the stored std is about 0.8 of the patch std.
-  - A tilted elliptical Gaussian (σ ≈ 9.6 × 5.6 px, tilt ≈ 48°, side set by `FOVorientation`) reproduces them to 8.6% (`aggregation.fit_fov_ellipse`).
-  - This is now the primary operator H (`fov_ellipse`); `uniform` and `gaussian_psf` are sensitivity checks.
-  - The remaining 8.6% suggests the real weights are not exactly Gaussian (the CERES PSF is skewed along scan). Refit on the full data in E0, or take the exact weights from the advisor's data-building code when it arrives.
-  - On 9 similar cloudy footprints the fit cannot tell which `FOVorientation` value is which tilt; a larger, more varied granule will.
-  - The M2 bridge (train on moments, apply to pixels) is exact only under this same operator, which is why the synthetic generator now builds its labels and moments with it too.
+- **The moments are PSF-weighted**, not uniform patch statistics. They are `Σ w·x` with the CERES PSF `w` resampled to 27×55 and mirrored for `FOVorientation == 0` (§2.3).
+  - On the sample, uniform patch statistics miss the stored moments by 23% RMS; a fitted tilted elliptical Gaussian (`fov_ellipse`) gets to 8.6%. The rest is the real PSF's along-scan skew.
+  - The exact operator is `ceres_psf`, available as soon as the advisor's `ceres_psf.csv` is in the repo. Until then `fov_ellipse` is the primary operator, and `uniform` and `gaussian_psf` are sensitivity checks.
+  - The M2 bridge (train on moments, apply to pixels) is exact only under this same operator. The synthetic generator therefore builds its labels and moments with it too.
 - **Storage conventions now encoded in `flux1km.schema`**:
   - `MOMENTS_EXCESS_KURTOSIS`;
   - `CF_TO_PERCENT` (CF is converted to percent in the footprint table, so the regime thresholds 5/95 hold);
   - `IMVIEWS_RAA_IS_SUPPLEMENT` (pixel RAA is converted to the scalars convention, so pixel and footprint geometry agree).
-- **Which RAA convention puts the specular point at 0°** still needs a glint scene to settle; `glintf` is 0 in this sample.
-- **Ocean-only phase:** `landf` (percent land) is about 2% even in this "ocean" granule, so phase 1 uses an explicit `landf` threshold (e.g. `landf = 0`, or < 1% if that removes too much).
-- **`FOVorientation` and augmentation:** a horizontal or vertical flip of a patch mirrors the ellipse tilt, so the flag must flip with it. Flip augmentation is allowed only together with that flag update.
+- **RAA convention settled** (§2.3): `Imviews` RAA is the folded difference of the MYD03 solar and sensor azimuths, so specular = 180°; the SSF RAA has specular = 0°. `features.pixel_geometry` converts to the SSF convention, and the glint angle uses specular = 0°.
+- **Ocean-only phase:** `landf` is a mean land/water *code*, and it is about 2 here, so this footprint is mostly coastal pixels. Phase 1 keeps only `landf == 0` (all-water) footprints.
+- **`FOVorientation` and augmentation:** the flag is the PSF's left-right mirror. A left-right flip of a patch must toggle the flag; a top-bottom flip leaves it unchanged, because the PSF is centred in rows. Flip augmentation is allowed only with that update.
 - **Not inputs:** `AOD` is NaN under cloud and `CF` / `CTH` are retrieval products. They are used only for regimes and filters, as already planned.
 
 ### 2.2 Data sources (raw products)
@@ -116,23 +114,85 @@ The granule triplets of §2.1 are built from public NASA products. Where to get 
 | **MYD03** (geolocation) | per-pixel lat/lon, solar and sensor zenith and azimuth, land/sea mask, height | the per-pixel geometry (`Imviews`) and, presumably, `landf` |
 | **MYD35_L2** (cloud mask) | per-pixel cloud-mask confidence, day/night, **sun-glint flag**, snow/ice and land/water bits | cloud regimes, distance to cloud, `Clrf`/`glintf` (presumably) |
 | **MYD06_L2** (cloud properties) | cloud-top height/pressure/temperature, phase, optical thickness, effective radius | stratification only (`meanCTH`, `stdCTH`, `LiqPhsf`, presumably); never model inputs |
-| **CERES SSF Level 2, Aqua** (Single Scanner Footprint, Edition 4A, FM3/FM4) | per footprint: time, location, viewing geometry, unfiltered radiances, TOA SW/LW flux from the ADMs, scene information | the label (`Fsw`, `Flw`) and the CERES-side scalars (`Isw`, `Ilw`, `SZA`, `VZA`, `RAA`). Only a subset of the SSF variables is needed; to be agreed with the advisor. |
+| **CERES SSF Level 2, Aqua** (Single Scanner Footprint, Edition 4A, FM3/FM4) | per footprint: time, location, viewing geometry, unfiltered radiances, TOA SW/LW flux from the ADMs, scene information | the label (`Fsw`, `Flw`) and the CERES-side scalars. The advisor's code reads exactly 12 SSF variables (§2.3). |
 
 **Channel ↔ MODIS band mapping** (`schema.SW_MODIS_BANDS`, `schema.LW_MODIS_BANDS`):
 
 | Group | Channels and bands |
 |---|---|
-| SW | 0.47 = B3, 0.55 = B4, 0.66 = B1, 0.85 = B2, 0.905 = B17, 0.935 = B19, 0.94 = B18, 1.24 = B5, 1.64 = B6, 2.13 = B7, 1.375 = B26 |
+| SW | 0.47 = B3, 0.55 = B4, 0.66 = B1, 0.85 = B2, 0.905 = B17, 0.935 = B18 (0.936 µm), 0.94 = B19, 1.24 = B5, 1.64 = B6, 2.13 = B7, 1.375 = B26 |
 | LW | 3.75 = B20, 3.96 = B21 (low-gain fire channel) and B22, 4.05 = B23, 4.46 = B24, 4.5 = B25, 6.7 = B27, 7.32 = B28, 8.55 = B29, 9.7 = B30, 11 = B31, 12 = B32, 13.33–14.23 = B33–B36 |
 
 The ocean-colour bands 8–16 are not used. Aqua band 6 (1.64 µm) has known dead detectors, which explains its stripes.
 
 **What this explains, and what it changes in the plan**
 
-- **The two RAA conventions** most likely come from two sources. The scalars `RAA` is the CERES SSF relative azimuth; `Imviews` is computed from the MYD03 solar and sensor azimuths, where the specular direction sits at the opposite end. **E0 can settle the glint convention without waiting for the advisor**: in a glint granule, the convention whose glint angle is small exactly where the MYD35 sun-glint bit is set is the right one.
+- **The two RAA conventions** come from two sources, as the advisor's code confirms (§2.3). The scalars `RAA` is the CERES SSF relative azimuth; `Imviews` is computed from the MYD03 solar and sensor azimuths.
 - **The CERES-side and MODIS-side variables can now be separated by origin.** The leakage guard (`schema.CERES_DERIVED_KEYS`) excludes everything that comes from SSF. Products from MYD35/MYD06 are retrieval products, so they serve stratification only, as already planned.
 - **We are not limited to the advisor's pre-built triplets.** With MYD021KM + MYD03 + SSF footprint centres and the CERES PSF, footprints can be built in-house, with a **known** aggregation operator H, which removes the moments-vs-patch ambiguity of §2.1. This is a candidate E0/F task if the advisor's construction code is not available.
 - **Unlabelled MODIS granules** (MYD021KM + MYD03 without SSF) are freely available, which makes the mediated pseudo-label hybrid M6f practical.
+
+### 2.3 How the triplets are built (advisor's `MOD_CERES_allsky`)
+
+Source: `legacy/advisor_code/` (driver `Generate_AllSky_2.py`; the function is in `Twilight_module.py`). For every MODIS granule and every CERES footprint it does the following.
+
+1. **Inputs read.**
+   - **MYD021KM radiances**, with `radiance_scales`/`offsets` applied, in W m⁻² sr⁻¹ µm⁻¹:
+     - SW = bands 3, 4, 1, 2, 17, 18, 19, 5, 6, 7, 26;
+     - LW = bands 20–25 and 27–36.
+   - **MYD03:** lat/lon, solar and sensor zenith, and azimuths.
+   - **MYD35:** cloud mask, sun-glint and land/water bits.
+   - **MYD06:** `cloud_top_height_1km`, `Cloud_Phase_Infrared_1km`.
+   - **SSF:** 12 variables:
+     - `CERES_SW/LW_TOA_flux___upwards` → `Fsw`, `Flw`;
+     - `CERES_SW/LW_radiance___upwards` → `Isw`, `Ilw`;
+     - `CERES_solar_zenith/viewing_zenith/relative_azimuth_at_surface`;
+     - `Colatitude/Longitude_of_CERES_FOV_at_surface`;
+     - `time`;
+     - `Cloud_mask_clear_strong_percent_coverage` → `Clrf`;
+     - `PSF_wtd_MOD04_effective_optical_depth_average_ocean__0_550_` → `AOD`.
+2. **The PSF.**
+   - The source is `ceres_psf.csv`, the NOAA-20 CERES PSF on a 250 m grid. It is not in the repo yet.
+   - It is Fourier-resampled to 27×55 at about 1 km, which rescales it to Aqua's altitude, and then normalised.
+   - The 27×55 patch is exactly the PSF's support. That is why the patch is a fixed rectangle, and the footprint ellipse sits inside it.
+   - This answers open question 4 (§7) for the stored data: the PSF is not rescaled with VZA, so off-nadir footprints are represented by the same 27×55 weights.
+3. **Matching.**
+   - Footprints are matched to the granule by date + hour and the granule's lat/lon box.
+   - The footprint centre is the MODIS pixel nearest to the SSF lat/lon. The patch has rows centre ± 13, and its columns align the PSF's peak column with the centre.
+   - `FOVorientation` is 1 if the next SSF footprint is at a larger column (PSF as stored), 0 otherwise (PSF mirrored with `np.fliplr`).
+   - Footprints are skipped:
+     - at night (`Fsw` < 1);
+     - when the patch leaves the granule;
+     - when invalid pixels carry more than 0.1% of the PSF weight.
+4. **What is stored.**
+   - **Moments:** for each channel, the PSF-weighted mean, std, skew and **excess** kurtosis (`calc4moms` logic, population std).
+   - **`mSumIsw`/`mSumIlw`:** the PSF-weighted mean and std of the sum of the SW (LW) channel radiances.
+   - **`meanCTH`/`stdCTH`:** PSF-weighted over pixels with a cloud top.
+   - **`mDFNC`/`stdDFNC`:** PSF-weighted over clear pixels, of the distance in pixels to the nearest cloudy pixel. It is NaN beyond the granule-edge distance.
+   - **`CF`, `glintf`, `landf`:** unweighted patch means. The cloud mask is MYD35 "relaxed" (cloudy = the most confident cloudy class).
+   - **`Imviews`:** per-pixel SZA, VZA and RAA, where RAA is the folded |SolarAzimuth − SensorAzimuth| ∈ [0°, 180°], specular = 180°. The scalars carry the SSF angles instead, which have specular = 0°.
+   - **`images/`:** written only when `GenIm=True`, which is off by default. That is why only 6 image granules exist.
+
+**Problems found in the code** (to report to the advisor; none affects the radiances, moments or labels):
+
+| Problem | Effect | What we do |
+|---|---|---|
+| `LiqPhsf = nansum(CldPhs == 1) / nansum(cldmskfov)` uses the **whole granule's** phase array (`CldPhs`) instead of the footprint's (`cphsfov`) | the stored values (~400) are a granule-wide count over a footprint count: meaningless | `LiqPhsf` is not used until fixed |
+| `land` is parsed from the reversed bit string, so the 2-bit code is read with swapped bits (coastal ↔ desert) | `landf` is a mean *code*, not a fraction | use only `landf == 0` (all water) |
+| `binary2 = binary[::-1]` re-reads byte 1 instead of byte 2 | the thin-cirrus and non-cloud-obstruction bits are wrong (not stored, so no effect on our files) | none |
+| `cldmskfov = BWmsk[:subsubRi:, ...]` in the bottom-edge branch (stray colon) | wrong `CF` for footprints touching the granule's last row (rare) | edge footprints can be dropped in E0 |
+| The RAA fold can exceed 180° when SolarAzimuth − SensorAzimuth < −180° | rare wrong pixel RAA | `features.pixel_geometry` folds it back into [0, 180] |
+| `CERESraa[fov+1]` is read for orientation without a bounds check | crash on the last footprint of a file (no wrong data) | none |
+
+**Consequences for the plan**
+
+- **Storage.** Patches overlap by up to 72% (§2.1), so storing 27×55×30 float32 patches for 5M footprints would be about 0.9 TB, with most pixels duplicated 3–5 times. The scalable format keeps the granule-level MODIS arrays once, plus a footprint index (granule, centre row/column, orientation, PSF). Patches are then cut on the fly, as `MOD_CERES_allsky` itself does. This is the recommended format for phase F; `GenIm=True` triplets are fine for the first Pacific subset.
+- **In-house data building is now possible**, with the same geometry and weights as the advisor's files, using the code above as the reference implementation.
+- **M0 now includes the advisor's current model** (`train_Allsky_moments_narrow_values.py`), re-run under our protocol. As written, it uses a random 70/30 split and filters **both** training and test to `Fsw > 400`, so its reported RMSE is not comparable to ours.
+  - Inputs: SZA, VZA, RAA, plus mean/std/skew/kurt of 13 channels (0.47, 0.66, 0.86, 1.375, 2.13, 3.96, 4.05, 4.5, 6.7, 7.3, 9.7, 11, 12 µm).
+  - Normalisation: channels cross-normalised by 0.47, 4.05 and 11 µm.
+  - Loss: log1p label transform with a weighted MAE.
+  - Network: dense layers of N/2, N/4, N/8 and 5 units with L1 regularisation, and early stopping on the change in RMSE.
 
 ## 3. Candidate methods (exploration phase)
 
@@ -140,7 +200,7 @@ Every method outputs a per-pixel map. Footprint-level methods output one value p
 
 | ID | Direction | Inputs | Training signal | What it tells us |
 |---|---|---|---|---|
-| **M0** | Legacy baselines (All_Sky_AIflux 37-feature ANN, Ridge) | footprint moments + geometry | footprint MSE | the reference bar, re-measured fairly |
+| **M0** | Legacy baselines: All_Sky_AIflux 37-feature ANN, the advisor's current moments ANN (`train_Allsky_moments_narrow_values.py`, §2.3), and Ridge | footprint moments + geometry | footprint MSE / the advisor's log1p-weighted MAE | the reference bar, re-measured fairly (group splits, no `Fsw > 400` cut on the test set) |
 | **M1** | **Improved Guy model** using MODIS-only footprint features: mean/std per channel, channel ratios against 0.47/4.05/11 µm, trig of angles, glint, broadband reconstruction | footprint moments | footprint MSE/Huber; GBM + ANN | upper bound on footprint skill, and a teacher for the hybrids. Does not give a map. |
 | **M2** | **Pixel-additive model trained from moments.** E[x]…E[x⁴] are recoverable from mean/std/skew/kurt, so a per-channel polynomial `f` can be trained exactly on 5.26M footprints and then applied per pixel. | footprint moments → applied per pixel | exact aggregation loss for polynomial-additive `f` | a pixel model at full data scale; initialises M3 and M5 |
 | **M3** | Per-pixel MLP with aggregation loss | per-pixel channels + geometry + glint | `MSE(Σ w f, F)` | pixel-only skill, with no spatial context |
@@ -284,12 +344,10 @@ If τ > 0.8, sampling does not change the winner: fix S7 (or S5) and move on. Ot
 
 **Open questions (for the advisor):**
 1. ~~Can more `images/` granules be produced?~~ **Answered:** as much data as needed, any region and time; we start small (Pacific, 2014–2015, edge months). Unlabelled MODIS granules can be pulled from NASA.
-2. ~~How were the moments computed?~~ **Answered:** a weighted average over the footprint ellipse. Still pending: the code that built the triplets, which the advisor will send. It gives the exact weights and the meaning of the 0/1 tilt.
-3. ~~What does `FOVorientation` mean?~~ **Answered:** the side to which the footprint ellipse is tilted in the patch.
-4. How does a fixed 27×55 patch represent footprints that grow with VZA?
-5. ~~Meaning of `glintf`, `landf`, `Clrf`, `LiqPhsf`, `mDFNC`?~~ **Answered** (see §2.1). Two details remain for the code:
-   - `LiqPhsf` values of about 400 do not look like a percentage;
-   - `CF` (MODIS) and `Clrf` (CERES cloud mask) correlate weakly, which is now explained by their two different cloud masks.
+2. ~~How were the moments computed?~~ **Answered by the code** (§2.3): CERES-PSF-weighted. **Still needed: the file `ceres_psf.csv`**, to use the exact operator.
+3. ~~What does `FOVorientation` mean?~~ **Answered by the code:** the scan direction; 0 = PSF mirrored left-right.
+4. ~~How does a fixed 27×55 patch represent footprints that grow with VZA?~~ **Answered by the code:** it does not. The same 27×55 PSF is used at every VZA. Whether that matters off-nadir is a question for phase F (the CERES PSF in km grows with VZA).
+5. ~~Meaning of `glintf`, `landf`, `Clrf`, `LiqPhsf`, `mDFNC`?~~ **Answered by the code** (§2.1, §2.3). `LiqPhsf` has a bug and `landf` is a code, not a percentage. `CF` (MODIS relaxed mask, unweighted) and `Clrf` (CERES strong-clear %) come from different masks and definitions, which explains their weak correlation.
 6. ~~Origin of `mSumIsw`?~~ **Answered:** a MODIS sum built as a sanity check of the CERES integral.
 
 **Risks:**
@@ -367,7 +425,7 @@ The core is NumPy/SciPy only, so the tests run in CI without a GPU. Neural model
 | `Imviews` = SZA, VZA, RAA in degrees | **confirmed**, with RAA stored as 180° − scalars RAA |
 | Moments kurtosis type | **excess** (was assumed Pearson; fixed) |
 | CF scale | **fraction 0–1** (converted to percent in the table) |
-| Primary aggregation operator | **changed** to `fov_ellipse` (weighted ellipse, confirmed by the advisor; fitted to the sample to 8.6% RMS); exact weights expected from the advisor's code |
-| RAA convention for glint (specular at 0° vs 180°) | open: needs a glint scene |
+| Primary aggregation operator | **CERES PSF** (`ceres_psf`, from the advisor's code). It needs `ceres_psf.csv`; until then `fov_ellipse` (fitted to 8.6% RMS) |
+| RAA convention for glint (specular at 0° vs 180°) | **settled** by the code: SSF specular at 0°, `Imviews` at 180° |
 | Footprint radius for the leakage check (20 km) | plausible: centres are about 12.6 km apart and neighbouring patches share up to 72% of pixels |
 | Granules of one satellite less than 10 minutes apart are one group | unchanged |

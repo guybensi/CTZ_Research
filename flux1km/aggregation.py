@@ -2,10 +2,11 @@
 
 Every method is scored through the same operator (PLAN.md section 4.2). The stored moments are a
 weighted average over the footprint ellipse inside the 27x55 patch (advisor, Nov 2026), so the
-primary operator is "fov_ellipse": a tilted elliptical Gaussian whose tilt side follows
-FOVorientation. Its shape is provisional, fitted to the stored moments of the sample granule with
-fit_fov_ellipse; refit it on the full data in E0, or replace it with the real CERES PSF once the
-data-building code arrives. "uniform" and "gaussian_psf" are sensitivity checks.
+exact operator is "ceres_psf": the advisor's CERES PSF (ceres_psf.csv, resampled to 27x55 by
+load_ceres_psf), mirrored left-right where FOVorientation == 0. Until that CSV is in the repo the
+primary operator is "fov_ellipse", a tilted elliptical Gaussian fitted to the stored moments
+(fit_fov_ellipse); recover_psf_from_moments recovers the PSF itself from enough footprints.
+"uniform" and "gaussian_psf" are sensitivity checks.
 """
 from __future__ import annotations
 
@@ -57,7 +58,7 @@ def gaussian_psf_weights(h: int, w: int, fwhm_y: float, fwhm_x: float) -> np.nda
 # (sigma_major, sigma_minor, tilt in degrees) in pixels, fitted on data/sample (A2014060.0245):
 # relative error of mean/std vs the stored moments drops from 0.23 (uniform) to 0.09.
 FOV_ELLIPSE_DEFAULT = (9.6, 5.6, 47.7)
-OPERATORS = ("fov_ellipse", "uniform", "gaussian_psf")
+OPERATORS = ("ceres_psf", "fov_ellipse", "uniform", "gaussian_psf")
 
 
 def elliptical_gaussian_weights(h: int, w: int, sigma_major: float, sigma_minor: float, angle_deg: float) -> np.ndarray:
@@ -86,10 +87,10 @@ def elliptical_gaussian_weights(h: int, w: int, sigma_major: float, sigma_minor:
 
 
 def fov_weights(orientation, h: int = 27, w: int = 55, params=FOV_ELLIPSE_DEFAULT) -> np.ndarray:
-    """Per-footprint ellipse weights (N, h, w); FOVorientation 1 tilts by +angle, 0 by -angle.
+    """Per-footprint ellipse weights (N, h, w); FOVorientation 0 is the left-right mirror of 1.
 
-    Which flag value means which side is not verified yet (PLAN.md section 2.1); on the sample
-    both mappings fit equally well.
+    In the advisor's code, orientation 0 means the PSF is applied np.fliplr (scan direction); for a
+    centred ellipse that is the same as flipping the sign of the tilt.
 
     Example:
         >>> fov_weights(np.array([0, 1])).shape
@@ -135,6 +136,78 @@ def fit_fov_ellipse(patches: np.ndarray, mean: np.ndarray, std: np.ndarray, orie
 
     res = optimize.minimize(loss, np.asarray(x0, float), method="Nelder-Mead", options={"maxiter": 800})
     return tuple(float(v) for v in res.x), float(np.sqrt(res.fun))
+
+
+def load_ceres_psf(path, h: int = 27, w: int = 55) -> np.ndarray:
+    """Load the CERES PSF CSV exactly as the advisor's Generate_AllSky_2.py does.
+
+    The CSV is the NOAA-20 CERES PSF on a 250 m grid. Steps: drop the last row, append a zero
+    column, NaN -> 0, Fourier-resample to w columns and h rows (scipy.signal.resample), normalise to
+    sum 1. Fourier resampling can leave small negative lobes; they are kept, to match the stored
+    moments exactly.
+
+    Returns:
+        (h, w) weights for FOVorientation == 1.
+    """
+    import pandas as pd
+    from scipy import signal
+
+    psf = np.asarray(pd.read_csv(path), dtype=float)[:-1, :]
+    psf = np.concatenate([psf, np.zeros((psf.shape[0], 1))], axis=1)
+    psf = np.where(np.isnan(psf), 0.0, psf)
+    psf = signal.resample(psf, w, axis=1)
+    psf = signal.resample(psf, h, axis=0)
+    return psf / psf.sum()
+
+
+def oriented_psf(psf: np.ndarray, orientation) -> np.ndarray:
+    """Per-footprint PSF (N, h, w): as stored where FOVorientation == 1, np.fliplr where 0.
+
+    Example:
+        >>> p = np.array([[0.0, 1.0]])
+        >>> oriented_psf(p, [1, 0])[:, 0].tolist()
+        [[0.0, 1.0], [1.0, 0.0]]
+    """
+    o = np.asarray(orientation).astype(int).ravel()
+    return np.where(o[:, None, None] == 1, psf, psf[:, ::-1])
+
+
+def recover_psf_from_moments(patches: np.ndarray, mean: np.ndarray, orientation, ridge: float = 1e-6) -> np.ndarray:
+    """Recover the (h, w) PSF from stored footprint means by linear least squares.
+
+    The stored mean of channel c is sum_p w_p x_cp exactly, so every (footprint, channel) pair is
+    one linear equation in the h*w weights (mirrored for FOVorientation == 0). Needs more equations
+    than pixels, i.e. N * C > h * w (about 60 footprints for 27 channels on 27x55). An E0 fallback
+    if ceres_psf.csv is not available.
+
+    Args:
+        patches: (N, C, H, W) radiances as stored in images/.
+        mean: (N, C) stored footprint means.
+        orientation: (N,) FOVorientation.
+        ridge: Tikhonov regularisation (relative to the mean diagonal).
+
+    Returns:
+        (H, W) weights for FOVorientation == 1, normalised to sum 1.
+
+    Raises:
+        ValueError: If there are fewer equations than unknowns.
+    """
+    x = np.asarray(patches, float)
+    n, c, h, w = x.shape
+    if n * c <= h * w:
+        raise ValueError(f"{n * c} equations for {h * w} unknowns: need more footprints")
+    o = np.asarray(orientation).astype(int).ravel()
+    x = np.where(o[:, None, None, None] == 1, x, x[..., ::-1])  # put every patch in orientation-1 frame
+    A = x.reshape(n * c, h * w)
+    b = np.asarray(mean, float).reshape(n * c)
+    ok = np.all(np.isfinite(A), axis=1) & np.isfinite(b)
+    A, b = A[ok], b[ok]
+    scale = np.abs(b) + 1e-12  # relative residuals: channels have very different magnitudes
+    A, b = A / scale[:, None], b / scale
+    ata = A.T @ A
+    wts = np.linalg.solve(ata + ridge * np.trace(ata) / ata.shape[0] * np.eye(ata.shape[0]), A.T @ b)
+    wts = wts.reshape(h, w)
+    return wts / wts.sum()
 
 
 def aggregate(maps: np.ndarray, weights: np.ndarray, nan_policy: str = "renormalize") -> np.ndarray:
@@ -218,8 +291,11 @@ def random_subset_weights(weights: np.ndarray, fraction: float, rng: np.random.G
     return out / out.sum()
 
 
-def get_operator(name: str, h: int, w: int, orientation=None) -> np.ndarray:
-    """Return the named aggregation weights: "fov_ellipse", "uniform" or "gaussian_psf".
+def get_operator(name: str, h: int, w: int, orientation=None, psf: np.ndarray | None = None) -> np.ndarray:
+    """Return the named aggregation weights: "ceres_psf", "fov_ellipse", "uniform" or "gaussian_psf".
+
+    "ceres_psf" is the advisor's PSF (load_ceres_psf) oriented per footprint; it needs `psf` and
+    `orientation`, and is the exact operator the stored moments were built with.
 
     "fov_ellipse" needs the footprints' FOVorientation flags and returns (N, h, w); without them
     it falls back to the untilted ellipse (h, w). The others return shared (h, w) weights.
@@ -231,6 +307,10 @@ def get_operator(name: str, h: int, w: int, orientation=None) -> np.ndarray:
     Raises:
         KeyError: For an unknown operator name.
     """
+    if name == "ceres_psf":
+        if psf is None:
+            raise ValueError("ceres_psf needs the PSF array (aggregation.load_ceres_psf)")
+        return psf if orientation is None else oriented_psf(psf, orientation)
     if name == "fov_ellipse":
         if orientation is None:
             a, b, _ = FOV_ELLIPSE_DEFAULT

@@ -117,3 +117,42 @@ class TestFovEllipse:
         params, rms = ag.fit_fov_ellipse(patches, m, s, orient, x0=(10.0, 6.0, 20.0))
         assert rms < 0.01
         assert params[2] == pytest.approx(30.0, abs=5)
+
+
+class TestCeresPsf:
+    def test_load_matches_advisor_procedure(self, tmp_path):
+        import pandas as pd
+        rng = np.random.default_rng(0)
+        raw = rng.random((109, 219))
+        raw[0, 0] = np.nan
+        pd.DataFrame(raw).to_csv(tmp_path / "psf.csv", index=False)
+        psf = ag.load_ceres_psf(tmp_path / "psf.csv")
+        assert psf.shape == (27, 55) and psf.sum() == pytest.approx(1.0)
+
+    def test_oriented_psf_mirrors_for_orientation_zero(self):
+        psf = ag.elliptical_gaussian_weights(27, 55, 9.0, 5.0, 30.0)
+        o = ag.oriented_psf(psf, [1, 0])
+        np.testing.assert_allclose(o[0], psf)
+        np.testing.assert_allclose(o[1], psf[:, ::-1])
+
+    def test_operator_needs_psf(self):
+        with pytest.raises(ValueError):
+            ag.get_operator("ceres_psf", 27, 55, orientation=[1])
+        psf = ag.uniform_weights(27, 55)
+        assert ag.get_operator("ceres_psf", 27, 55, orientation=[1, 0], psf=psf).shape == (2, 27, 55)
+
+    def test_recover_psf_from_moments_exactly(self):
+        rng = np.random.default_rng(1)
+        h, w = 9, 15
+        true = ag.elliptical_gaussian_weights(h, w, 4.0, 2.0, 20.0)
+        true[4, 10] += 0.02  # an asymmetric lump, so the orientation handling matters
+        true /= true.sum()
+        patches = rng.gamma(2.0, 5.0, size=(30, 6, h, w))
+        orient = rng.integers(0, 2, 30)
+        mean = (patches * ag.oriented_psf(true, orient)[:, None]).sum(axis=(-2, -1))
+        rec = ag.recover_psf_from_moments(patches, mean, orient, ridge=1e-10)
+        np.testing.assert_allclose(rec, true, atol=1e-6)
+
+    def test_recover_needs_enough_equations(self):
+        with pytest.raises(ValueError):
+            ag.recover_psf_from_moments(np.ones((2, 3, 9, 15)), np.ones((2, 3)), [1, 0])

@@ -20,18 +20,25 @@ SW_WAVELENGTHS: tuple[float, ...] = tuple(float(x) for x in SW_LABELS)
 LW_WAVELENGTHS: tuple[float, ...] = tuple(float(x.rstrip("a")) for x in LW_LABELS)
 VIEW_CHANNELS: tuple[str, ...] = ("SZA", "VZA", "RAA")
 
-# MODIS (MYD021KM) band number of each channel. The 27 channels are bands 1-7, 17-19, 26 (SW) and
-# 20-25, 27-36 (LW); the ocean-colour bands 8-16 are not used. "3.96a" is band 21 (low-gain fire
-# channel), "3.96" is band 22.
-SW_MODIS_BANDS: tuple[int, ...] = (3, 4, 1, 2, 17, 19, 18, 5, 6, 7, 26)
+# MODIS (MYD021KM) band number of each channel, as read by the advisor's MOD_CERES_allsky:
+# SW = EV_500_Aggr1km bands 3,4 + EV_250_Aggr1km bands 1,2 + EV_1KM_RefSB bands 17,18,19
+#      + EV_500_Aggr1km bands 5,6,7 + band 26;  LW = EV_1KM_Emissive bands 20-25, 27-36.
+# The ocean-colour bands 8-16 are not used. "0.935" is band 18 (0.936 um), "0.940" band 19.
+# "3.96a" is band 21 (low-gain fire channel), "3.96" is band 22. Values are L1B radiances
+# (radiance_scales/offsets applied), W m-2 sr-1 um-1.
+SW_MODIS_BANDS: tuple[int, ...] = (3, 4, 1, 2, 17, 18, 19, 5, 6, 7, 26)
 LW_MODIS_BANDS: tuple[int, ...] = (20, 21, 22, 23, 24, 25, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36)
 
 # Storage conventions seen in the real files (PLAN.md section 2.1).
 MOMENTS_EXCESS_KURTOSIS = True   # kurt*spec is Fisher (excess) kurtosis: the files contain values < 1
 CF_TO_PERCENT = 100.0            # scalars CF is a fraction 0-1; the table stores it in percent
-IMVIEWS_RAA_IS_SUPPLEMENT = True  # Imviews RAA = 180 - scalars RAA (e.g. ~110 vs ~70 in the sample)
-# FOVorientation (0/1) says whether the footprint ellipse inside the 27x55 patch is tilted to one
-# side or the other (advisor). Which value is which tilt is not yet verified.
+# Imviews RAA is |SolarAzimuth - SensorAzimuth| folded to [0, 180] (MYD03), so the specular
+# (glint) direction is at 180. The scalars RAA is the CERES SSF relative azimuth, = 180 - Imviews
+# RAA, with the specular direction at 0. features.pixel_geometry converts to the CERES convention,
+# and geometry.glint_angle's default ("specular_at_0") then applies to both.
+IMVIEWS_RAA_IS_SUPPLEMENT = True
+# FOVorientation: 1 = the next CERES footprint lies at larger MODIS column (PSF used as stored),
+# 0 = it lies at smaller column (PSF mirrored left-right, np.fliplr). It encodes the scan direction.
 
 # Channels that look like stripes in the sample image (Aqua band 6 dead detectors, 14.23 um).
 BAD_CHANNELS: tuple[str, ...] = ("1.64", "14.23")
@@ -44,10 +51,17 @@ CERES_DERIVED_KEYS: frozenset[str] = frozenset({"Fsw", "Flw", "Isw", "Ilw", "Clr
 # channels the models already see.
 MODIS_BROADBAND_SANITY_KEYS: frozenset[str] = frozenset({"mSumIsw", "stdSumIsw", "mSumIlw", "stdSumIlw"})
 # MODIS-derived footprint products / metadata: filtering and stratification only, not inputs.
-#   landf    percent land in the footprint, from coordinates
-#   glintf   fraction of the footprint area in sun glint (MODIS)
-#   LiqPhsf  liquid fraction of the cloud (advisor's sum over MODIS pixels; sample values ~400, units TBC)
-#   mDFNC, stdDFNC  mean/std distance of the footprint's MODIS pixels to the nearest cloud pixel
+# Definitions from the advisor's MOD_CERES_allsky (see PLAN.md section 2.3):
+#   CF       fraction of valid pixels in the patch flagged cloudy by MYD35 (unweighted, 0-1)
+#   glintf   fraction of valid pixels with the MYD35 sun-glint flag set (unweighted, 0-1)
+#   landf    patch mean of the MYD35 2-bit land/water code (0 = water ... 3), NOT a percentage;
+#            landf == 0 means every pixel is water
+#   LiqPhsf  intended: liquid fraction of the cloud. The current code divides a granule-wide count
+#            by the footprint's cloudy-pixel count, so the stored values (~400) are not usable
+#   mDFNC, stdDFNC  PSF-weighted mean/std over clear pixels of the distance (pixels) to the nearest
+#            cloudy pixel; NaN where the distance exceeds the distance to the granule edge
+#   meanCTH, stdCTH  PSF-weighted mean/std of MYD06 1 km cloud-top height over cloudy pixels (m)
+#   AOD      CERES SSF PSF-weighted MOD04 ocean AOD at 0.55 um
 STRATIFICATION_KEYS: frozenset[str] = frozenset(
     {"CF", "meanCTH", "stdCTH", "LiqPhsf", "AOD", "Lat", "Lon", "glintf", "landf", "mDFNC", "stdDFNC"}
 )

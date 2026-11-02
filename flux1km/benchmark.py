@@ -41,11 +41,23 @@ class BenchmarkConfig:
     swath_gate: float = 5.0        # W m^-2: max forward/backscatter residual difference
     pcs_target: tuple[float, float] = (70.0, 90.0)
     patch: tuple[int, int] = (27, 55)
+    psf_path: str | None = None    # ceres_psf.csv; required by the "ceres_psf" operator
+
+
+_PSF_CACHE: dict[str, np.ndarray] = {}
+
+
+def _psf(cfg: BenchmarkConfig) -> np.ndarray | None:
+    if cfg.psf_path is None:
+        return None
+    if cfg.psf_path not in _PSF_CACHE:
+        _PSF_CACHE[cfg.psf_path] = aggregation.load_ceres_psf(cfg.psf_path, *cfg.patch)
+    return _PSF_CACHE[cfg.psf_path]
 
 
 def _weights(name: str, cfg: BenchmarkConfig, batch: Batch) -> np.ndarray:
     orientation = batch.images["FOVorientation"] if batch.has_images and "FOVorientation" in batch.images else None
-    return aggregation.get_operator(name, *cfg.patch, orientation=orientation)
+    return aggregation.get_operator(name, *cfg.patch, orientation=orientation, psf=_psf(cfg))
 
 
 def _footprint_pred(model, batch: Batch, w: np.ndarray, maps: np.ndarray | None) -> np.ndarray:
