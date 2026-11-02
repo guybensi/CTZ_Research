@@ -25,6 +25,8 @@ class FluxModel(ABC):
     produces_map = True
     uses_test_labels = False  # True only for diagnostics that read the footprint's own label
     complexity = 0  # decision rule: a more complex model must beat a simpler one significantly
+    needs_operator = False  # True: the benchmark passes operator=..., psf_path=... (aggregation-loss training)
+    needs_torch = False     # True: fit() imports PyTorch (lazily)
 
     def __init__(self, **params):
         self.params = params
@@ -225,6 +227,22 @@ class PixelPoly(_RidgeModel):
 MODELS: dict[str, type[FluxModel]] = {m.name: m for m in (Climatology, UniTR, FootprintRidge, BagPixelPoly, PixelPoly)}
 
 
+def register(cls: type[FluxModel]) -> type[FluxModel]:
+    """Class decorator: add a FluxModel subclass to MODELS under cls.name.
+
+    Example:
+        >>> # @register
+        >>> # class MyModel(FluxModel): name = "M99"; ...
+
+    Raises:
+        ValueError: If another class is already registered under the same name.
+    """
+    if cls.name in MODELS and MODELS[cls.name] is not cls:
+        raise ValueError(f"model name {cls.name!r} already registered")
+    MODELS[cls.name] = cls
+    return cls
+
+
 def get_model(name: str, **params) -> FluxModel:
     """Instantiate a registered model by name.
 
@@ -238,3 +256,7 @@ def get_model(name: str, **params) -> FluxModel:
     if name not in MODELS:
         raise KeyError(f"unknown model {name!r}; registered: {sorted(MODELS)}")
     return MODELS[name](**params)
+
+
+# The method modules (M0 legacy ANNs, M1, M3-M10, the hybrids) register themselves on import.
+from . import methods  # noqa: E402,F401

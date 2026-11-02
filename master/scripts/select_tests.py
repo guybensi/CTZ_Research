@@ -47,6 +47,9 @@ SHARED_PATTERNS = [
     "flux1km/aggregation.py",
     "flux1km/features.py",
     "flux1km/models.py",
+    # Helpers shared by every method module.
+    "flux1km/methods/_*.py",
+    "flux1km/benchmark.py",
 ]
 
 

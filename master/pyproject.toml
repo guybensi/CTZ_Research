@@ -10,10 +10,13 @@ requires-python = ">=3.10"
 dependencies = ["numpy>=1.24", "scipy>=1.10"]
 
 [project.optional-dependencies]
-dev = ["pytest>=7", "ruff>=0.4"]
+# scikit-learn: tree models (M1-gbm, M4, M9); pandas: reading ceres_psf.csv
+dev = ["pytest>=7", "ruff>=0.4", "scikit-learn>=1.3", "pandas>=1.5"]
+# neural methods (M0 ANNs, M1-ann, M3, M5, M6a-d, M6f); the GPU Docker image installs this extra
+ml = ["torch>=2.2", "scikit-learn>=1.3", "pandas>=1.5"]
 
 [tool.setuptools]
-packages = ["flux1km"]
+packages = ["flux1km", "flux1km.methods"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

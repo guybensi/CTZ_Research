@@ -85,3 +85,47 @@ class TestPixelPoly:
         t2 = copy.copy(train); t2.weight = np.zeros(len(train))
         with pytest.raises(ValueError):
             models.get_model("M2").fit(t2)
+
+
+ALL_METHODS = {"M0-ridge", "M0-allsky37", "M0-advisor", "M1-gbm", "M1-ann", "M2", "M3", "M4", "M5", "M6a", "M6b", "M6c", "M6d",
+               "M6e", "M6f", "M7", "M8", "M9", "M9-local", "M10", "M10-cmp", "B-clim", "B-const", "B-bagpixel"}
+
+
+class TestRegister:
+    def test_every_plan_method_is_registered(self):
+        assert ALL_METHODS <= set(models.MODELS)
+
+    def test_duplicate_name_rejected(self):
+        class Dup(models.FluxModel):
+            name = "M2"
+
+            def fit(self, train, val=None):
+                return self
+
+        with pytest.raises(ValueError):
+            models.register(Dup)
+
+    def test_test_label_readers_are_flagged(self):
+        assert {n for n, c in models.MODELS.items() if c.uses_test_labels} == {"B-const", "M6e", "M7", "M9-local"}
+
+
+class TestNoCeresInputs:
+    """PLAN.md rule 1: scrambling every CERES-derived scalar of the TEST footprints must not change any prediction."""
+
+    @pytest.mark.parametrize("name", sorted(ALL_METHODS))
+    def test_predictions_ignore_ceres_quantities(self, data, name):
+        from dataclasses import replace
+        cls = models.MODELS[name]
+        if cls.uses_test_labels:
+            pytest.skip("reads the test labels by design (never ranked)")
+        if cls.needs_torch:
+            pytest.importorskip("torch")
+        train, test = data
+        kw = {"epochs": 1} if cls.needs_torch else {}
+        if name == "M4":
+            kw = {"n_rounds": 3}
+        m = models.get_model(name, **kw).fit(train)
+        rng = np.random.default_rng(1)
+        junk = {k: rng.normal(size=len(test)) * 1e3 for k in ("Fsw", "Flw", "Isw", "Ilw", "Clrf")}
+        scrambled = replace(test, scalars={**test.scalars, **junk}, label=junk["Fsw"])
+        np.testing.assert_allclose(m.predict_footprint(test, W), m.predict_footprint(scrambled, W), rtol=1e-6)
