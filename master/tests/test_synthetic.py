@@ -54,3 +54,30 @@ class TestWriteDemoDataset:
     def test_writes_all_parts(self, tmp_path):
         ids = synthetic.write_demo_dataset(tmp_path, n_rows=2, n_cols=2)
         assert io.find_granules(tmp_path, require=("moments", "scalars", "images", "truth")) == sorted(ids)
+
+
+class TestHardScene:
+    def test_bounds_and_isw_anisotropy(self):
+        g = synthetic.make_synthetic_granule("A2014060.0245", np.random.default_rng(2), n_rows=3, n_cols=8, hard=True, label_noise=0)
+        assert np.all(g.truth["flux"] >= 0)
+        r = np.pi * g.scalars["Isw"] / g.scalars["Fsw"]
+        assert r.std() > 0.01  # the broadband radiance is not flux / pi: angle-dependent anisotropy
+
+    def test_part_of_the_ctz_is_hidden_from_the_channels(self):
+        kw = dict(shape=(60, 80), hard=True)
+        full = synthetic.make_scene(rng=np.random.default_rng(3), ctz=True, ctz_visible=1.0, **kw)
+        hidden = synthetic.make_scene(rng=np.random.default_rng(3), ctz=True, ctz_visible=0.0, **kw)
+        np.testing.assert_allclose(full["flux"], hidden["flux"], rtol=1e-6)    # same truth...
+        near = ~full["cloud"] & (full["dist_km"] <= 2)
+        assert full["sw"][2][near].mean() > hidden["sw"][2][near].mean()     # ...but the channels see less of the CTZ
+
+    def test_flux_is_nonlinear_in_the_channels(self):
+        assert synthetic.broadband_albedo(0.8, 0.8, 0.0) < 2 * synthetic.broadband_albedo(0.4, 0.4, 0.0) * 1.1
+        assert synthetic.broadband_albedo(0.4, 0.4, 60.0) > synthetic.broadband_albedo(0.4, 0.4, 0.0)
+
+    def test_invalid_ctz_visible(self):
+        with pytest.raises(ValueError):
+            synthetic.make_scene((10, 10), np.random.default_rng(0), ctz_visible=1.5)
+
+    def test_anisotropy_glint_lobe(self):
+        assert synthetic.anisotropy(30.0, 30.0, 0.0, 0.0, 0.0) > 2 * synthetic.anisotropy(30.0, 30.0, 180.0, 60.0, 0.0)

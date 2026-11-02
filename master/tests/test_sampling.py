@@ -105,3 +105,11 @@ class TestCompareStrategies:
         res = sampling.compare_strategies(t, ["S0", "S3"], columns=("Fsw", "CF"))
         assert res["jaccard"][("S0", "S3")] == pytest.approx(6 / 11)
         assert ("S3", "Fsw") in res["ks_vs_reference"]
+
+
+class TestMMD:
+    def test_identical_shifted_and_empty(self):
+        x = np.random.default_rng(0).normal(size=(300, 3))
+        assert sampling.mmd(x, x) == 0.0
+        assert sampling.mmd(x, x + 2.0) > sampling.mmd(x, x + 0.2) > 0
+        assert np.isnan(sampling.mmd(np.empty((0, 3)), x))

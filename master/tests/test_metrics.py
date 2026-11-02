@@ -103,3 +103,10 @@ class TestPixelScores:
         assert s["rmse"] == 0 and s["corr"] == pytest.approx(1) and s["ssim"] == pytest.approx(1)
         s2 = metrics.pixel_scores(t, np.broadcast_to(t.mean(axis=(1, 2), keepdims=True), t.shape))
         assert s2["ssim"] < 0.5 and s2["rmse"] > 10
+
+
+class TestBootstrapPValue:
+    def test_clear_difference_and_no_difference(self):
+        a = np.linspace(0, 1, 30)
+        assert metrics.paired_bootstrap(a, a + 5, n_boot=2000)["p_boot"] < 0.01
+        assert metrics.paired_bootstrap(a, a, n_boot=200)["p_boot"] == 1.0

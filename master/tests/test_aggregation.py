@@ -156,3 +156,25 @@ class TestCeresPsf:
     def test_recover_needs_enough_equations(self):
         with pytest.raises(ValueError):
             ag.recover_psf_from_moments(np.ones((2, 3, 9, 15)), np.ones((2, 3)), [1, 0])
+
+
+class TestScaledOperator:
+    def test_scale_and_name(self):
+        a = ag.get_operator("fov_ellipse:0.5", 27, 55, orientation=[1, 0])
+        b = ag.get_operator("fov_ellipse", 27, 55, orientation=[1, 0])
+        assert a.shape == b.shape == (2, 27, 55) and a.max() > b.max()
+        np.testing.assert_allclose(ag.scaled_fov_operator(1.0, 27, 55, [1, 0]), b)
+        with pytest.raises(ValueError):
+            ag.scaled_fov_operator(0.0)
+
+
+class TestLoadPsfFile:
+    def test_npy_and_npz(self, tmp_path):
+        arr = np.ones((27, 55))
+        np.save(tmp_path / "p.npy", arr)
+        np.savez(tmp_path / "p.npz", psf=arr)
+        for f in ("p.npy", "p.npz"):
+            np.testing.assert_allclose(ag.load_psf_file(tmp_path / f).sum(), 1.0)
+        np.save(tmp_path / "bad.npy", np.ones((3, 3)))
+        with pytest.raises(ValueError):
+            ag.load_psf_file(tmp_path / "bad.npy")

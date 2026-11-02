@@ -146,6 +146,45 @@ def ks_distance(x: np.ndarray, y: np.ndarray) -> float:
     return float(stats.ks_2samp(x[np.isfinite(x)], y[np.isfinite(y)]).statistic)
 
 
+def mmd(x: np.ndarray, y: np.ndarray, bandwidth: float | None = None, max_n: int = 2000, seed: int = 0) -> float:
+    """Squared maximum mean discrepancy with an RBF kernel (biased V-statistic), NaN rows dropped.
+
+    Columns are standardised on the pooled sample; the bandwidth defaults to the median pairwise
+    distance. Large samples are subsampled to max_n rows each.
+
+    Example:
+        >>> a = np.random.default_rng(0).normal(size=(200, 2))
+        >>> mmd(a, a) == 0.0, mmd(a, a + 3.0) > 0.5
+        (True, True)
+
+    Args:
+        x, y: Arrays (n, d) or (n,).
+    """
+    x = np.atleast_2d(np.asarray(x, float).T).T
+    y = np.atleast_2d(np.asarray(y, float).T).T
+    x, y = x[np.all(np.isfinite(x), 1)], y[np.all(np.isfinite(y), 1)]
+    if len(x) == 0 or len(y) == 0:
+        return np.nan
+    rng = np.random.default_rng(seed)
+    if len(x) > max_n:
+        x = x[rng.choice(len(x), max_n, replace=False)]
+    if len(y) > max_n:
+        y = y[rng.choice(len(y), max_n, replace=False)]
+    pooled = np.vstack([x, y])
+    mu, sd = pooled.mean(0), pooled.std(0)
+    sd[sd == 0] = 1.0
+    x, y, pooled = (x - mu) / sd, (y - mu) / sd, (pooled - mu) / sd
+
+    def sq(a, b):
+        return np.maximum((a**2).sum(1)[:, None] + (b**2).sum(1)[None] - 2 * a @ b.T, 0.0)
+
+    if bandwidth is None:
+        d = np.sqrt(sq(pooled, pooled))
+        bandwidth = float(np.median(d[d > 0])) if np.any(d > 0) else 1.0
+    g = 1.0 / (2 * bandwidth**2)
+    return float(np.exp(-g * sq(x, x)).mean() + np.exp(-g * sq(y, y)).mean() - 2 * np.exp(-g * sq(x, y)).mean())
+
+
 def rank_agreement(scores_a, scores_b) -> float:
     """Kendall tau between two method rankings (e.g. RMSE per method under two strategies).
 
@@ -158,13 +197,19 @@ def rank_agreement(scores_a, scores_b) -> float:
 
 def compare_strategies(table: FootprintTable, names: list[str], columns=("Fsw", "CF", "SZA", "VZA", "glint"),
                        reference: str = "S0", **params) -> dict:
-    """Pairwise Jaccard of the selected sets and KS distance of each strategy to the reference.
+    """Pairwise Jaccard of the selected sets, and KS (per column) and MMD (joint) distance to the reference.
 
     Returns:
-        {"jaccard": {(a, b): float}, "ks_vs_reference": {(name, column): float}, "n": {name: int}}
+        {"jaccard": {(a, b): float}, "ks_vs_reference": {(name, column): float},
+         "mmd_vs_reference": {name: float}, "n": {name: int}}
     """
     masks = {n: apply(n, table, **params.get(n, {}))[0] for n in set(names) | {reference}}
-    out = {"jaccard": {}, "ks_vs_reference": {}, "n": {n: int(masks[n].sum()) for n in names}}
+    out = {"jaccard": {}, "ks_vs_reference": {}, "mmd_vs_reference": {}, "n": {n: int(masks[n].sum()) for n in names}}
+    cols = [c for c in columns if c in table]
+    if cols:
+        joint = np.column_stack([np.asarray(table[c], float) for c in cols])
+        for n in names:
+            out["mmd_vs_reference"][n] = mmd(joint[masks[n]], joint[masks[reference]])
     for a, b in combinations(names, 2):
         out["jaccard"][(a, b)] = jaccard(masks[a], masks[b])
     for n in names:

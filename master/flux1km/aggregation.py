@@ -104,7 +104,7 @@ def fov_weights(orientation, h: int = 27, w: int = 55, params=FOV_ELLIPSE_DEFAUL
 
 
 def fit_fov_ellipse(patches: np.ndarray, mean: np.ndarray, std: np.ndarray, orientation,
-                    x0=FOV_ELLIPSE_DEFAULT) -> tuple[tuple[float, float, float], float]:
+                    x0=FOV_ELLIPSE_DEFAULT, maxiter: int = 800) -> tuple[tuple[float, float, float], float]:
     """Fit (sigma_major, sigma_minor, angle) so weighted patch mean/std reproduce stored moments.
 
     The E0 tool for recovering the aggregation operator from the data itself.
@@ -114,6 +114,7 @@ def fit_fov_ellipse(patches: np.ndarray, mean: np.ndarray, std: np.ndarray, orie
         mean, std: (N, C) stored moments of the same footprints.
         orientation: (N,) FOVorientation flags.
         x0: Starting parameters.
+        maxiter: Nelder-Mead iteration limit.
 
     Returns:
         (fitted parameters, RMS relative error of mean and std).
@@ -134,7 +135,7 @@ def fit_fov_ellipse(patches: np.ndarray, mean: np.ndarray, std: np.ndarray, orie
             e = np.concatenate([(m / mean - 1).ravel(), (s / std - 1).ravel()])
         return float(np.nanmean(e**2))
 
-    res = optimize.minimize(loss, np.asarray(x0, float), method="Nelder-Mead", options={"maxiter": 800})
+    res = optimize.minimize(loss, np.asarray(x0, float), method="Nelder-Mead", options={"maxiter": maxiter})
     return tuple(float(v) for v in res.x), float(np.sqrt(res.fun))
 
 
@@ -291,6 +292,55 @@ def random_subset_weights(weights: np.ndarray, fraction: float, rng: np.random.G
     return out / out.sum()
 
 
+def scaled_fov_operator(scale: float, h: int = 27, w: int = 55, orientation=None) -> np.ndarray:
+    """The fov_ellipse operator with both sigmas multiplied by `scale` (aggregation-size study).
+
+    Used by the synthetic-truth study (PLAN.md section 4.3, step 4) to repeat the experiment at
+    several footprint sizes. Reachable through get_operator as "fov_ellipse:<scale>".
+
+    Example:
+        >>> a = scaled_fov_operator(0.5, 27, 55); b = scaled_fov_operator(1.0, 27, 55)
+        >>> bool(a.max() > b.max()), a.shape
+        (True, (27, 55))
+
+    Args:
+        scale: Positive factor applied to sigma_major and sigma_minor.
+        h, w: Patch shape.
+        orientation: Optional (N,) FOVorientation; then the result is (N, h, w).
+
+    Raises:
+        ValueError: If scale is not positive.
+    """
+    if not scale > 0:
+        raise ValueError(f"scale must be positive, got {scale}")
+    a, b, th = FOV_ELLIPSE_DEFAULT
+    params = (a * scale, b * scale, th)
+    if orientation is None:
+        return elliptical_gaussian_weights(h, w, params[0], params[1], 0.0)
+    return fov_weights(orientation, h, w, params)
+
+
+def load_psf_file(path, h: int = 27, w: int = 55) -> np.ndarray:
+    """Load a PSF for the "ceres_psf" operator: the advisor's CSV, or an (h, w) .npy/.npz array.
+
+    A .npy/.npz file is what e0.fit_aggregation_operator writes after recover_psf_from_moments,
+    so the recovered PSF can replace ceres_psf.csv until the advisor sends it.
+
+    Raises:
+        ValueError: If a stored array does not have shape (h, w).
+    """
+    path = str(path)
+    if path.endswith(".csv"):
+        return load_ceres_psf(path, h, w)
+    arr = np.load(path)
+    if hasattr(arr, "files"):
+        arr = arr["psf"]
+    arr = np.asarray(arr, float)
+    if arr.shape != (h, w):
+        raise ValueError(f"PSF array {arr.shape} does not match patch {(h, w)}")
+    return arr / arr.sum()
+
+
 def get_operator(name: str, h: int, w: int, orientation=None, psf: np.ndarray | None = None) -> np.ndarray:
     """Return the named aggregation weights: "ceres_psf", "fov_ellipse", "uniform" or "gaussian_psf".
 
@@ -311,6 +361,8 @@ def get_operator(name: str, h: int, w: int, orientation=None, psf: np.ndarray | 
         if psf is None:
             raise ValueError("ceres_psf needs the PSF array (aggregation.load_ceres_psf)")
         return psf if orientation is None else oriented_psf(psf, orientation)
+    if name.startswith("fov_ellipse:"):
+        return scaled_fov_operator(float(name.split(":", 1)[1]), h, w, orientation)
     if name == "fov_ellipse":
         if orientation is None:
             a, b, _ = FOV_ELLIPSE_DEFAULT

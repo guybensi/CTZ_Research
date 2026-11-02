@@ -137,7 +137,9 @@ def paired_bootstrap(loss_a, loss_b, n_boot: int = 10000, seed: int = 0, alpha: 
     rng = np.random.default_rng(seed)
     boots = d[rng.integers(0, len(d), size=(n_boot, len(d)))].mean(axis=1)
     lo, hi = np.quantile(boots, [alpha / 2, 1 - alpha / 2])
-    return {"mean_diff": float(d.mean()), "ci_low": float(lo), "ci_high": float(hi), "n_units": len(d)}
+    # two-sided bootstrap p-value: how often the resampled mean falls on the other side of 0
+    p = float(min(1.0, 2 * min(np.mean(boots <= 0), np.mean(boots >= 0)))) if d.std() > 0 else (0.0 if d.mean() != 0 else 1.0)
+    return {"mean_diff": float(d.mean()), "ci_low": float(lo), "ci_high": float(hi), "p_boot": p, "n_units": len(d)}
 
 
 def wilcoxon_p(loss_a, loss_b) -> float:

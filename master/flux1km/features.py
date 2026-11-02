@@ -9,7 +9,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from . import geometry, moments, schema
+from . import aggregation, geometry, moments, schema
 from .io import Granule
 from .table import FootprintTable
 
@@ -27,6 +27,7 @@ class Batch:
     dist_km: np.ndarray | None             # synthetic only: distance to cloud
     group: np.ndarray
     weight: np.ndarray
+    granule: np.ndarray | None = None       # granule id of every row (None for synthetic windows)
 
     def __len__(self) -> int:
         return len(self.rows)
@@ -81,6 +82,7 @@ def make_batch(granules: list[Granule], table: FootprintTable, rows: np.ndarray,
         dist_km=None if tru is None else tru["dist_km"][inv].astype(float),
         group=np.asarray(table["group"])[rows],
         weight=np.ones(len(rows)) if weights is None else np.asarray(weights, float),
+        granule=gids,
     )
 
 
@@ -219,3 +221,29 @@ def pixel_poly_features(batch: Batch, input_set: str, degree: int):
     geo = X[:, n_ch:]
     pnames = [f"{c}^{k + 1}" for c in names[:n_ch] for k in range(degree)] + names[n_ch:]
     return np.concatenate([poly, geo], axis=1), pnames
+
+
+def footprint_weights(batch: Batch, operator: str = "fov_ellipse", psf: np.ndarray | None = None) -> np.ndarray:
+    """Aggregation weights H of every footprint in a batch: (N, H, W), each summing to 1.
+
+    The same operator the benchmark scores with, so a pixel model trained with the aggregation
+    loss sees exactly the operator it is evaluated with. FOVorientation is used when present.
+
+    Example:
+        >>> # w = footprint_weights(train, "fov_ellipse"); w.shape == (len(train), 27, 55)
+
+    Args:
+        batch: Batch with images.
+        operator: Name from aggregation.OPERATORS (or "fov_ellipse:<scale>").
+        psf: (H, W) PSF array, required by "ceres_psf".
+
+    Raises:
+        ValueError: If the batch has no images.
+    """
+    if not batch.has_images:
+        raise ValueError("footprint weights need images")
+    h, w = batch.images["ImSW"].shape[-2:]
+    orient = batch.images.get("FOVorientation")
+    wts = aggregation.get_operator(operator, h, w, orientation=orient, psf=psf)
+    wts = np.broadcast_to(wts, (len(batch), h, w)).astype(float)
+    return wts / wts.sum(axis=(-2, -1), keepdims=True)

@@ -4,6 +4,8 @@ Layout (as in data/paired/<region>/...):
     <root>/moments/A2014060.0245.npz   mSWspec, stdSWspec, skewSWspec, kurtSWspec, (same for LW), SWwavlngs, LWwavlngs
     <root>/scalars/A2014060.0245.npz   Fsw, Flw, Isw, ..., SZA, VZA, RAA, Lat, Lon, CF, ...
     <root>/images/A2014060.0245.npz    Imviews (N,3,H,W), ImSW (N,11,H,W), ImLW (N,16,H,W), FOVorientation (N,)
+                                       optional row0, col0 (N,): patch corner in the granule grid (synthetic data;
+                                       an in-house footprint index would provide them for real data; used by M7)
     <root>/truth/A2014060.0245.npz     synthetic data only: known 1 km truth and helper maps
 Footprints are in the same order in every file of a granule.
 """

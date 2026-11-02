@@ -84,3 +84,14 @@ class TestPixelGeometry:
         v[0, 2, 0] = [110.0, 0.0, 270.0]  # 270 can come out of the advisor's fold; it means 90
         _, _, raa = features.pixel_geometry({"Imviews": v})
         np.testing.assert_allclose(raa[0, 0], [70.0, 180.0, 90.0])
+
+
+class TestFootprintWeights:
+    def test_normalised_and_oriented(self):
+        g = synthetic.make_synthetic_granule("A2014060.0245", np.random.default_rng(0), n_rows=1, n_cols=3)
+        t = build_table([g])
+        b = features.make_batch([g], t, np.arange(3))
+        w = features.footprint_weights(b)
+        np.testing.assert_allclose(w.sum(axis=(1, 2)), 1.0)
+        np.testing.assert_allclose(w, aggregation.fov_weights(g.images["FOVorientation"]))
+        assert list(b.granule) == [g.granule_id] * 3
