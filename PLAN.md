@@ -179,6 +179,7 @@ Source: `legacy/advisor_code/` (driver `Generate_AllSky_2.py`; the function is i
 |---|---|---|
 | `LiqPhsf = nansum(CldPhs == 1) / nansum(cldmskfov)` uses the **whole granule's** phase array (`CldPhs`) instead of the footprint's (`cphsfov`) | the stored values (~400) are a granule-wide count over a footprint count: meaningless | `LiqPhsf` is not used until fixed |
 | `land` is parsed from the reversed bit string, so the 2-bit code is read with swapped bits (coastal ↔ desert) | `landf` is a mean *code*, not a fraction | use only `landf == 0` (all water) |
+| The same bit-order swap affects the 2-bit cloudiness code (uncertain ↔ probably clear) | none for the stored files: the default "relaxed" mask uses only the unambiguous "cloudy" class; the "strict" option would be wrong | keep "relaxed" if data is rebuilt |
 | `binary2 = binary[::-1]` re-reads byte 1 instead of byte 2 | the thin-cirrus and non-cloud-obstruction bits are wrong (not stored, so no effect on our files) | none |
 | `cldmskfov = BWmsk[:subsubRi:, ...]` in the bottom-edge branch (stray colon) | wrong `CF` for footprints touching the granule's last row (rare) | edge footprints can be dropped in E0 |
 | The RAA fold can exceed 180° when SolarAzimuth − SensorAzimuth < −180° | rare wrong pixel RAA | `features.pixel_geometry` folds it back into [0, 180] |
