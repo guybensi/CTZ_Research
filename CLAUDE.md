@@ -1,13 +1,15 @@
 # CLAUDE.md
 
-## Repository Layout (new phase)
+## Repository Layout
 
-The repo is split into **new work** and **old work**:
+The repo has two top-level work folders:
 
-- [Thesis_Goal.md](Thesis_Goal.md) and [PLAN.md](PLAN.md): the goal (1 km all-sky TOA flux map) and the explore-then-focus plan for the new phase. Read PLAN.md before starting new-phase work.
-- [flux1km/](flux1km/): all NEW code (pixel-level / UNet / hybrid methods, split manifests, aggregation operators, evaluation). See [flux1km/README.md](flux1km/README.md).
-- [legacy/](legacy/): the OLD footprint-level work (Guy model, benchmarks, All_Sky_AIflux), frozen. Use it as the M0 baseline and as a source of reusable pieces; do not extend it.
-- [Documentation/LITERATURE_LESSONS.md](Documentation/LITERATURE_LESSONS.md), [reports/](reports/) and [research_notes/](research_notes/): literature lessons and the deep-research report the plan is built on.
+- **[master/](master/)**: the M.Sc. work. **Read [master/PLAN.md](master/PLAN.md) first**: it is the plan to implement (goal, data format §2, candidate methods §3, benchmark protocol §4, sampling §5, decision rule §6, open questions §7, infrastructure §9).
+  - [master/flux1km/](master/flux1km/): the 1 km pipeline package (module map and how to add a method: [master/flux1km/README.md](master/flux1km/README.md)).
+  - [master/tests/](master/tests/), [master/scripts/](master/scripts/), [master/pyproject.toml](master/pyproject.toml).
+  - [master/research/](master/research/): the deep-research report (Hebrew) and notes behind the plan.
+- **[pre_master/](pre_master/)**: everything from before the M.Sc. plan (Guy model, benchmarks, All_Sky_AIflux), plus the advisor's data-building and training code in [pre_master/advisor_code/](pre_master/advisor_code/). Frozen: use it as the M0 baseline and as a reference, do not extend it.
+- Shared at the root: [Thesis_Goal.md](Thesis_Goal.md), [Documentation/LITERATURE_LESSONS.md](Documentation/LITERATURE_LESSONS.md), `data/` (git-ignored except the real sample granule in `data/sample/`), the Dockerfile and CI.
 
 ## New-Phase Rules
 
@@ -19,17 +21,17 @@ The repo is split into **new work** and **old work**:
 
 ### New-phase code workflow
 
-- Install and test: `pip install -e ".[dev]"`, then `pytest -q flux1km tests` (this includes the doctests); lint with `ruff check .` (`legacy/` is excluded).
-- Run: `python3 -m flux1km.cli --demo`, or `python3 -m flux1km.cli --data-root <dir> --manifest <json>`.
-- For every function: docstring with an example, then signature, then edge-case tests, then the implementation. Curate the tests into `tests/test_<module>.py`, one class per function. CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) uses that naming to run only the tests of changed modules ([scripts/select_tests.py](scripts/select_tests.py)). Core modules (schema, io, table, aggregation, features, models) trigger the full suite.
+- Work from `master/`: `cd master && pip install -e ".[dev]"`, then `pytest -q flux1km tests` (this includes the doctests); lint with `ruff check .`.
+- Run: `python3 -m flux1km.cli --demo`, or `python3 -m flux1km.cli --data-root <dir> --manifest <json> [--psf ceres_psf.csv]`.
+- For every function: docstring with an example, then signature, then edge-case tests, then the implementation. Curate the tests into `tests/test_<module>.py`, one class per function. CI ([.github/workflows/ci.yml](.github/workflows/ci.yml), run in `master/`) uses that naming to run only the tests of changed modules ([scripts/select_tests.py](master/scripts/select_tests.py)). Core modules (schema, io, table, aggregation, features, models) trigger the full suite.
 - Conventional commit messages (`feat(flux1km): ...`, `fix(splits): ...`, `docs: ...`).
-- Module map and how to add a method: [flux1km/README.md](flux1km/README.md).
+- Module map and how to add a method: [flux1km/README.md](master/flux1km/README.md).
 
-## Legacy Project Rules (apply to `legacy/` only)
+## Pre-master Project Rules (apply to `pre_master/` only)
 
 - Keep the original regression logic intact. Improve the training workflow by tuning parameters, cross-validation, and model selection rather than changing the scientific target.
-- Prefer changes in [legacy/python/benchmark_pipeline.py](legacy/python/benchmark_pipeline.py) for all ML workflow updates.
-- For feature combination exploration and model selection workflow, use [legacy/python/guys_benchmark_models.py](legacy/python/guys_benchmark_models.py) which systematically benchmarks classical models before training ANN.
+- Prefer changes in [pre_master/python/benchmark_pipeline.py](pre_master/python/benchmark_pipeline.py) for all ML workflow updates.
+- For feature combination exploration and model selection workflow, use [pre_master/python/guys_benchmark_models.py](pre_master/python/guys_benchmark_models.py) which systematically benchmarks classical models before training ANN.
 - Keep the code runnable before the real dataset is available by preserving demo mode.
 - Use the GPU-enabled Docker workflow for ANN training and mark GPU as required inside the container.
 - Save model artifacts and metrics in `benchmark_outputs/`.
@@ -41,16 +43,16 @@ docker build -t ctz_research:gpu .
 docker run --gpus all --rm -it -v "$PWD":/app ctz_research:gpu
 ```
 
-Inside the container, the default command runs the new-phase benchmark in demo mode (`python3 -m flux1km.cli --demo`). The legacy benchmark script with its demo dataset:
+Inside the container, the default command runs the `master/` benchmark in demo mode (`python3 -m flux1km.cli --demo`). The pre-master benchmark script with its demo dataset:
 
 ```bash
-python3 legacy/python/benchmark_pipeline.py --demo
+python3 pre_master/python/benchmark_pipeline.py --demo
 ```
 
 To run against real data:
 
 ```bash
-python3 legacy/python/benchmark_pipeline.py --data-path /data --output-dir benchmark_outputs
+python3 pre_master/python/benchmark_pipeline.py --data-path /data --output-dir benchmark_outputs
 ```
 
 ### Guy's Model - Feature Combination Benchmark
@@ -59,22 +61,22 @@ Run feature combination analysis with automatic model selection, hyperparameter 
 
 ```bash
 # Demo mode (synthetic data)
-python3 legacy/python/guys_benchmark_models.py --demo
+python3 pre_master/python/guys_benchmark_models.py --demo
 
 # With real paired data (default)
-python3 legacy/python/guys_benchmark_models.py
+python3 pre_master/python/guys_benchmark_models.py
 
 # Custom output directory and epochs
-python3 legacy/python/guys_benchmark_models.py --output-dir my_results --ann-epochs 200
+python3 pre_master/python/guys_benchmark_models.py --output-dir my_results --ann-epochs 200
 
 # Skip classical models, go straight to ANN
-python3 legacy/python/guys_benchmark_models.py --skip-classical
+python3 pre_master/python/guys_benchmark_models.py --skip-classical
 
 # With specific data region
-python3 legacy/python/guys_benchmark_models.py --data-root data/paired/North15_March2014/2014
+python3 pre_master/python/guys_benchmark_models.py --data-root data/paired/North15_March2014/2014
 
 # Rank features by Random Forest importance and benchmark top-N subsets (5/10/15/20/24) instead of the fixed combinations
-python3 legacy/python/guys_benchmark_models.py --feature-selection importance
+python3 pre_master/python/guys_benchmark_models.py --feature-selection importance
 ```
 
 **What it does:**
@@ -99,47 +101,47 @@ To run the original paired NPZ workflow on specific data regions:
 
 ```bash
 # North15 March 2014 data
-python3 legacy/python/All_Sky_AIflux.py --data-path data/paired/North15_March2014/2014
+python3 pre_master/python/All_Sky_AIflux.py --data-path data/paired/North15_March2014/2014
 
 # Pacific 2014-2015 data
-python3 legacy/python/All_Sky_AIflux.py --data-path data/paired/Pacific_2014-2015
+python3 pre_master/python/All_Sky_AIflux.py --data-path data/paired/Pacific_2014-2015
 ```
 
 To build a legacy training dataset from paired moments/scalars:
 
 ```bash
 # Default uses Pacific 2014-2015
-python3 legacy/python/build_legacy_dataset_from_pairs.py
+python3 pre_master/python/build_legacy_dataset_from_pairs.py
 
 # Or specify a different region
-python3 legacy/python/build_legacy_dataset_from_pairs.py --data-root data/paired/North15_March2014/2014
+python3 pre_master/python/build_legacy_dataset_from_pairs.py --data-root data/paired/North15_March2014/2014
 ```
 
 Quick NPZ inspection example:
 
 ```bash
-python3 legacy/python/Details_of_npz.py --data-root data/test --file-type images --file-name A2014060.0245.npz
+python3 pre_master/python/Details_of_npz.py --data-root data/test --file-type images --file-name A2014060.0245.npz
 ```
 
 To sample a fraction of a large paired data directory into a single NPZ (useful for quick local iteration before running the full benchmark):
 
 ```bash
-python3 legacy/python/sample_paired_data.py data/paired/Pacific_2014-2015 benchmark_outputs/sampled_data.npz
+python3 pre_master/python/sample_paired_data.py data/paired/Pacific_2014-2015 benchmark_outputs/sampled_data.npz
 ```
 
 ### Guy Model (Final Locked-Down Recipe)
 
-Once [legacy/python/guys_benchmark_models.py](legacy/python/guys_benchmark_models.py) `--feature-selection importance` has identified the best combo/model, [legacy/python/guy_model_2.0.py](legacy/python/guy_model_2.0.py) locks that recipe in (currently: top-20 Random Forest importance-selected features, Ridge alpha=1.0 baseline, plus the ANN) and trains it directly without re-running the full sweep:
+Once [pre_master/python/guys_benchmark_models.py](pre_master/python/guys_benchmark_models.py) `--feature-selection importance` has identified the best combo/model, [pre_master/python/guy_model_2.0.py](pre_master/python/guy_model_2.0.py) locks that recipe in (currently: top-20 Random Forest importance-selected features, Ridge alpha=1.0 baseline, plus the ANN) and trains it directly without re-running the full sweep:
 
 ```bash
-python3 legacy/python/guy_model_2.0.py --demo
-python3 legacy/python/guy_model_2.0.py --data-root data/paired/Pacific_2014-2015
+python3 pre_master/python/guy_model_2.0.py --demo
+python3 pre_master/python/guy_model_2.0.py --data-root data/paired/Pacific_2014-2015
 
 # Restricted 37-feature All_Sky_AIflux-style pool, no RF trimming
-python3 legacy/python/guy_model_2.0.py --feature-source allsky37 --data-root data/paired/Pacific_2014-2015
+python3 pre_master/python/guy_model_2.0.py --feature-source allsky37 --data-root data/paired/Pacific_2014-2015
 ```
 
-The script is versioned: [legacy/python/guy_model_1.0.py](legacy/python/guy_model_1.0.py) is the original recipe (no `--feature-source` flag, always top-20 of 129 features) kept for reference; `guy_model_2.0.py` adds the `--feature-source {full,allsky37}` option, with `full` (default) reproducing 1.0 exactly. See [legacy/Documentation/GUY_MODEL_VS_ALLSKY_COMPARISON.txt](legacy/Documentation/GUY_MODEL_VS_ALLSKY_COMPARISON.txt) for the results behind both versions. If a future benchmark run picks a different combo/model as the practical recommendation, bump the version (e.g. add `guy_model_3.0.py`) and update the constants and imports at its top to match.
+The script is versioned: [pre_master/python/guy_model_1.0.py](pre_master/python/guy_model_1.0.py) is the original recipe (no `--feature-source` flag, always top-20 of 129 features) kept for reference; `guy_model_2.0.py` adds the `--feature-source {full,allsky37}` option, with `full` (default) reproducing 1.0 exactly. See [pre_master/Documentation/GUY_MODEL_VS_ALLSKY_COMPARISON.txt](pre_master/Documentation/GUY_MODEL_VS_ALLSKY_COMPARISON.txt) for the results behind both versions. If a future benchmark run picks a different combo/model as the practical recommendation, bump the version (e.g. add `guy_model_3.0.py`) and update the constants and imports at its top to match.
 
 ## Editing Notes
 
@@ -172,11 +174,11 @@ data/
 
 ## Python Folder Migration Notes
 
-- Python scripts are now under [python](python).
+- Pre-master Python scripts are under [pre_master/python](pre_master/python); M.Sc. code is under [master/flux1km](master/flux1km).
 - Local data is organized under [data/paired](data/paired) by region.
 - Test subset is [data/test](data/test).
 - Pre-built training data goes in [data/consolidated](data/consolidated).
-- New feature combination benchmark script: [legacy/python/guys_benchmark_models.py](legacy/python/guys_benchmark_models.py) — compares classical models, hyperparameter-tunes, then trains ANN.
-- New sampling helper: [legacy/python/sample_paired_data.py](legacy/python/sample_paired_data.py) — samples a fraction of a paired data directory into a single NPZ.
-- New locked-down recipe script: [legacy/python/guy_model_2.0.py](legacy/python/guy_model_2.0.py) (previously [legacy/python/guy_model_1.0.py](legacy/python/guy_model_1.0.py)) — trains the production recipe (Ridge + ANN on top-20 importance-selected features) picked by the benchmark.
+- New feature combination benchmark script: [pre_master/python/guys_benchmark_models.py](pre_master/python/guys_benchmark_models.py) — compares classical models, hyperparameter-tunes, then trains ANN.
+- New sampling helper: [pre_master/python/sample_paired_data.py](pre_master/python/sample_paired_data.py) — samples a fraction of a paired data directory into a single NPZ.
+- New locked-down recipe script: [pre_master/python/guy_model_2.0.py](pre_master/python/guy_model_2.0.py) (previously [pre_master/python/guy_model_1.0.py](pre_master/python/guy_model_1.0.py)) — trains the production recipe (Ridge + ANN on top-20 importance-selected features) picked by the benchmark.
 

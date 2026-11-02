@@ -11,4 +11,4 @@ paths on the advisor's server.
 | `Plotting_AllSky_ML.py` | Comparison figure of two trained models (needs `esh_fun_module`, not included). |
 
 What this code tells us about the data, and the problems found in it, are documented in
-[PLAN.md](../../PLAN.md) section 2.3.
+[PLAN.md](../../master/PLAN.md) section 2.3.

@@ -1,6 +1,6 @@
 # flux1km: new-phase work (1 km all-sky TOA flux map)
 
-This is the shared infrastructure for [PLAN.md](../PLAN.md). Every candidate method plugs into one leakage-safe protocol. The old footprint-level code lives in [legacy/](../legacy/).
+This is the shared infrastructure for [PLAN.md](../PLAN.md). Every candidate method plugs into one leakage-safe protocol. The old footprint-level code lives in [pre_master/](../../pre_master/).
 
 The core is NumPy/SciPy only, so it runs and is tested without a GPU. Everything works today on synthetic data that has a known 1 km truth (`--demo`).
 

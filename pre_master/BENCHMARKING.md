@@ -15,7 +15,7 @@ This repository now includes a reusable benchmark pipeline at [python/benchmark_
 Use demo mode until the final dataset is available:
 
 ```bash
-python3 legacy/python/benchmark_pipeline.py --demo --output-dir benchmark_outputs
+python3 pre_master/python/benchmark_pipeline.py --demo --output-dir benchmark_outputs
 ```
 
 ## Real data mode
@@ -23,7 +23,7 @@ python3 legacy/python/benchmark_pipeline.py --demo --output-dir benchmark_output
 Point the script at a CSV file, an NPZ file, or a directory containing data files:
 
 ```bash
-python3 legacy/python/benchmark_pipeline.py --data-path /path/to/data --output-dir benchmark_outputs
+python3 pre_master/python/benchmark_pipeline.py --data-path /path/to/data --output-dir benchmark_outputs
 ```
 
 ## GPU behavior
@@ -32,7 +32,7 @@ The ANN benchmark uses TensorFlow. When the container is launched with GPU acces
 
 ## Original model tuning
 
-The copied original pipeline in [All_Sky_AIflux.py](All_Sky_AIflux.py) now supports a pre-load tuning step that searches a small synthetic ANN hyperparameter space before the real dataset is loaded. Use `--preload-tuning` to run the search and `--preload-only` if you only want the tuning summary.
+The copied original pipeline in [All_Sky_AIflux.py](python/All_Sky_AIflux.py) now supports a pre-load tuning step that searches a small synthetic ANN hyperparameter space before the real dataset is loaded. Use `--preload-tuning` to run the search and `--preload-only` if you only want the tuning summary.
 
 ## Outputs
 

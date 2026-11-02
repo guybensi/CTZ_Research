@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-28
 **Purpose:** what the papers reviewed in October 2026 teach about how the thesis model (a 1 km all-sky TOA flux map from MODIS, trained against CERES footprints) should be built, trained and validated, and what to watch out for.
-**Status:** guidance notes, not an implementation. Complements [plan_CV.txt](plan_CV.txt) and [../Thesis_Goal.md](../Thesis_Goal.md).
+**Status:** guidance notes, not an implementation. Complements [plan_CV.txt](../pre_master/Documentation/plan_CV.txt) and [../Thesis_Goal.md](../Thesis_Goal.md).
 
 ## Sources
 

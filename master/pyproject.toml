@@ -22,7 +22,6 @@ addopts = "--doctest-modules --import-mode=importlib"
 
 [tool.ruff]
 line-length = 150
-extend-exclude = ["legacy"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP"]

@@ -2,8 +2,9 @@
 """Select which pytest files to run based on files changed since a git ref.
 
 Mapping:
-    flux1km/foo.py                -> tests/test_foo.py
-    flux1km/sub/foo.py            -> tests/test_foo.py (or tests/sub/test_foo.py if it exists)
+    master/flux1km/foo.py         -> tests/test_foo.py   (paths printed relative to master/)
+    master/flux1km/sub/foo.py     -> tests/test_foo.py (or tests/sub/test_foo.py if it exists)
+    changes outside master/ (pre_master/, docs) select nothing, except CI or data/sample -> ALL
     tests/test_foo.py             -> tests/test_foo.py
     shared files (see SHARED_PATTERNS) -> ALL (full suite)
 
@@ -22,6 +23,7 @@ import fnmatch
 import subprocess
 from pathlib import Path
 
+PROJECT_DIR = "master"  # git paths are repo-relative; tests run from inside this folder
 SRC_ROOT = "flux1km"
 TESTS_ROOT = "tests"
 # Changes to these mean "many modules may be affected" -> run everything.
@@ -88,6 +90,11 @@ def main() -> None:
         print("ALL")  # unknown base (e.g. first push) -> be safe
         return
 
+    if any(f.startswith(".github/workflows/") or f == "data/sample" or f.startswith("data/sample/") for f in files):
+        print("ALL")
+        return
+    prefix = PROJECT_DIR + "/"
+    files = [f[len(prefix):] for f in files if f.startswith(prefix)]
     if any(is_shared(f) for f in files):
         print("ALL")
         return

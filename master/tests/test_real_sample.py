@@ -11,7 +11,7 @@ import pytest
 from flux1km import aggregation, features, io, models, schema
 from flux1km.table import build_table
 
-ROOT = Path(__file__).resolve().parents[1] / "data" / "sample"
+ROOT = Path(__file__).resolve().parents[2] / "data" / "sample"  # repo root / data / sample
 GID = "A2014060.0245"
 pytestmark = pytest.mark.skipif(not (ROOT / "images" / f"{GID}.npz").exists(), reason="no real sample data")
 

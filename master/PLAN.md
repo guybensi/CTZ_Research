@@ -1,8 +1,8 @@
 # PLAN: 1 km All-Sky TOA Flux Map (new phase)
 
-This plan covers the new phase of the thesis: turning [Thesis_Goal.md](Thesis_Goal.md) into a 1 km flux map. It is deliberately generic. First every candidate direction is benchmarked under one frozen protocol, then work focuses on the method closest to CERES.
+This plan covers the new phase of the thesis: turning [Thesis_Goal.md](../Thesis_Goal.md) into a 1 km flux map. It is deliberately generic. First every candidate direction is benchmarked under one frozen protocol, then work focuses on the method closest to CERES.
 
-The detailed reasoning, citations and numbers are in the research report [reports/תוכנית מחקר מפת שטף 1 קמ.md](reports/תוכנית%20מחקר%20מפת%20שטף%201%20קמ.md) (Hebrew). Its source notes are in [research_notes/](research_notes/). The literature lessons are in [Documentation/LITERATURE_LESSONS.md](Documentation/LITERATURE_LESSONS.md). The previous footprint-level work is frozen under [legacy/](legacy/).
+The detailed reasoning, citations and numbers are in the research report [reports/תוכנית מחקר מפת שטף 1 קמ.md](research/reports/%D7%AA%D7%95%D7%9B%D7%A0%D7%99%D7%AA%20%D7%9E%D7%97%D7%A7%D7%A8%20%D7%9E%D7%A4%D7%AA%20%D7%A9%D7%98%D7%A3%201%20%D7%A7%D7%9E.md) (Hebrew). Its source notes are in [research_notes/](research/research_notes/). The literature lessons are in [Documentation/LITERATURE_LESSONS.md](../Documentation/LITERATURE_LESSONS.md). The previous footprint-level work is frozen under [pre_master/](../pre_master/).
 
 ---
 
@@ -46,7 +46,7 @@ Nothing is benchmarked until these items are done:
 - [x] Footprint overlap on the sample: centres about 12.6 km apart, up to 72% shared pixels. Still to repeat on a full overpass.
 - [ ] Build one frozen **split manifest** (§4.1) and an automatic pixel-reuse leakage check.
 - [ ] Re-run the legacy baselines inside the new protocol. The old numbers (17.72 and 15.33 W m⁻²) used random row splits, and early stopping on the test set, so they are optimistic.
-- [x] The advisor's data-building code received (§2.3, `legacy/advisor_code/`).
+- [x] The advisor's data-building code received (§2.3, `pre_master/advisor_code/`).
 - [ ] Get `ceres_psf.csv` from the advisor and switch the primary operator to `ceres_psf`. Fallback: `aggregation.recover_psf_from_moments` on ≥ 60 footprints.
 - [ ] Report the `LiqPhsf` bug (and the minor ones) to the advisor (§2.3).
 
@@ -134,7 +134,7 @@ The ocean-colour bands 8–16 are not used. Aqua band 6 (1.64 µm) has known dea
 
 ### 2.3 How the triplets are built (advisor's `MOD_CERES_allsky`)
 
-Source: `legacy/advisor_code/` (driver `Generate_AllSky_2.py`; the function is in `Twilight_module.py`). For every MODIS granule and every CERES footprint it does the following.
+Source: `pre_master/advisor_code/` (driver `Generate_AllSky_2.py`; the function is in `Twilight_module.py`). For every MODIS granule and every CERES footprint it does the following.
 
 1. **Inputs read.**
    - **MYD021KM radiances**, with `radiance_scales`/`offsets` applied, in W m⁻² sr⁻¹ µm⁻¹:
@@ -360,19 +360,22 @@ If τ > 0.8, sampling does not change the winner: fix S7 (or S5) and move on. Ot
 ## 8. Repository layout
 
 ```
-Thesis_Goal.md        goal and success criteria (unchanged)
-PLAN.md               this plan
-Documentation/        shared docs: LITERATURE_LESSONS.md
-reports/              deep-research reports (Hebrew), the basis for this plan
-research_notes/       source notes behind the reports
-flux1km/              NEW work: 1 km pipeline, flat modules (see §9 and flux1km/README.md)
-tests/                tests for flux1km (tests/test_<module>.py)
-scripts/, .github/     CI: lint + tests of changed modules (full suite on main)
-legacy/               OLD footprint-level work, frozen for reference and baselines
-  python/             All_Sky_AIflux, guys_benchmark_models, guy_model_1.0/2.0, ...
-  Documentation/      benchmark results, comparisons, plan_CV, ideas
-  projects/, outputs/ old run artefacts
-data/                 local data (git-ignored): paired/, test/, consolidated/
+Thesis_Goal.md          goal and success criteria (unchanged)
+Documentation/          shared docs: LITERATURE_LESSONS.md
+data/                   local data (git-ignored) + data/sample/ (one real granule, tracked)
+master/                 THE M.Sc. WORK: this plan and its implementation
+  PLAN.md               this plan
+  research/             deep-research report (Hebrew) and source notes behind this plan
+  flux1km/              the 1 km pipeline, flat modules (see §9 and flux1km/README.md)
+  tests/                tests for flux1km (tests/test_<module>.py)
+  scripts/              CI helper: run only the tests of changed modules
+  pyproject.toml        package + lint/test config (install from master/)
+pre_master/             OLD work from before the M.Sc. plan, frozen for reference and baselines
+  python/               All_Sky_AIflux, guys_benchmark_models, guy_model_1.0/2.0, ...
+  Documentation/        benchmark results, comparisons, plan_CV, ideas
+  advisor_code/         the advisor's data-building and training code (§2.3)
+  projects/, outputs/   old run artefacts
+.github/workflows/      CI (lint + tests, run from master/)
 ```
 
 ## 9. Infrastructure (`flux1km/`, built before the data arrives)
@@ -406,6 +409,8 @@ Nothing is run on real data until it arrives. Meanwhile the shared machinery is 
 ```
 
 ### Build order
+
+All paths in this section are relative to `master/`.
 
 1. `schema`, `geometry`, `moments` (no dependencies)
 2. `synthetic` (demo data in the real file layout)
