@@ -19,10 +19,15 @@ python3 -m flux1km.cli --data-root data/test --split logo --manifest benchmark_o
 ```
 
 ```bash
+python3 -m flux1km.methods.m5_unet --demo --demo-hard    # one method alone, harder synthetic scene
+python3 -m flux1km.e0 --data-root data/sample             # stage E0 report + frozen split manifest
+```
+
+```bash
 pytest -q flux1km tests
 ```
 
-The demo writes the six image-granule names as synthetic granules, groups them by overpass and builds leave-one-group-out folds plus the interleave test. It then runs the baselines and prints macro RMSE, pixel RMSE against truth and the decision log. Outputs go to `benchmark_outputs/flux1km/run_*/`, which holds `predictions.csv` and `summary.json`.
+The demo writes the six image-granule names as synthetic granules, groups them by overpass and builds leave-one-group-out folds plus the interleave test. It then runs every registered method and prints macro RMSE, pixel RMSE against truth and the decision log. Outputs go to `benchmark_outputs/flux1km/run_*/`, which holds **`results.txt`** (every result in plain text), `predictions.csv` and `summary.json`. What each method is and how to read `results.txt`: [../MODELS.md](../MODELS.md).
 
 ## Modules
 
@@ -41,8 +46,30 @@ The demo writes the six image-granule names as synthetic granules, groups them b
 | `models` | `FluxModel` interface and baselines: B-clim, B-const (uniTR), M0-ridge, B-bagpixel, M2 | §3 |
 | `metrics` | scores by regime, macro RMSE, residual trends, swath-side asymmetry, bootstrap / Wilcoxon / DM / Holm, pixel RMSE / corr / SSIM | §4.2 |
 | `physics` | distance to cloud, flux vs distance, pure clear-sky flux, bounds, percentile spread, footprint-spacing artefact | §4.3 |
-| `benchmark` | tune within a shared budget, then run, score, compare and decide | §4, §6 |
-| `cli` | command-line entry point | |
+| `benchmark` | tune within a shared budget, then run, score, compare and decide; a failing method is logged, not fatal | §4, §6 |
+| `decision` | the decision rule: gates (physics, flat residuals, swath asymmetry, ranking flip), bootstrap+Holm and regime noise floor, tie-breakers, M3/M2 default, the UNet-vs-M6b rule | §6 |
+| `report` | the plain-text `results.txt` of every run | |
+| `e0` | stage E0: inventory/unpack, value ranges and units, FOVorientation check, moments vs patches, fitted operator H, overlap, bad-channel striping, frozen manifest (Arena A/B, blocks) with leakage check, advisor bug report | §2 |
+| `sampling_study` | S0–S7 × leading methods: Jaccard/KS/MMD, train-on-Si × test-subpopulation matrix, Kendall τ rule | §5 |
+| `synthetic_study` | synthetic-truth experiment: pixel scores vs B-const, footprint counts × aggregation sizes, no-CTZ control | §4.3 |
+| `cli`, `run_single` | command-line entry points (all methods / one method module) | |
+| `methods/` | the candidate methods, one family per module (table below) | §3 |
+
+### `methods/`
+
+| Module | Registered models | |
+|---|---|---|
+| `m0_legacy` | M0-allsky37, M0-advisor | legacy footprint ANNs (M0-ridge is in `models`) |
+| `m1_guy` | M1-gbm, M1-ann | improved Guy model (footprint-level; teacher of M6d/M6f) |
+| `m3_pixel_mlp` | M3 | per-pixel MLP, aggregation loss (+ manifold / random-subset regularisation) |
+| `m4_context_gbm` | M4 | boosted trees on pixel + context features, aggregate gradient |
+| `m5_unet` | M5 | UNet, aggregation loss + edge-aware smoothness |
+| `m6a_cnn_tabular` … `m6f_pseudo_labels` | M6a–M6f | the hybrids |
+| `m7_atprk` | M7 | area-to-point regression kriging (reads test labels) |
+| `m8_nb2bb` | M8 | narrowband → broadband (label `Isw`) → empirical ADM |
+| `m9_homogeneous` | M9, M9-local | homogeneous-footprint transfer (Gao) |
+| `m10_gp` | M10, M10-cmp | GP aggregate models with random Fourier features |
+| `_common`, `_torch`, `_base` | | shared helpers: context features, PyTorch training with the aggregation loss, base classes |
 
 ## Adding a method
 
@@ -51,7 +78,7 @@ The demo writes the six image-granule names as synthetic granules, groups them b
    - `predict_map(batch) -> (N, H, W)` for map methods;
    - or override `predict_footprint` for footprint-only methods.
 2. Return candidate hyper-parameters from `param_grid()`. The benchmark tries at most `budget` of them on the validation set.
-3. Register it in `models.MODELS`. Neural models (M3, M5, M6) go in their own module that imports TF/PyTorch inside `fit`, so the core stays light.
+3. Put it in its own module under `methods/`, decorate the class with `@models.register`, import the module in `methods/__init__.py`, and end the module with `if __name__ == "__main__": from ..run_single import main_for; main_for(["<name>"])` so it runs alone. Neural models subclass `methods._base.MapNetModel` and import PyTorch only inside `fit` (`methods._torch`), so the core stays light. Set `needs_operator = True` to be trained with the scoring operator, and `uses_test_labels = True` if the method reads the test footprints' labels.
 4. Build inputs with `features.*`, which runs the CERES leakage guard.
 
 ## Assumptions to verify in stage E0

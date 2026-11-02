@@ -33,22 +33,22 @@ SW comes first. LW (`Flw`) is a second head on the same framework once SW works.
 
 Nothing is benchmarked until these items are done:
 
-- [ ] Unpack `Data_toGuy.zip` (on Drive, shared folder `Guy_Fluxes1KM/Old_codes_data`) into `data/` and inventory it:
+- [ ] Unpack `Data_toGuy.zip` (on Drive, shared folder `Guy_Fluxes1KM/Old_codes_data`) into `data/` and inventory it. *Tool ready:* `python3 -m flux1km.e0 --zip Data_toGuy.zip --data-root data/paired` (`e0.unpack_zip`, `e0.inventory`); waiting for the data:
   - granules and footprints
   - keys and shapes for `moments/`, `scalars/` and `images/`
-- [x] Format checked on a sample granule (§2.1). Remaining checks on the full data:
+- [x] Format checked on a sample granule (§2.1). Remaining checks on the full data (*tools ready:* `e0.value_ranges` flags unit/range anomalies, `e0.check_fov_orientation` compares the stored flag with its inverse):
   - the meaning of `FOVorientation`
   - the units of `ImSW` and `ImLW`
   - the meaning and units of `glintf`, `landf`, `Clrf`, `LiqPhsf`, `mDFNC`, `mSumIsw`
 - [x] Moments vs image patch statistics, on the sample: means agree to about 2–3%, but the std is about 0.8 of the patch std, so the moments are **not** uniform patch statistics.
-- [ ] Fit the aggregation weights H that reproduce the stored moments from the patches. H becomes the primary operator and also gates M2.
+- [ ] Fit the aggregation weights H that reproduce the stored moments from the patches. H becomes the primary operator and also gates M2. *Tool ready:* `e0.fit_aggregation_operator` fits the ellipse and, with ≥ 60 footprints, recovers the full PSF; it saves `fitted_operator.npz`, which `--psf` accepts.
 - [x] Per-pixel glint angle from `Imviews` (`features.pixel_geometry` + `geometry.glint_angle`). The RAA convention is settled by the advisor's code (§2.3).
-- [x] Footprint overlap on the sample: centres about 12.6 km apart, up to 72% shared pixels. Still to repeat on a full overpass.
-- [ ] Build one frozen **split manifest** (§4.1) and an automatic pixel-reuse leakage check.
-- [ ] Re-run the legacy baselines inside the new protocol. The old numbers (17.72 and 15.33 W m⁻²) used random row splits, and early stopping on the test set, so they are optimistic.
+- [x] Footprint overlap on the sample: centres about 12.6 km apart, up to 72% shared pixels. Still to repeat on a full overpass (*tool ready:* `e0.footprint_overlap`).
+- [x] Build one frozen **split manifest** (§4.1) and an automatic pixel-reuse leakage check: `e0.build_frozen_manifest` (Arena A LOGO + interleave, Arena B day k-fold / year / leave-one-month-out with the Arena A days excluded from training, spatial blocks), each fold checked with `splits.pixel_reuse_fraction`. To freeze on the full data.
+- [ ] Re-run the legacy baselines inside the new protocol. The old numbers (17.72 and 15.33 W m⁻²) used random row splits, and early stopping on the test set, so they are optimistic. *Code ready:* `M0-allsky37`, `M0-advisor`, `M0-ridge` (`methods/m0_legacy.py`); run with `python3 -m flux1km.e0 --data-root DIR --run-baselines` or `python3 -m flux1km.methods.m0_legacy --data-root DIR --manifest M.json`.
 - [x] The advisor's data-building code received (§2.3, `pre_master/advisor_code/`).
 - [ ] Get `ceres_psf.csv` from the advisor and switch the primary operator to `ceres_psf`. Fallback: `aggregation.recover_psf_from_moments` on ≥ 60 footprints.
-- [ ] Report the `LiqPhsf` bug (and the minor ones) to the advisor (§2.3).
+- [ ] Report the `LiqPhsf` bug (and the minor ones) to the advisor (§2.3). *Text ready:* `e0.advisor_bug_report()`, written by every E0 run to `advisor_bug_report.txt`.
 
 ### 2.1 What the data looks like
 
@@ -355,7 +355,7 @@ If τ > 0.8, sampling does not change the winner: fix S7 (or S5) and move on. Ot
 - **Too little image data.** Largely resolved: the advisor will supply as much data as needed. The remaining risk is timing, so the infrastructure stays testable on synthetic data and on `data/sample/`.
 - **Unverified CERES numbers:** the Su 2015 noise floor and the footprint size. The CTZ magnitude is fixed to the values of Eytan's CTZ paper.
 - **Unpinned `requirements.txt`.**
-- **The new phase needs PyTorch or TF for UNet work.** Pin versions when the first new-phase code lands.
+- **The new phase needs PyTorch or TF for UNet work.** Done: the neural methods use PyTorch (`torch>=2.2`, the `ml` extra), imported only inside `fit`; the GPU Docker image installs it.
 
 ## 8. Repository layout
 
@@ -396,7 +396,7 @@ Nothing is run on real data until it arrives. Meanwhile the shared machinery is 
   │
   ▼
  models (interface: fit(train) / predict_map(patches) / predict_footprint)
-  │      baselines in numpy now; M1–M10 added as the data arrives (TF/PyTorch in Docker)
+  │      baselines in models.py; M0-M10 and the hybrids in methods/ (PyTorch imported lazily)
   ▼
  aggregation   uniform patch mean, approximate Gaussian PSF, ±1 px jitter  ──►  footprint predictions
   ▼
@@ -435,3 +435,27 @@ The core is NumPy/SciPy only, so the tests run in CI without a GPU. Neural model
 | RAA convention for glint (specular at 0° vs 180°) | **settled** by the code: SSF specular at 0°, `Imviews` at 180° |
 | Footprint radius for the leakage check (20 km) | plausible: centres are about 12.6 km apart and neighbouring patches share up to 72% of pixels |
 | Granules of one satellite less than 10 minutes apart are one group | unchanged |
+
+## 10. Implementation status
+
+Everything in this plan that can be built before the full data arrives is implemented in `flux1km/` and tested on synthetic data and on `data/sample/`. Nothing has been run on the full data yet. What each method is and how to run it: [MODELS.md](MODELS.md).
+
+| Plan item | Where | Status |
+|---|---|---|
+| §2 E0 checks, manifest, operator fit, advisor report | `flux1km/e0.py` (`python3 -m flux1km.e0`) | tools done; the data-dependent items above wait for `Data_toGuy.zip` |
+| §3 null baselines, M0 (ridge, All_Sky 37-feature ANN, advisor's moments ANN) | `models.py`, `methods/m0_legacy.py` | done |
+| §3 M1 (GBM + ANN), M2 | `methods/m1_guy.py`, `models.py` | done |
+| §3 M3, M4, M5 | `methods/m3_pixel_mlp.py`, `m4_context_gbm.py`, `m5_unet.py` | done (manifold / random-subset / edge-aware regularisers) |
+| §3 M6a–M6f hybrids | `methods/m6a_*.py` … `m6f_*.py` | done; M6e reads test labels (scored on overlap test and synthetic truth only) |
+| §3 M7 ATPRK | `methods/m7_atprk.py` | done; joint kriging needs footprint positions (`row0`/`col0`), available in synthetic data and in a future in-house footprint index |
+| §3 M8 NB→BB→ADM | `methods/m8_nb2bb.py` | done (default SWIR 2.13 µm because 1.64 µm is a bad channel) |
+| §3 M9 (+ M9-local), M10 (VBAgg, mediated) | `methods/m9_homogeneous.py`, `methods/m10_gp.py` | done (RFF approximation for M10) |
+| §3 input ablation F1–F5 | `--input-set` on every command | done |
+| §4.1 splits, leakage check | `splits.py`, `e0.build_frozen_manifest` | done |
+| §4.2 metrics, sensitivity operators, significance | `metrics.py`, `benchmark.py` (bootstrap + Holm, Wilcoxon, Diebold–Mariano) | done |
+| §4.3 harder synthetic truth | `synthetic.py` (`hard=True`, `--demo-hard`): nonlinear angle-dependent NB→BB, anisotropic radiances, CTZ only partly visible | done |
+| §4.3 synthetic-truth experiment, footprint counts × aggregation sizes, no-CTZ control | `flux1km/synthetic_study.py` | done |
+| §4.3 physics checks | `physics.py`; on real data the distance to cloud comes from a 0.66 µm brightness proxy | done |
+| §5 sampling S0–S7 and their comparison | `sampling.py`, `flux1km/sampling_study.py` | done |
+| §6 decision rule | `flux1km/decision.py` | done |
+| Results as text | `report.py`: every run writes `run_<time>/results.txt` | done |

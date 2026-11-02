@@ -18,18 +18,22 @@ cd master
 ```
 
 ```bash
-pip install -e ".[dev]"
+pip install -e ".[dev,ml]"      # ml = PyTorch, needed only by the neural methods
 ```
 
 ```bash
-python3 -m flux1km.cli --demo
+python3 -m flux1km.cli --demo                         # every method of PLAN.md section 3 on synthetic data
+python3 -m flux1km.methods.m3_pixel_mlp --demo        # one method alone (each method has its own module)
+python3 -m flux1km.e0 --data-root data/sample         # stage E0 checks, frozen split manifest
 ```
 
 ```bash
 pytest -q flux1km tests
 ```
 
-See [master/flux1km/README.md](master/flux1km/README.md) for the module map and how to add a method.
+Every run writes all of its results to a new plain-text file, `benchmark_outputs/flux1km/run_<time>/results.txt`.
+See [master/MODELS.md](master/MODELS.md) for what every method is, how to run it and how to read the results, and
+[master/flux1km/README.md](master/flux1km/README.md) for the module map and how to add a method.
 
 ## Pre-master work (`pre_master/`)
 

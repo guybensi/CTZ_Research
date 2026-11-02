@@ -5,7 +5,7 @@
 The repo has two top-level work folders:
 
 - **[master/](master/)**: the M.Sc. work. **Read [master/PLAN.md](master/PLAN.md) first**: it is the plan to implement (goal, data format §2, candidate methods §3, benchmark protocol §4, sampling §5, decision rule §6, open questions §7, infrastructure §9).
-  - [master/flux1km/](master/flux1km/): the 1 km pipeline package (module map and how to add a method: [master/flux1km/README.md](master/flux1km/README.md)).
+  - [master/flux1km/](master/flux1km/): the 1 km pipeline package (module map and how to add a method: [master/flux1km/README.md](master/flux1km/README.md)); the candidate methods are in [master/flux1km/methods/](master/flux1km/methods/), documented in [master/MODELS.md](master/MODELS.md).
   - [master/tests/](master/tests/), [master/scripts/](master/scripts/), [master/pyproject.toml](master/pyproject.toml).
   - [master/research/](master/research/): the deep-research report (Hebrew) and notes behind the plan.
 - **[pre_master/](pre_master/)**: everything from before the M.Sc. plan (Guy model, benchmarks, All_Sky_AIflux), plus the advisor's data-building and training code in [pre_master/advisor_code/](pre_master/advisor_code/). Frozen: use it as the M0 baseline and as a reference, do not extend it.
@@ -22,8 +22,12 @@ The repo has two top-level work folders:
 ### New-phase code workflow
 
 - Work from `master/`: `cd master && pip install -e ".[dev]"`, then `pytest -q flux1km tests` (this includes the doctests); lint with `ruff check .`.
-- Run: `python3 -m flux1km.cli --demo`, or `python3 -m flux1km.cli --data-root <dir> --manifest <json> [--psf ceres_psf.csv]`.
-- For every function: docstring with an example, then signature, then edge-case tests, then the implementation. Curate the tests into `tests/test_<module>.py`, one class per function. CI ([.github/workflows/ci.yml](.github/workflows/ci.yml), run in `master/`) uses that naming to run only the tests of changed modules ([scripts/select_tests.py](master/scripts/select_tests.py)). Core modules (schema, io, table, aggregation, features, models) trigger the full suite.
+- Run: `python3 -m flux1km.cli --demo`, or `python3 -m flux1km.cli --data-root <dir> --manifest <json> [--psf ceres_psf.csv]`. Every run writes `benchmark_outputs/flux1km/run_<time>/results.txt` (all results, plain text).
+- One method alone: `python3 -m flux1km.methods.<module> --demo` (e.g. `m3_pixel_mlp`, `m5_unet`, `m9_homogeneous`). The methods of PLAN.md §3 live one family per module in [master/flux1km/methods/](master/flux1km/methods/); what each one is and how to run it: [master/MODELS.md](master/MODELS.md).
+- Stage E0 checks and the frozen split manifest: `python3 -m flux1km.e0 --data-root <dir>`. Studies: `python3 -m flux1km.synthetic_study` (§4.3), `python3 -m flux1km.sampling_study` (§5). The §6 decision rule is `flux1km/decision.py`.
+- Harder synthetic data (§4.3): `--demo --demo-hard` (nonlinear angle-dependent NB→BB, CTZ only partly visible in the channels).
+- Neural methods use PyTorch, imported only inside `fit` (`pip install -e ".[dev,ml]"`); without it they are skipped and their tests are skipped.
+- For every function: docstring with an example, then signature, then edge-case tests, then the implementation. Curate the tests into `tests/test_<module>.py` (method modules: `tests/methods/test_<module>.py`), one class per function. CI ([.github/workflows/ci.yml](.github/workflows/ci.yml), run in `master/`) uses that naming to run only the tests of changed modules ([scripts/select_tests.py](master/scripts/select_tests.py)). Core modules (schema, io, table, aggregation, features, models) trigger the full suite.
 - Conventional commit messages (`feat(flux1km): ...`, `fix(splits): ...`, `docs: ...`).
 - Module map and how to add a method: [flux1km/README.md](master/flux1km/README.md).
 
