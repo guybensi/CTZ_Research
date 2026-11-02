@@ -1,5 +1,7 @@
 # Methods, studies and outputs (implementation of PLAN.md)
 
+A shorter, run-oriented guide in Hebrew is [HOW_TO_RUN.md](HOW_TO_RUN.md).
+
 This file explains **what every implemented method is, what it is for, which file holds it, and how to run it**. The plan itself is [PLAN.md](PLAN.md); the package map is [flux1km/README.md](flux1km/README.md).
 
 All commands run from `master/`, after `pip install -e ".[dev,ml]"` (`ml` = PyTorch, needed only for the neural methods).

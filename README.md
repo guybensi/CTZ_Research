@@ -32,6 +32,7 @@ pytest -q flux1km tests
 ```
 
 Every run writes all of its results to a new plain-text file, `benchmark_outputs/flux1km/run_<time>/results.txt`.
+Run guide (Hebrew): [master/HOW_TO_RUN.md](master/HOW_TO_RUN.md): what every file does, the exact command, and what it writes.
 See [master/MODELS.md](master/MODELS.md) for what every method is, how to run it and how to read the results, and
 [master/flux1km/README.md](master/flux1km/README.md) for the module map and how to add a method.
 

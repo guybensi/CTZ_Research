@@ -5,7 +5,7 @@
 The repo has two top-level work folders:
 
 - **[master/](master/)**: the M.Sc. work. **Read [master/PLAN.md](master/PLAN.md) first**: it is the plan to implement (goal, data format §2, candidate methods §3, benchmark protocol §4, sampling §5, decision rule §6, open questions §7, infrastructure §9).
-  - [master/flux1km/](master/flux1km/): the 1 km pipeline package (module map and how to add a method: [master/flux1km/README.md](master/flux1km/README.md)); the candidate methods are in [master/flux1km/methods/](master/flux1km/methods/), documented in [master/MODELS.md](master/MODELS.md).
+  - [master/flux1km/](master/flux1km/): the 1 km pipeline package (module map and how to add a method: [master/flux1km/README.md](master/flux1km/README.md)); the candidate methods are in [master/flux1km/methods/](master/flux1km/methods/), documented in [master/MODELS.md](master/MODELS.md); the run guide (Hebrew) is [master/HOW_TO_RUN.md](master/HOW_TO_RUN.md). Keep both in sync when a method, command or output changes.
   - [master/tests/](master/tests/), [master/scripts/](master/scripts/), [master/pyproject.toml](master/pyproject.toml).
   - [master/research/](master/research/): the deep-research report (Hebrew) and notes behind the plan.
 - **[pre_master/](pre_master/)**: everything from before the M.Sc. plan (Guy model, benchmarks, All_Sky_AIflux), plus the advisor's data-building and training code in [pre_master/advisor_code/](pre_master/advisor_code/). Frozen: use it as the M0 baseline and as a reference, do not extend it.
