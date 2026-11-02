@@ -15,9 +15,10 @@ from pathlib import Path
 
 import numpy as np
 
-from . import aggregation, metrics, physics, sampling, splits
+from . import aggregation, decision, metrics, physics, report, sampling, splits
 from .features import Batch, make_batch
 from .io import Granule
+from .methods import _common
 from .models import MODELS, get_model
 from .table import FootprintTable
 
@@ -36,7 +37,11 @@ class BenchmarkConfig:
     model_params: dict = field(default_factory=dict)  # model name -> fixed params (e.g. input_set)
     check_leakage: bool = True
     leakage_radius_km: float = 20.0
-    noise_floor: float = 2.0       # W m^-2: a more complex model must gain more than this
+    noise_floor: float = 2.0       # W m^-2: fallback floor when no regime breakdown exists
+    # CERES ADM noise floor per regime (Su et al. 2015; to verify): a more complex model must gain more.
+    noise_floor_by_regime: dict = field(default_factory=lambda: {"clear": 1.9, "broken": 10.0, "overcast": 6.0})
+    flip_tol: float = 0.5          # W m^-2: ranking-flip gate ignores macro-RMSE differences smaller than this
+    image_data_scarce: bool | None = None  # tie default M2 instead of M3; None = decide from the data (< 10 image granules)
     trend_gate: float = 5.0        # W m^-2: max residual trend effect across the range of an angle
     swath_gate: float = 5.0        # W m^-2: max forward/backscatter residual difference
     pcs_target: tuple[float, float] = (70.0, 90.0)
@@ -51,7 +56,7 @@ def _psf(cfg: BenchmarkConfig) -> np.ndarray | None:
     if cfg.psf_path is None:
         return None
     if cfg.psf_path not in _PSF_CACHE:
-        _PSF_CACHE[cfg.psf_path] = aggregation.load_ceres_psf(cfg.psf_path, *cfg.patch)
+        _PSF_CACHE[cfg.psf_path] = aggregation.load_psf_file(cfg.psf_path, *cfg.patch)
     return _PSF_CACHE[cfg.psf_path]
 
 
@@ -66,13 +71,28 @@ def _footprint_pred(model, batch: Batch, w: np.ndarray, maps: np.ndarray | None)
     return model.predict_footprint(batch, w)
 
 
+def fixed_params(name: str, cfg: BenchmarkConfig, seed: int = 0) -> dict:
+    """Parameters the protocol imposes on a model: the seed, the training operator, and cfg.model_params.
+
+    Aggregation-loss models (needs_operator) are trained with the operator they are scored with.
+
+    Example:
+        >>> fixed_params("M2", BenchmarkConfig(models=["M2"]), seed=3)["seed"]
+        3
+    """
+    out = {"seed": seed}
+    if MODELS[name].needs_operator:
+        out.update(operator=cfg.operator, psf_path=cfg.psf_path)
+    return {**out, **cfg.model_params.get(name, {})}
+
+
 def tune(name: str, train: Batch, val: Batch, cfg: BenchmarkConfig, seed: int = 0) -> tuple[dict, float]:
     """Pick the best parameters from the model's grid (at most cfg.budget candidates) by val RMSE.
 
     With an empty validation set the first grid entry is used.
     """
     grid = get_model(name).param_grid()[: cfg.budget]
-    fixed = cfg.model_params.get(name, {})
+    fixed = fixed_params(name, cfg, seed)
     if len(val) == 0 or len(grid) == 1:
         return {**grid[0], **fixed}, np.nan
     w = _weights(cfg.operator, cfg, val)
@@ -103,7 +123,7 @@ def run_benchmark(granules: list[Granule], table: FootprintTable, folds: list[sp
     unknown = [m for m in cfg.models if m not in MODELS]
     if unknown:
         raise KeyError(f"unknown models {unknown}")
-    records, maps_store, fold_info = [], {}, []
+    records, maps_store, fold_info, errors = [], {}, [], []
     for fold in folds:
         if cfg.check_leakage:
             splits.check_fold(table, fold, radius_km=cfg.leakage_radius_km)
@@ -117,11 +137,16 @@ def run_benchmark(granules: list[Granule], table: FootprintTable, folds: list[sp
             if cls.produces_map and not test.has_images:
                 continue
             for seed in cfg.seeds:
-                params, val_rmse = tune(name, train, val, cfg, seed)
-                model = get_model(name, **params).fit(train, val)
-                maps = model.predict_map(test) if (cls.produces_map and test.has_images) else None
-                preds = {op: _footprint_pred(model, test, _weights(op, cfg, test), maps)
-                         for op in (cfg.operator, *cfg.sensitivity_operators)}
+                try:
+                    params, val_rmse = tune(name, train, val, cfg, seed)
+                    model = get_model(name, **params).fit(train, val)
+                    maps = model.predict_map(test) if (cls.produces_map and test.has_images) else None
+                    preds = {op: _footprint_pred(model, test, _weights(op, cfg, test), maps)
+                             for op in (cfg.operator, *cfg.sensitivity_operators)}
+                except (ValueError, RuntimeError, ImportError, KeyError, np.linalg.LinAlgError) as e:
+                    # one failing method must not stop a long real-data run; the error goes to the report
+                    errors.append({"model": name, "fold": fold.name, "seed": seed, "error": f"{type(e).__name__}: {e}"})
+                    continue
                 if maps is not None:
                     maps_store[(name, fold.name, seed)] = maps
                 for k, row in enumerate(test.rows):
@@ -140,7 +165,9 @@ def run_benchmark(granules: list[Granule], table: FootprintTable, folds: list[sp
     pixel = _pixel_and_physics(granules, table, folds, maps_store, cfg)
     summary = summarize(records, cfg, pixel)
     summary["folds"] = fold_info
+    summary["errors"] = errors
     summary["config"] = asdict(cfg)
+    summary["n_image_granules"] = sum(g.images is not None for g in granules)
     summary["decision"] = decide(summary, cfg)
     if out_dir is not None:
         _write(out_dir, records, summary)
@@ -166,11 +193,14 @@ def _pixel_and_physics(granules, table, folds, maps_store, cfg) -> dict:
             if b.truth is not None:
                 truth.append(b.truth)
                 dist.append(b.dist_km)
+            else:  # real data: distance to the nearest bright (cloud-proxy) pixel from the MODIS radiances
+                dist.append(_common.distance_to_bright(_common.bright_mask(b)))
         res = {}
         if truth and len(truth) == len(pred):
             res["pixel"] = metrics.pixel_scores(np.concatenate(truth), np.concatenate(pred))
-            res["physics"] = physics.run_checks(np.concatenate(pred), np.concatenate(dist), np.concatenate(sza),
-                                                pcs_target=cfg.pcs_target)
+        res["physics"] = physics.run_checks(np.concatenate(pred), np.concatenate(dist), np.concatenate(sza),
+                                            pcs_target=cfg.pcs_target)
+        res["physics"]["distance_source"] = "synthetic truth" if truth else "0.66 um brightness proxy"
         out[name] = res
     return out
 
@@ -221,13 +251,16 @@ def summarize(records: list[dict], cfg: BenchmarkConfig, pixel: dict | None = No
                 pw = metrics.wilcoxon_p(xa, xb)
             except ValueError:
                 pw = np.nan
-            pairs.append((a, b, boot))
+            dm, pdm = metrics.diebold_mariano(xa, xb)
+            pairs.append((a, b, {**boot, "dm_stat": dm, "dm_p": pdm}))
             pvals.append(pw)
     adj = metrics.holm(np.nan_to_num(pvals, nan=1.0)) if pvals else []
-    for (a, b, boot), pw, pa in zip(pairs, pvals, adj):
+    adj_boot = metrics.holm([pb["p_boot"] for _, _, pb in pairs]) if pairs else []
+    for (a, b, boot), pw, pa, pab in zip(pairs, pvals, adj, adj_boot):
         rmse_a = out["models"][a]["overall"].get("rmse", np.nan)
         rmse_b = out["models"][b]["overall"].get("rmse", np.nan)
-        out["comparisons"][f"{a} vs {b}"] = {**boot, "wilcoxon_p": pw, "p_holm": float(pa), "rmse_diff": rmse_a - rmse_b}
+        out["comparisons"][f"{a} vs {b}"] = {**boot, "wilcoxon_p": pw, "p_holm": float(pa), "p_holm_boot": float(pab),
+                                             "rmse_diff": rmse_a - rmse_b}
     return out
 
 
@@ -238,46 +271,8 @@ def _unit_losses(records, model) -> dict:
 
 
 def decide(summary: dict, cfg: BenchmarkConfig) -> dict:
-    """Lexicographic decision rule (PLAN.md section 6).
-
-    1. Gates: physics checks (when available), residual trends and swath asymmetry within gates.
-    2. Go through passing models from simple to complex; a model replaces the incumbent only if
-       its macro RMSE is lower by more than the noise floor and the paired test (Holm) is
-       significant at 0.05, or the incumbent is missing.
-    """
-    log, passing = [], []
-    for name, res in summary["models"].items():
-        if res.get("uses_test_labels") or not res.get("overall"):
-            continue
-        fails = []
-        phys = res.get("physics")
-        if phys is not None and not phys["passed"]:
-            fails.append("physics")
-        for c, t in res.get("trend_effect", {}).items():
-            if t["effect_wm2"] > cfg.trend_gate and t["p"] < 0.01:
-                fails.append(f"trend:{c}")
-        if abs(res.get("swath_asymmetry", 0.0) or 0.0) > cfg.swath_gate:
-            fails.append("swath_asymmetry")
-        if fails:
-            log.append(f"{name} fails gates: {fails}")
-        else:
-            passing.append(name)
-    if not passing:
-        return {"winner": None, "log": log + ["no model passed the gates"]}
-    passing.sort(key=lambda m: (summary["models"][m]["complexity"], summary["models"][m]["macro_rmse"]))
-    incumbent = passing[0]
-    for cand in passing[1:]:
-        inc_s, cand_s = summary["models"][incumbent]["macro_rmse"], summary["models"][cand]["macro_rmse"]
-        comp = summary["comparisons"].get(f"{cand} vs {incumbent}") or summary["comparisons"].get(f"{incumbent} vs {cand}")
-        significant = comp is not None and comp["p_holm"] < 0.05
-        gain = inc_s - cand_s
-        if gain > cfg.noise_floor and significant:
-            log.append(f"{cand} replaces {incumbent}: macro RMSE gain {gain:.2f} W/m2, p_holm={comp['p_holm']:.3g}")
-            incumbent = cand
-        else:
-            log.append(f"{cand} does not replace {incumbent}: gain {gain:.2f} W/m2, significant={significant}")
-    ranking = sorted(passing, key=lambda m: summary["models"][m]["macro_rmse"])
-    return {"winner": incumbent, "ranking_by_macro_rmse": ranking, "log": log}
+    """The decision rule of PLAN.md section 6; see flux1km.decision.decide."""
+    return decision.decide(summary, cfg)
 
 
 def _jsonable(o):
@@ -304,4 +299,6 @@ def _write(out_dir, records, summary) -> Path:
             w.writerows(records)
     (run / "summary.json").write_text(json.dumps(_jsonable(summary), indent=2))
     summary["run_dir"] = str(run)
+    summary["results_txt"] = str(run / "results.txt")
+    (run / "results.txt").write_text(report.format_report(summary))
     return run

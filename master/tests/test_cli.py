@@ -3,6 +3,7 @@ import pytest
 from flux1km import cli
 
 DEMO = ["--demo", "--demo-size", "2x5", "--min-group-size", "1"]
+FAST = ["B-clim", "B-const", "M0-ridge", "B-bagpixel", "M2", "M8", "M9"]
 
 
 def _args(tmp_path, *extra):
@@ -12,7 +13,7 @@ def _args(tmp_path, *extra):
 
 class TestCli:
     def test_demo_run_end_to_end(self, tmp_path, capsys):
-        res = cli.main(_args(tmp_path, "--budget", "2"))
+        res = cli.main(_args(tmp_path, "--budget", "2", "--models", *FAST))
         assert "winner:" in capsys.readouterr().out and (tmp_path / "m.json").exists()
         assert res["summary"]["decision"]["winner"] is not None
 
@@ -43,3 +44,23 @@ class TestCli:
         year = cli.make_folds(t, "year", 5, 0, 100, 40)[0]
         assert set(t["year"][year.test]) == {2015} and set(t["year"][year.train]) == {2014}
         assert isinstance(year, splits.Fold)
+
+
+class TestCliOptions:
+    def test_hard_demo_seeds_and_results_txt(self, tmp_path, capsys):
+        res = cli.main(_args(tmp_path, "--budget", "1", "--models", "M2", "--demo-hard", "--seeds", "0", "1"))
+        assert "full results (text):" in capsys.readouterr().out
+        assert {r["seed"] for r in res["records"]} == {0, 1}
+
+    def test_unknown_model_exits(self, tmp_path):
+        with pytest.raises(SystemExit):
+            cli.main(_args(tmp_path, "--models", "M99"))
+
+    def test_torch_models_dropped_without_torch(self, monkeypatch):
+        import importlib.util
+        monkeypatch.setattr(importlib.util, "find_spec", lambda name: None)
+        assert cli.available_models(["M2", "M3", "M5"]) == ["M2"]
+
+    def test_default_model_list_is_every_registered_method(self):
+        from flux1km.models import MODELS
+        assert cli.parse_args(["--demo"]).models == sorted(MODELS)

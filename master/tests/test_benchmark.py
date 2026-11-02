@@ -95,3 +95,38 @@ class TestDecide:
             "C": {"overall": {"rmse": 5}, "macro_rmse": 5.0, "complexity": 2, "trend_effect": {}, "uses_test_labels": False}},
             "comparisons": {"A vs C": {"p_holm": 0.01}}}
         assert benchmark.decide(summ, benchmark.BenchmarkConfig(models=[]))["winner"] == "C"
+
+
+class TestFixedParams:
+    def test_operator_only_for_aggregation_loss_models(self):
+        cfg = benchmark.BenchmarkConfig(models=[], operator="uniform", model_params={"M3": {"input_set": "F2"}})
+        assert benchmark.fixed_params("M3", cfg, 2) == {"seed": 2, "operator": "uniform", "psf_path": None, "input_set": "F2"}
+        assert benchmark.fixed_params("M2", cfg) == {"seed": 0}
+
+
+class TestRobustness:
+    def test_failing_model_is_reported_not_fatal(self, setup, monkeypatch):
+        gs, t, folds = setup
+        from flux1km import models
+
+        def boom(self, train, val=None):
+            raise ValueError("synthetic failure")
+
+        monkeypatch.setattr(models.MODELS["M9"], "fit", boom)
+        res = benchmark.run_benchmark(gs, t, folds[:1], benchmark.BenchmarkConfig(models=["M2", "M9"], budget=1))
+        assert res["summary"]["errors"] and res["summary"]["errors"][0]["model"] == "M9"
+        assert "M2" in res["summary"]["models"]
+
+    def test_results_txt_written(self, tmp_path, setup):
+        gs, t, folds = setup
+        res = benchmark.run_benchmark(gs, t, folds[:1], benchmark.BenchmarkConfig(models=["M2"], budget=1), out_dir=tmp_path)
+        text = open(res["summary"]["results_txt"]).read()
+        assert "WINNER" in text and "Glossary" in text
+
+    def test_physics_uses_brightness_proxy_without_truth(self, setup):
+        from dataclasses import replace
+        gs, t, folds = setup
+        no_truth = [replace(g, truth=None) for g in gs]
+        res = benchmark.run_benchmark(no_truth, t, folds[:1], benchmark.BenchmarkConfig(models=["M2"], budget=1))
+        m2 = res["summary"]["models"]["M2"]
+        assert "pixel" not in m2 and m2["physics"]["distance_source"] == "0.66 um brightness proxy"
