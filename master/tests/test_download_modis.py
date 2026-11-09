@@ -67,3 +67,12 @@ class TestCompleteSets:
     def test_empty(self):
         assert dm.complete_sets({}) == []
         assert dm.complete_sets({"A": {}, "B": {"k1": 0}}) == []
+
+
+class TestSizeMb:
+    @pytest.mark.parametrize("size,expected", [(lambda: 12.5, 12.5), (7.0, 7.0), (None, 0.0), (lambda: None, 0.0), ("x", 0.0)])
+    def test_method_or_number(self, size, expected):
+        class G:
+            pass
+        g = G(); g.size = size
+        assert dm._size_mb(g) == expected

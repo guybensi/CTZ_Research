@@ -163,6 +163,16 @@ def complete_sets(by_product: dict[str, dict]) -> list[str]:
     return sorted(set.intersection(*(set(d) for d in by_product.values())))
 
 
+def _size_mb(granule) -> float:
+    """Granule size in MB; earthaccess has it as a method in some versions and a number in others."""
+    size = granule.size
+    size = size() if callable(size) else size
+    try:
+        return float(size or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def log(msg: str, log_path: Path) -> None:
     line = f"{time.strftime('%Y-%m-%d %H:%M:%S')}  {msg}"
     print(line, flush=True)
@@ -205,7 +215,7 @@ def main(argv: list[str] | None = None) -> int:
                     log(f"{start}: search failed for {prod}: {e}", log_path)
                     by_product[prod] = {}
             keys = complete_sets(by_product)
-            chunk_mb = sum(float(by_product[pr][k].size() or 0) for k in keys for pr in PRODUCTS)
+            chunk_mb = sum(_size_mb(by_product[pr][k]) for k in keys for pr in PRODUCTS)
             total_mb += chunk_mb
             total_sets += len(keys)
             counts = ", ".join(f"{pr}={len(d)}" for pr, d in by_product.items())
@@ -222,7 +232,7 @@ def main(argv: list[str] | None = None) -> int:
                     folder = out / prod / year / doy
                     target = folder / name
                     if target.exists() and target.stat().st_size > 0:
-                        w.writerow([k, prod, name, f"{float(g.size() or 0):.1f}", "exists"])
+                        w.writerow([k, prod, name, f"{_size_mb(g):.1f}", "exists"])
                         continue
                     pending[folder].append((k, prod, name, g))
 
@@ -234,7 +244,7 @@ def main(argv: list[str] | None = None) -> int:
                     log(f"download failed in {folder}: {e}", log_path)
                 for k, prod, name, g in items:
                     ok = (folder / name).exists() and (folder / name).stat().st_size > 0
-                    w.writerow([k, prod, name, f"{float(g.size() or 0):.1f}", "ok" if ok else "FAILED"])
+                    w.writerow([k, prod, name, f"{_size_mb(g):.1f}", "ok" if ok else "FAILED"])
                 mf.flush()
             log(f"{start}..{end}: done", log_path)
 
