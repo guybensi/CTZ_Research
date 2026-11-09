@@ -141,6 +141,9 @@ python3 -m flux1km.methods.<שם הקובץ> --data-root DIR --manifest M.json  
 | `sampling_study.py` | אסטרטגיות S0–S7: ‏Jaccard, ‏KS, ‏MMD, מטריצת אימון לפי Si מול בדיקה לפי תת־אוכלוסייה, ו־Kendall τ | `python3 -m flux1km.sampling_study --models ...` |
 | `decision.py` | כלל ההחלטה של סעיף 6. מופעל אוטומטית בכל הרצה | — |
 | `cli.py` | הרצה של כל השיטות או של חלקן | `python3 -m flux1km.cli` |
+| `scripts/download_modis.py` | הורדת גרנולות Aqua מ־LAADS DAAC ‏(`MYD021KM`, ‏`MYD03`, ‏`MYD06_L2`, ‏`MYD35_L2`), רק סטים מלאים ורק בשעות היום. התאריכים והפוליגונים מוגדרים במשתנים הגלובליים בראש הקובץ | `python3 scripts/download_modis.py --dry-run` |
+
+הסקריפט עצמאי, ולכן אפשר להעתיק אותו לכל שרת. הוא צריך רק את `earthaccess` ומשתמש `Earthdata Login` שמוגדר ב־`~/.netrc`. ברירת המחדל היא שלושה ימים (`2017-03-01` עד `2017-03-03`) באוקיינוס השקט, והפלט נשמר ב־`~/GUY/<product>/<year>/<doy>/`. הרצה חוזרת מדלגת על קבצים שכבר ירדו.
 
 ---
 
