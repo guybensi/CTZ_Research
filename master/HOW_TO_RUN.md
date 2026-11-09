@@ -141,7 +141,7 @@ python3 -m flux1km.methods.<שם הקובץ> --data-root DIR --manifest M.json  
 | `sampling_study.py` | אסטרטגיות S0–S7: ‏Jaccard, ‏KS, ‏MMD, מטריצת אימון לפי Si מול בדיקה לפי תת־אוכלוסייה, ו־Kendall τ | `python3 -m flux1km.sampling_study --models ...` |
 | `decision.py` | כלל ההחלטה של סעיף 6. מופעל אוטומטית בכל הרצה | — |
 | `cli.py` | הרצה של כל השיטות או של חלקן | `python3 -m flux1km.cli` |
-| `scripts/download_modis.py` | הורדת גרנולות Aqua מ־LAADS DAAC ‏(`MYD021KM`, ‏`MYD03`, ‏`MYD06_L2`, ‏`MYD35_L2`), רק סטים מלאים ורק בשעות היום. התאריכים והפוליגונים מוגדרים במשתנים הגלובליים בראש הקובץ | `python3 scripts/download_modis.py --dry-run` |
+| `scripts/download_modis.py` | הורדת גרנולות Aqua מ־LAADS DAAC ‏(ברירת מחדל `MYD021KM` ו־`MYD03`; אפשר להוסיף `MYD06_L2` ו־`MYD35_L2`), רק סטים מלאים ורק בשעות היום. התאריכים והפוליגונים מוגדרים במשתנים הגלובליים בראש הקובץ | `python3 scripts/download_modis.py --dry-run` |
 
 הסקריפט עצמאי, ולכן אפשר להעתיק אותו לכל שרת. הוא צריך רק את `earthaccess` ומשתמש `Earthdata Login` שמוגדר ב־`~/.netrc`. ברירת המחדל היא כל 2008, האוקיינוס השקט בין 60°S ל־60°N, והפלט נשמר ב־`/archive/GUY`.
 
@@ -150,8 +150,8 @@ python3 -m flux1km.methods.<שם הקובץ> --data-root DIR --manifest M.json  
 ```
 /archive/GUY/AQUA/<year>/Pacific/<month>/MOD02/   MYD021KM
                                          /MOD03/   MYD03
-                                         /MOD06/   MYD06_L2
-                                         /MOD35/   MYD35_L2
+                                         /MOD06/   ריקה, אלא אם MYD06_L2 ב־PRODUCTS
+                                         /MOD35/   ריקה, אלא אם MYD35_L2 ב־PRODUCTS
 ```
 
 שמות תיקיות החודשים הם כמו ברשימת `MONTH` של המנחה (`mrch`, ‏`june`, ‏`sep`, ‏`dec` וכו'). את קובץ ה־CERES SSF הסקריפט לא מוריד: צריך לשים אותו בכל תיקיית חודש, והשם שלו חייב לכלול `CERES`. קבצים שירדו במבנה הישן (`<product>/<year>/<doy>/`) מעבירים עם `--reorganize`. הרצה חוזרת מדלגת על קבצים שכבר ירדו.

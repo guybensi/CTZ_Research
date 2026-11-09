@@ -14,8 +14,8 @@ Layout on disk = the input layout of the advisor's Generate_AllSky_2.py
 (pre_master/advisor_code/), which reads datapath = <root>/AQUA/<year>/<region>/<month>/:
     <OUT_DIR>/AQUA/<year>/<REGION_NAME>/<month>/MOD02/MYD021KM.*.hdf
                                                /MOD03/MYD03.*.hdf
-                                               /MOD06/MYD06_L2.*.hdf
-                                               /MOD35/MYD35_L2.*.hdf
+                                               /MOD06/   (empty unless MYD06_L2 is in PRODUCTS)
+                                               /MOD35/   (empty unless MYD35_L2 is in PRODUCTS)
     (month folders are named as in the advisor's MONTH list: mrch, june, sep, dec, ...;
      the CERES SSF file is NOT downloaded here: put it in each month folder yourself,
      its name must contain "CERES")
@@ -63,7 +63,7 @@ POLYGONS = [
     [(-180.0, -60.0), (-120.0, -60.0), (-120.0, 60.0), (-180.0, 60.0)],
 ]
 
-PRODUCTS = ["MYD021KM", "MYD03", "MYD06_L2", "MYD35_L2"]
+PRODUCTS = ["MYD021KM", "MYD03"]   # add "MYD06_L2", "MYD35_L2" to also fill MOD06/ and MOD35/
 VERSION = "6.1"         # MODIS collection 6.1 (CMR spelling; the file names say "061")
 DAY_ONLY = True         # daytime granules only
 OUT_DIR = "/archive/GUY"
@@ -74,6 +74,8 @@ SATELLITE_DIR = "AQUA"
 REGION_NAME = "Pacific"
 PRODUCT_DIRS = {"MYD021KM": "MOD02", "MYD03": "MOD03", "MYD06_L2": "MOD06", "MYD35_L2": "MOD35",
                 "MOD021KM": "MOD02", "MOD03": "MOD03", "MOD06_L2": "MOD06", "MOD35_L2": "MOD35"}
+# Sub-folders created in every month folder even when empty (Generate_AllSky_2.py lists all four).
+MONTH_SUBDIRS = ["MOD02", "MOD03", "MOD06", "MOD35"]
 # Advisor's month-folder names (mrch, june, sep, dec come from his MONTH list).
 MONTH_DIRS = ["jan", "feb", "mrch", "apr", "may", "june", "july", "aug", "sep", "oct", "nov", "dec"]
 # ===============================================================================
@@ -303,7 +305,8 @@ def main(argv: list[str] | None = None) -> int:
                     pending[folder].append((k, prod, name, g))
 
             for folder, items in sorted(pending.items()):
-                folder.mkdir(parents=True, exist_ok=True)
+                for sub in MONTH_SUBDIRS:
+                    (folder.parent / sub).mkdir(parents=True, exist_ok=True)
                 try:
                     earthaccess.download([it[3] for it in items], local_path=str(folder), threads=THREADS)
                 except Exception as e:  # noqa: BLE001
