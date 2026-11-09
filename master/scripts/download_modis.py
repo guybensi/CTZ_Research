@@ -56,7 +56,7 @@ POLYGONS = [
 ]
 
 PRODUCTS = ["MYD021KM", "MYD03", "MYD06_L2", "MYD35_L2"]
-VERSION = "61"          # MODIS collection
+VERSION = "6.1"         # MODIS collection 6.1 (CMR spelling; the file names say "061")
 DAY_ONLY = True         # daytime granules only
 OUT_DIR = "~/GUY"
 THREADS = 4             # parallel downloads
