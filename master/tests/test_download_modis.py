@@ -76,3 +76,42 @@ class TestSizeMb:
             pass
         g = G(); g.size = size
         assert dm._size_mb(g) == expected
+
+
+class TestTargetFolder:
+    @pytest.mark.parametrize("product,year,doy,expected", [
+        ("MYD021KM", "2008", "001", "AQUA/2008/Pacific/jan/MOD02"),
+        ("MYD03", "2008", "060", "AQUA/2008/Pacific/feb/MOD03"),       # 2008 is a leap year: day 60 = Feb 29
+        ("MYD06_L2", "2017", "060", "AQUA/2017/Pacific/mrch/MOD06"),
+        ("MYD35_L2", "2008", "366", "AQUA/2008/Pacific/dec/MOD35"),
+        ("MYD021KM", "2014", "152", "AQUA/2014/Pacific/june/MOD02"),
+    ])
+    def test_advisor_layout(self, tmp_path, product, year, doy, expected):
+        assert dm.target_folder(tmp_path, product, year, doy) == tmp_path / expected
+
+    @pytest.mark.parametrize("product,year,doy", [("MYD04_L2", "2008", "001"), ("MYD03", "2017", "366"), ("MYD03", "2008", "000")])
+    def test_invalid(self, tmp_path, product, year, doy):
+        with pytest.raises(ValueError):
+            dm.target_folder(tmp_path, product, year, doy)
+
+
+class TestReorganize:
+    def test_moves_old_layout_and_removes_empty_folders(self, tmp_path):
+        old = tmp_path / "MYD021KM" / "2008" / "060"
+        old.mkdir(parents=True)
+        (old / "MYD021KM.A2008060.0245.061.2017.hdf").write_bytes(b"x")
+        (tmp_path / "manifest.csv").write_text("keep")
+        assert dm.reorganize(tmp_path) == 1
+        assert (tmp_path / "AQUA/2008/Pacific/feb/MOD02/MYD021KM.A2008060.0245.061.2017.hdf").read_bytes() == b"x"
+        assert not (tmp_path / "MYD021KM").exists()
+        assert (tmp_path / "manifest.csv").exists()
+
+    def test_nothing_to_move(self, tmp_path):
+        assert dm.reorganize(tmp_path) == 0
+
+    def test_new_layout_is_left_alone(self, tmp_path):
+        new = tmp_path / "AQUA/2008/Pacific/feb/MOD02"
+        new.mkdir(parents=True)
+        (new / "MYD021KM.A2008060.0245.061.2017.hdf").write_bytes(b"x")
+        assert dm.reorganize(tmp_path) == 0
+        assert (new / "MYD021KM.A2008060.0245.061.2017.hdf").exists()

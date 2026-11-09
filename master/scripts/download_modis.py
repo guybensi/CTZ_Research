@@ -10,15 +10,23 @@ A free Earthdata Login account is required: https://urs.earthdata.nasa.gov
 Only "complete sets" are downloaded: a granule time (e.g. A2020060.0245) is fetched
 only if every requested product exists for it.
 
-Layout on disk:
-    <OUT_DIR>/<product>/<year>/<doy>/<file>.hdf
+Layout on disk = the input layout of the advisor's Generate_AllSky_2.py
+(pre_master/advisor_code/), which reads datapath = <root>/AQUA/<year>/<region>/<month>/:
+    <OUT_DIR>/AQUA/<year>/<REGION_NAME>/<month>/MOD02/MYD021KM.*.hdf
+                                               /MOD03/MYD03.*.hdf
+                                               /MOD06/MYD06_L2.*.hdf
+                                               /MOD35/MYD35_L2.*.hdf
+    (month folders are named as in the advisor's MONTH list: mrch, june, sep, dec, ...;
+     the CERES SSF file is NOT downloaded here: put it in each month folder yourself,
+     its name must contain "CERES")
     <OUT_DIR>/download_log.txt
     <OUT_DIR>/manifest.csv          (granule, product, file, size_mb, status)
 
 Usage:
     pip install earthaccess
     python3 download_modis.py --dry-run          # search only: counts and total size
-    nohup python3 download_modis.py > ~/GUY/run.out 2>&1 &   # real download, in the background
+    nohup python3 download_modis.py > /archive/GUY/run.out 2>&1 &   # real download, in the background
+    python3 download_modis.py --reorganize       # move files of the old <product>/<year>/<doy>/ layout
 
 Earthdata login: ~/.netrc with
     machine urs.earthdata.nasa.gov login <USER> password <PASS>
@@ -35,13 +43,13 @@ import re
 import sys
 import time
 from collections import defaultdict
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 # =============================== GLOBAL SETTINGS ===============================
-# Period, inclusive, "YYYY-MM-DD". Default: 3 days, a small first test.
-START_DATE = "2017-03-01"
-END_DATE = "2017-03-03"
+# Period, inclusive, "YYYY-MM-DD".
+START_DATE = "2008-01-01"
+END_DATE = "2008-12-31"
 
 # Region: a list of polygons; a granule is kept if it touches ANY of them.
 # Each polygon is a list of (lon, lat) points in degrees, lon in [-180, 180].
@@ -49,17 +57,25 @@ END_DATE = "2017-03-03"
 # the script closes the ring and orders it counter-clockwise for you.
 # A polygon must NOT cross the 180° meridian: split it into two (as below).
 POLYGONS = [
-    # Pacific, west of the dateline: 150E-180, 30S-30N
-    [(150.0, -30.0), (180.0, -30.0), (180.0, 30.0), (150.0, 30.0)],
-    # Pacific, east of the dateline: 180-120W, 30S-30N
-    [(-180.0, -30.0), (-120.0, -30.0), (-120.0, 30.0), (-180.0, 30.0)],
+    # Pacific, west of the dateline: 150E-180, 60S-60N
+    [(150.0, -60.0), (180.0, -60.0), (180.0, 60.0), (150.0, 60.0)],
+    # Pacific, east of the dateline: 180-120W, 60S-60N
+    [(-180.0, -60.0), (-120.0, -60.0), (-120.0, 60.0), (-180.0, 60.0)],
 ]
 
 PRODUCTS = ["MYD021KM", "MYD03", "MYD06_L2", "MYD35_L2"]
 VERSION = "6.1"         # MODIS collection 6.1 (CMR spelling; the file names say "061")
 DAY_ONLY = True         # daytime granules only
-OUT_DIR = "~/GUY"
+OUT_DIR = "/archive/GUY"
 THREADS = 4             # parallel downloads
+
+# Folder layout (matches Generate_AllSky_2.py; change only if that code changes)
+SATELLITE_DIR = "AQUA"
+REGION_NAME = "Pacific"
+PRODUCT_DIRS = {"MYD021KM": "MOD02", "MYD03": "MOD03", "MYD06_L2": "MOD06", "MYD35_L2": "MOD35",
+                "MOD021KM": "MOD02", "MOD03": "MOD03", "MOD06_L2": "MOD06", "MOD35_L2": "MOD35"}
+# Advisor's month-folder names (mrch, june, sep, dec come from his MONTH list).
+MONTH_DIRS = ["jan", "feb", "mrch", "apr", "may", "june", "july", "aug", "sep", "oct", "nov", "dec"]
 # ===============================================================================
 
 GRANULE_RE = re.compile(r"^(?P<product>M[OY]D[0-9A-Z_]+)\.(?P<key>A(?P<year>\d{4})(?P<doy>\d{3})\.(?P<hhmm>\d{4}))\.")
@@ -130,6 +146,49 @@ def normalize_polygon(points) -> list[tuple[float, float]]:
     return pts + [pts[0]]
 
 
+def target_folder(out_dir: Path, product: str, year: str, doy: str) -> Path:
+    """Folder a granule file goes to: <out>/AQUA/<year>/<region>/<month>/<MODxx>.
+
+    Example:
+        >>> target_folder(Path("/archive/GUY"), "MYD06_L2", "2008", "060").as_posix()
+        '/archive/GUY/AQUA/2008/Pacific/feb/MOD06'
+
+    Raises:
+        ValueError: unknown product, or a day-of-year that does not exist in that year.
+    """
+    if product not in PRODUCT_DIRS:
+        raise ValueError(f"no folder defined for product {product!r}; add it to PRODUCT_DIRS")
+    y, d = int(year), int(doy)
+    if not 1 <= d <= (366 if calendar.isleap(y) else 365):
+        raise ValueError(f"day-of-year {doy} does not exist in {year}")
+    month = (date(y, 1, 1) + timedelta(days=d - 1)).month
+    return Path(out_dir) / SATELLITE_DIR / year / REGION_NAME / MONTH_DIRS[month - 1] / PRODUCT_DIRS[product]
+
+
+def reorganize(out_dir: Path) -> int:
+    """Move files of the old layout <out>/<product>/<year>/<doy>/*.hdf into target_folder; return how many."""
+    moved = 0
+    for prod in PRODUCT_DIRS:
+        for f in sorted(Path(out_dir).glob(f"{prod}/*/*/*.hdf")):
+            try:
+                product, _, year, doy = parse_granule_name(f.name)
+            except ValueError:
+                continue
+            dest = target_folder(out_dir, product, year, doy)
+            dest.mkdir(parents=True, exist_ok=True)
+            f.rename(dest / f.name)
+            moved += 1
+    for prod in PRODUCT_DIRS:                                  # remove the now-empty old folders
+        old = Path(out_dir) / prod
+        if old.is_dir():
+            for d in sorted((x for x in old.rglob("*") if x.is_dir()), key=lambda x: len(x.parts), reverse=True):
+                if not any(d.iterdir()):
+                    d.rmdir()
+            if not any(old.iterdir()):
+                old.rmdir()
+    return moved
+
+
 def granule_file_name(granule) -> str:
     """File name of an earthaccess search result (from its first data link)."""
     links = granule.data_links()
@@ -183,7 +242,14 @@ def log(msg: str, log_path: Path) -> None:
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--dry-run", action="store_true", help="search and report size, download nothing")
+    p.add_argument("--reorganize", action="store_true",
+                   help="only move already-downloaded files from the old <product>/<year>/<doy>/ layout, then exit")
     a = p.parse_args(argv)
+
+    if a.reorganize:
+        n = reorganize(Path(OUT_DIR).expanduser())
+        print(f"moved {n} files into {OUT_DIR}/{SATELLITE_DIR}/<year>/{REGION_NAME}/<month>/MODxx/")
+        return 0
 
     chunks = date_chunks(START_DATE, END_DATE)            # validate settings before logging in
     polygons = [normalize_polygon(poly) for poly in POLYGONS]
@@ -229,7 +295,7 @@ def main(argv: list[str] | None = None) -> int:
                     g = by_product[prod][k]
                     name = granule_file_name(g)
                     _, _, year, doy = parse_granule_name(name)
-                    folder = out / prod / year / doy
+                    folder = target_folder(out, prod, year, doy)
                     target = folder / name
                     if target.exists() and target.stat().st_size > 0:
                         w.writerow([k, prod, name, f"{_size_mb(g):.1f}", "exists"])
