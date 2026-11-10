@@ -115,3 +115,22 @@ class TestReorganize:
         (new / "MYD021KM.A2008060.0245.061.2017.hdf").write_bytes(b"x")
         assert dm.reorganize(tmp_path) == 0
         assert (new / "MYD021KM.A2008060.0245.061.2017.hdf").exists()
+
+
+class TestIsComplete:
+    def test_missing(self, tmp_path):
+        assert not dm.is_complete(tmp_path / "x.hdf", 1.0)
+
+    def test_truncated_vs_full(self, tmp_path):
+        f = tmp_path / "x.hdf"
+        f.write_bytes(b"0" * 500_000)
+        assert not dm.is_complete(f, 1.0)            # 0.5 MB of an expected 1 MB
+        f.write_bytes(b"0" * 1024 * 1024)
+        assert dm.is_complete(f, 1.0)
+
+    def test_unknown_size_needs_nonempty(self, tmp_path):
+        f = tmp_path / "x.hdf"
+        f.write_bytes(b"")
+        assert not dm.is_complete(f, 0.0)
+        f.write_bytes(b"1")
+        assert dm.is_complete(f, 0.0)

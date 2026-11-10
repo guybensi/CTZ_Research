@@ -39,6 +39,7 @@ from __future__ import annotations
 import argparse
 import calendar
 import csv
+import fcntl
 import re
 import sys
 import time
@@ -234,6 +235,24 @@ def _size_mb(granule) -> float:
         return 0.0
 
 
+def is_complete(path: Path, expected_mb: float) -> bool:
+    """True if the file exists and is at least 99% of the catalogue size (any size > 0 if unknown).
+
+    A download cut off mid-way leaves a truncated file; this keeps a re-run from skipping it.
+
+    Example:
+        >>> is_complete(Path("/no/such/file.hdf"), 10.0)
+        False
+    """
+    path = Path(path)
+    if not path.is_file():
+        return False
+    size = path.stat().st_size
+    if expected_mb > 0:
+        return size >= 0.99 * expected_mb * 1024 * 1024
+    return size > 0
+
+
 def log(msg: str, log_path: Path) -> None:
     line = f"{time.strftime('%Y-%m-%d %H:%M:%S')}  {msg}"
     print(line, flush=True)
@@ -261,6 +280,13 @@ def main(argv: list[str] | None = None) -> int:
     out = Path(OUT_DIR).expanduser()
     out.mkdir(parents=True, exist_ok=True)
     log_path = out / "download_log.txt"
+
+    lock = open(out / ".download.lock", "w")              # one download at a time per OUT_DIR
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        print(f"another download_modis.py is already running on {out}; not starting a second one", file=sys.stderr)
+        return 1
 
     earthaccess.login(strategy="netrc") or earthaccess.login(strategy="interactive", persist=True)
     log(f"start: {START_DATE}..{END_DATE} products={PRODUCTS} polygons={len(polygons)} "
@@ -299,7 +325,7 @@ def main(argv: list[str] | None = None) -> int:
                     _, _, year, doy = parse_granule_name(name)
                     folder = target_folder(out, prod, year, doy)
                     target = folder / name
-                    if target.exists() and target.stat().st_size > 0:
+                    if is_complete(target, _size_mb(g)):
                         w.writerow([k, prod, name, f"{_size_mb(g):.1f}", "exists"])
                         continue
                     pending[folder].append((k, prod, name, g))
@@ -312,7 +338,7 @@ def main(argv: list[str] | None = None) -> int:
                 except Exception as e:  # noqa: BLE001
                     log(f"download failed in {folder}: {e}", log_path)
                 for k, prod, name, g in items:
-                    ok = (folder / name).exists() and (folder / name).stat().st_size > 0
+                    ok = is_complete(folder / name, _size_mb(g))
                     w.writerow([k, prod, name, f"{_size_mb(g):.1f}", "ok" if ok else "FAILED"])
                 mf.flush()
             log(f"{start}..{end}: done", log_path)
