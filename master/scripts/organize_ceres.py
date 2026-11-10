@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """Fetch and organise the CERES SSF (Aqua, Level 2) subset that the advisor's Generate_AllSky_2.py needs.
 
-WHY THIS IS NOT A ONE-COMMAND DOWNLOAD
+Normally you do not need this script directly: download_ceres.py downloads the files from NASA's archive
+and calls it. Use it for the MANUAL route below (an Order Tool order), or to re-merge / verify.
+
+THE MANUAL ROUTE (Order Tool)
     The subset in the screenshot (12 fields, Pacific box, 2008) is produced by NASA's *CERES Order Tool*
     (https://ceres.larc.nasa.gov/data/ -> "CER SSF Aqua-FM3 Edition4A" -> Order Tool): an interactive web form
     that prepares your subset and e-mails you a link with a list of file URLs (``fileURLs.txt``). It has no

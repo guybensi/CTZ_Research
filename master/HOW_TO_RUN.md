@@ -156,7 +156,16 @@ python3 -m flux1km.methods.<שם הקובץ> --data-root DIR --manifest M.json  
 
 שמות תיקיות החודשים הם כמו ברשימת `MONTH` של המנחה (`mrch`, ‏`june`, ‏`sep`, ‏`dec` וכו'). את קובץ ה־CERES SSF הסקריפט לא מוריד: צריך לשים אותו בכל תיקיית חודש, והשם שלו חייב לכלול `CERES`. קבצים שירדו במבנה הישן (`<product>/<year>/<doy>/`) מעבירים עם `--reorganize`. הרצה חוזרת מדלגת על קבצים שכבר ירדו.
 
-**CERES SSF.** קובץ ה־SSF מוזמן ב־CERES Order Tool באתר (https://ceres.larc.nasa.gov/data/ ← SSF Aqua FM3, Edition4A). אין לו ממשק תכנותי מתועד, ולכן ההזמנה נעשית ידנית: חודש־חודש, פורמט netCDF, אותו תיבת אזור כמו ב־MODIS, והשדות Time/Location/Angles, CERES Observed TOA Fluxes and Radiances, Clear Footprint Area ו־Effective Optical Depth Ocean. את `fileURLs.txt` שמגיע במייל ההזמנה מעבירים ל־`scripts/organize_ceres.py`, שמוריד, ממיין לתיקיות החודשים, ממזג לקובץ אחד לחודש (`CERES_SSF_Aqua_<year>_<month>.nc`) ובודק שכל 12 המשתנים של המנחה קיימים:
+**CERES SSF (אוטומטי).** `scripts/download_ceres.py` מוריד את ה־SSF של Aqua FM3, ‏Edition4A (‏`CER_SSF_Aqua-FM3-MODIS`) מ־ASDC דרך `earthaccess`, באותו משתמש Earthdata כמו ב־MODIS. ב־2008 יש 8,752 קבצים שעתיים גלובליים של כ־60 MB. הסקריפט מוריד רק את השעות שיש להן גרנולות MODIS בתיקיות `MOD02`, חותך כל קובץ לתיבת האוקיינוס השקט ול־12 המשתנים שהמנחה קורא (בשמות של ה־Order Tool), מוחק את הקובץ הגולמי וממזג לקובץ אחד לחודש (`CERES_SSF_Aqua_<year>_<month>.nc`). הוא דורש את `organize_ceres.py` באותה תיקייה.
+
+```bash
+python3 scripts/download_ceres.py --dry-run          # כמה קבצים וכמה GB
+python3 scripts/download_ceres.py --inspect <raw>    # בדיקה שקובץ גולמי אחד מכיל את 12 המשתנים
+nohup python3 scripts/download_ceres.py > /archive/GUY/ceres_run.out 2>&1 &
+python3 scripts/download_ceres.py --merge-only       # מיזוג ובדיקה בלבד
+```
+
+**CERES SSF (ידני, גיבוי).** אם ההורדה האוטומטית לא עובדת: מזמינים ב־CERES Order Tool (https://ceres.larc.nasa.gov/data/) חודש־חודש, בפורמט netCDF, עם אותה תיבת אזור והשדות Time/Location/Angles, CERES Observed TOA Fluxes and Radiances, Clear Footprint Area ו־Effective Optical Depth Ocean. את `fileURLs.txt` שמגיע במייל מעבירים ל־`scripts/organize_ceres.py`, שמוריד, ממיין, ממזג ובודק:
 
 ```bash
 python3 scripts/organize_ceres.py --urls fileURLs.txt --out /archive/GUY
