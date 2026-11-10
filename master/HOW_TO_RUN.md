@@ -156,6 +156,14 @@ python3 -m flux1km.methods.<שם הקובץ> --data-root DIR --manifest M.json  
 
 שמות תיקיות החודשים הם כמו ברשימת `MONTH` של המנחה (`mrch`, ‏`june`, ‏`sep`, ‏`dec` וכו'). את קובץ ה־CERES SSF הסקריפט לא מוריד: צריך לשים אותו בכל תיקיית חודש, והשם שלו חייב לכלול `CERES`. קבצים שירדו במבנה הישן (`<product>/<year>/<doy>/`) מעבירים עם `--reorganize`. הרצה חוזרת מדלגת על קבצים שכבר ירדו.
 
+**CERES SSF.** קובץ ה־SSF מוזמן ב־CERES Order Tool באתר (https://ceres.larc.nasa.gov/data/ ← SSF Aqua FM3, Edition4A). אין לו ממשק תכנותי מתועד, ולכן ההזמנה נעשית ידנית: חודש־חודש, פורמט netCDF, אותו תיבת אזור כמו ב־MODIS, והשדות Time/Location/Angles, CERES Observed TOA Fluxes and Radiances, Clear Footprint Area ו־Effective Optical Depth Ocean. את `fileURLs.txt` שמגיע במייל ההזמנה מעבירים ל־`scripts/organize_ceres.py`, שמוריד, ממיין לתיקיות החודשים, ממזג לקובץ אחד לחודש (`CERES_SSF_Aqua_<year>_<month>.nc`) ובודק שכל 12 המשתנים של המנחה קיימים:
+
+```bash
+python3 scripts/organize_ceres.py --urls fileURLs.txt --out /archive/GUY
+python3 scripts/organize_ceres.py --src <תיקייה עם קבצים שהורדו ידנית> --out /archive/GUY
+python3 scripts/organize_ceres.py --verify-only --out /archive/GUY
+```
+
 ---
 
 ## 8. כללים שהקוד אוכף
