@@ -6,7 +6,7 @@ Same Earthdata login (~/.netrc). The full SSF hourly files are global HDF4 files
 file is processed as soon as it is downloaded and the raw file is deleted:
   1. keep only footprints inside the Pacific box (plus one neighbour on each side: Generate_AllSky_2.py reads
      footprint i+1 to find the scan direction, so neighbours must stay consecutive),
-  2. keep only the 12 variables the advisor's code reads, renamed the way the CERES Order Tool names them
+  2. keep only the 17 variables of the Order Tool screenshot (organize_ceres.REQUIRED_VARS), renamed the way the CERES Order Tool names them
      (every non-alphanumeric character -> "_": "CERES SW TOA flux - upwards" -> "CERES_SW_TOA_flux___upwards"),
   3. write one small netCDF part per hour into <OUT>/AQUA/<year>/<region>/<month>/ssf_parts/,
   4. when all hours are done, merge each month into ONE <month>/CERES_SSF_Aqua_<year>_<month>.nc and verify it
@@ -20,7 +20,7 @@ Dates, output folder, region name and box are command-line options, the same as 
 
 Usage:
     python3 download_ceres.py --find                 # list the matching CERES collections
-    python3 download_ceres.py --inspect <raw file>   # check that a downloaded raw file has the 12 variables
+    python3 download_ceres.py --inspect <raw file>   # check that a downloaded raw file has the 17 variables
     python3 download_ceres.py --start 2008-01-01 --end 2008-12-31 --out /archive/GUY --dry-run   # count and GB
     nohup python3 download_ceres.py --start 2008-01-01 --end 2008-12-31 --out /archive/GUY \
         > /archive/GUY/ceres_run.out 2>&1 &          # the real run, in the background
@@ -185,7 +185,7 @@ def keep_mask(lat, lon360, lat_range=LAT_RANGE, lon_range=LON360_RANGE):
 
 
 def subset_ssf_file(src: Path, dest: Path, lat_range=LAT_RANGE, lon_range=LON360_RANGE) -> int:
-    """Cut one raw hourly SSF file down to the box (default Pacific) and the 12 variables; returns footprints kept.
+    """Cut one raw hourly SSF file down to the box (default Pacific) and the 17 variables; returns footprints kept.
 
     The output has the Order Tool's variable names, a ``_FillValue`` on every variable (the advisor's code reads
     that attribute) and ``time`` in days since 2000-01-01 12:00 (Julian date - 2451545), which num2date reads.
@@ -272,7 +272,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--dry-run", action="store_true", help="search and report counts and size, download nothing")
     p.add_argument("--merge-only", action="store_true", help="skip downloading; merge and verify ssf_parts/")
     p.add_argument("--all-hours", action="store_true", help="do not restrict to hours that have MODIS granules")
-    p.add_argument("--inspect", metavar="FILE", help="list which of the 12 needed variables a raw SSF file has")
+    p.add_argument("--inspect", metavar="FILE", help="list which of the 17 needed variables a raw SSF file has")
     a = p.parse_args(argv)
     out, region = Path(a.out).expanduser(), a.region
 

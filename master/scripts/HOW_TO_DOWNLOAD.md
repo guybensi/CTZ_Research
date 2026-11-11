@@ -5,7 +5,7 @@
 | סקריפט | מה הוא עושה |
 |---|---|
 | `download_modis.py` | מוריד גרנולות MODIS/Aqua מ־LAADS (`MYD021KM`→`MOD02`, `MYD03`→`MOD03`, אופציונלית `MYD06_L2`→`MOD06`, `MYD35_L2`→`MOD35`) |
-| `download_ceres.py` | מוריד CERES SSF (Aqua, Edition4A), חותך לאזור ול־12 המשתנים של המנחה וממזג לקובץ אחד לחודש |
+| `download_ceres.py` | מוריד CERES SSF (Aqua, Edition4A), חותך לאזור ול־17 המשתנים של ה־Order Tool (12 של המנחה ו־5 של GEOS-5) וממזג לקובץ אחד לחודש |
 | `organize_ceres.py` | ממיין, ממזג ובודק קבצי CERES (משמש את `download_ceres.py`; גם לגיבוי ידני מ־Order Tool) |
 
 ## פריסת הנתונים
@@ -56,7 +56,7 @@ nohup python3 download_modis.py --start 2008-01-01 --end 2008-12-31 --out /archi
 pgrep -af download_modis; tail -5 /archive/GUY/download_log.txt
 du -sh /archive/GUY; grep -c FAILED /archive/GUY/manifest.csv   # אם >0: להריץ שוב את אותה פקודה
 ```
-3. **CERES** (אחרי שה־MODIS הסתיים). קודם בדיקה על קובץ גולמי אחד, כל 12 השורות חייבות להיות `OK`:
+3. **CERES** (אחרי שה־MODIS הסתיים). קודם בדיקה על קובץ גולמי אחד, כל 17 השורות חייבות להיות `OK`:
 ```bash
 python3 download_ceres.py --inspect <קובץ SSF גולמי>
 python3 download_ceres.py --start 2008-01-01 --end 2008-12-31 --out /archive/GUY --dry-run

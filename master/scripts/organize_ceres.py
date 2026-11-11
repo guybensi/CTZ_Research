@@ -5,21 +5,23 @@ Normally you do not need this script directly: download_ceres.py downloads the f
 and calls it. Use it for the MANUAL route below (an Order Tool order), or to re-merge / verify.
 
 THE MANUAL ROUTE (Order Tool)
-    The subset in the screenshot (12 fields, Pacific box, 2008) is produced by NASA's *CERES Order Tool*
+    The subset in the screenshot (17 fields, Pacific box, 2008) is produced by NASA's *CERES Order Tool*
     (https://ceres.larc.nasa.gov/data/ -> "CER SSF Aqua-FM3 Edition4A" -> Order Tool): an interactive web form
     that prepares your subset and e-mails you a link with a list of file URLs (``fileURLs.txt``). It has no
     documented programmatic API, so the ORDER is placed by hand (steps below). This script does everything
     after that: downloads the files, puts them in the advisor's folder layout, merges them into ONE file per
     month (Generate_AllSky_2.py expects exactly one file whose name contains "CERES" per month folder) and
-    verifies that the 12 variables the advisor's code reads are present.
+    verifies that the 17 variables of the screenshot are present.
 
 HOW TO ORDER (once per month, 12 orders for 2008; or one order if the tool allows a full year)
     Product   : SSF Aqua (FM3), Edition4A.  Dates: the month.  Daytime only if the form offers it.
     Region    : the same box as the MODIS download (150E-120W, 60S-60N). If the form cannot cross the
                 dateline, order two boxes (150..180 and -180..-120); this script merges all the parts.
     Parameters: Time/Location/Angles, CERES Observed TOA Fluxes and Radiances, Clear Footprint Area,
-                MODIS Ocean Aerosols -> "Effective Optical Depth Ocean, average" (as in the screenshot;
-                the GEOS-5 boxes are optional and unused). Output format: netCDF.
+                GEOS-5 Atmosphere Parameters -> Surface Wind U-vector, Surface Wind V-vector, Surface Skin
+                Temperature, Estimated Inversion Strength, Precipitable Water,
+                MODIS Ocean Aerosols -> "Effective Optical Depth Ocean, average" (as in the screenshot).
+                Output format: netCDF.
     Keep the order e-mail's ``fileURLs.txt`` (save it, one URL per line).
 
 Layout written (same as download_modis.py / the advisor's code):
@@ -52,14 +54,21 @@ REGION_NAME = "Pacific"
 SATELLITE_DIR = "AQUA"
 MONTH_DIRS = ["jan", "feb", "mrch", "apr", "may", "june", "july", "aug", "sep", "oct", "nov", "dec"]
 PARTS_DIR = "ssf_parts"   # must NOT contain "CERES": the advisor's code takes the one entry whose name has "CERES"
-# The 12 SSF variables Generate_AllSky_2.py reads (names as written by the Order Tool's netCDF output).
-REQUIRED_VARS = [
+# The 17 SSF variables of the Order Tool screenshot (names as written by the Order Tool's netCDF output):
+# the 12 that Generate_AllSky_2.py reads, then the 5 GEOS-5 fields (not read by the advisor's code; kept as
+# candidate model inputs).
+ADVISOR_VARS = [
     "time", "Colatitude_of_CERES_FOV_at_surface", "Longitude_of_CERES_FOV_at_surface",
     "CERES_solar_zenith_at_surface", "CERES_viewing_zenith_at_surface", "CERES_relative_azimuth_at_surface",
     "CERES_SW_TOA_flux___upwards", "CERES_LW_TOA_flux___upwards",
     "CERES_SW_radiance___upwards", "CERES_LW_radiance___upwards",
     "Cloud_mask_clear_strong_percent_coverage", "PSF_wtd_MOD04_effective_optical_depth_average_ocean__0_550_",
 ]
+GEOS5_VARS = [
+    "Surface_wind___U_vector", "Surface_wind___V_vector", "Surface_skin_temperature",
+    "Estimated_Inversion_Strength", "Precipitable_water",
+]
+REQUIRED_VARS = ADVISOR_VARS + GEOS5_VARS
 # ==========================================================================================
 
 _DATE_RE = re.compile(r"(?<!\d)(20\d{2})(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])(?:\d{2})?(?!\d)")

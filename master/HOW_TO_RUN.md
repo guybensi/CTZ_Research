@@ -164,7 +164,7 @@ python3 -m flux1km.methods.<שם הקובץ> --data-root DIR --manifest M.json  
 
 ```bash
 python3 scripts/download_ceres.py --start 2008-01-01 --end 2008-12-31 --out /archive/GUY --dry-run   # כמה קבצים וכמה GB
-python3 scripts/download_ceres.py --inspect <raw>    # בדיקה שקובץ גולמי אחד מכיל את 12 המשתנים
+python3 scripts/download_ceres.py --inspect <raw>    # בדיקה שקובץ גולמי אחד מכיל את 17 המשתנים
 nohup python3 scripts/download_ceres.py --start 2008-01-01 --end 2008-12-31 --out /archive/GUY \
     > /archive/GUY/ceres_run.out 2>&1 &
 python3 scripts/download_ceres.py --start 2008-01-01 --end 2008-12-31 --out /archive/GUY --merge-only   # מיזוג ובדיקה בלבד

@@ -28,6 +28,11 @@ RAW = {
     "CERES LW radiance - upwards": 75.0,
     "Cloud mask clear strong percent coverage": 10.0,
     "PSF-wtd MOD04 effective optical depth average ocean (0.550)": 0.1,
+    "Surface wind - U-vector": -3.0,
+    "Surface wind - V-vector": 4.0,
+    "Surface skin temperature": 295.0,
+    "Estimated Inversion Strength": 6.5,
+    "Precipitable water": 3.25,
 }
 
 
@@ -110,6 +115,20 @@ class TestSubsetSsfFile:
             assert (d.year, d.month, d.day, d.hour) == (2008, 1, 1, 0)
             assert ds.variables["CERES_SW_TOA_flux___upwards"][:].tolist() == [250.0] * 4
         assert dc.oc.verify_file(tmp_path / "part.nc", 2008, 1) == []
+
+    def test_geos5_fields_are_kept(self, tmp_path):
+        make_raw(tmp_path / "raw", [0, 0], [160, 160])
+        dc.subset_ssf_file(tmp_path / "raw", tmp_path / "part.nc")
+        with nc.Dataset(tmp_path / "part.nc") as ds:
+            got = {v: ds.variables[v][:].tolist() for v in dc.oc.GEOS5_VARS}
+        assert got == {"Surface_wind___U_vector": [-3.0] * 2, "Surface_wind___V_vector": [4.0] * 2,
+                       "Surface_skin_temperature": [295.0] * 2, "Estimated_Inversion_Strength": [6.5] * 2,
+                       "Precipitable_water": [3.25] * 2}
+
+    def test_missing_geos5_field_raises(self, tmp_path):
+        make_raw(tmp_path / "raw", [0, 0], [160, 160], drop=("Precipitable water",))
+        with pytest.raises(ValueError, match="Precipitable_water"):
+            dc.subset_ssf_file(tmp_path / "raw", tmp_path / "part.nc")
 
     def test_fill_values_become_masked(self, tmp_path):
         make_raw(tmp_path / "raw", [0, 0], [160, 160])
