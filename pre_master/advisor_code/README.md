@@ -1,6 +1,8 @@
 # Advisor's data-building and training code (Eshkol Eytan, received Nov 2026)
 
-Kept unmodified, for reference. It is not run from this repository: it reads raw NASA files from
+Kept unmodified, for reference. The corrected, resumable version that is run on the downloaded data is
+[master/scripts/build_dataset.py](../../master/scripts/build_dataset.py) (fixes: [HOW_TO_BUILD_DATASET.md](../../master/scripts/HOW_TO_BUILD_DATASET.md)).
+This original is not run from this repository: it reads raw NASA files from
 paths on the advisor's server.
 
 | File | What it does |
