@@ -156,6 +156,8 @@ python3 -m flux1km.methods.<שם הקובץ> --data-root DIR --manifest M.json  
 
 שמות תיקיות החודשים הם כמו ברשימת `MONTH` של המנחה (`mrch`, ‏`june`, ‏`sep`, ‏`dec` וכו'). את קובץ ה־CERES SSF הסקריפט לא מוריד: צריך לשים אותו בכל תיקיית חודש, והשם שלו חייב לכלול `CERES`. קבצים שירדו במבנה הישן (`<product>/<year>/<doy>/`) מעבירים עם `--reorganize`. הרצה חוזרת מדלגת על קבצים שכבר ירדו.
 
+מדריך הרצה קצר להורדה: [scripts/HOW_TO_DOWNLOAD.md](scripts/HOW_TO_DOWNLOAD.md).
+
 **CERES SSF (אוטומטי).** `scripts/download_ceres.py` מוריד את ה־SSF של Aqua FM3, ‏Edition4A (‏`CER_SSF_Aqua-FM3-MODIS`) מ־ASDC דרך `earthaccess`, באותו משתמש Earthdata כמו ב־MODIS. ב־2008 יש 8,752 קבצים שעתיים גלובליים של כ־60 MB. הסקריפט מוריד רק את השעות שיש להן גרנולות MODIS בתיקיות `MOD02`, חותך כל קובץ לתיבת האוקיינוס השקט ול־12 המשתנים שהמנחה קורא (בשמות של ה־Order Tool), מוחק את הקובץ הגולמי וממזג לקובץ אחד לחודש (`CERES_SSF_Aqua_<year>_<month>.nc`). הוא דורש את `organize_ceres.py` ואת `download_modis.py` באותה תיקייה. שני הסקריפטים מקבלים את אותם `--start --end --out --region --box` (ברירת מחדל: האוקיינוס השקט, 2008), אז מריצים אותם עם אותם ערכים; `--box WEST EAST SOUTH NORTH` במעלות, ו־`WEST > EAST` חוצה את קו התאריך. אפשר טווח של כמה שנים, ו־CERES יורד רק לשעות שיש להן MODIS ב־`--out` וב־`--region` שהוזנו.
 
 ```bash
