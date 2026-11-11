@@ -5,7 +5,8 @@ Source: earthaccess searches NASA's CMR catalogue and downloads the files from
 LAADS DAAC (https://ladsweb.modaps.eosdis.nasa.gov), NASA's MODIS archive.
 A free Earthdata Login account is required: https://urs.earthdata.nasa.gov
 
-*** Edit the GLOBAL SETTINGS block below (dates, polygons, products, output folder). ***
+Dates, output folder, region name, box and products are command-line options (--start, --end, --out,
+--region, --box, --products); the GLOBAL SETTINGS block below holds only their defaults.
 
 Only "complete sets" are downloaded: a granule time (e.g. A2020060.0245) is fetched
 only if every requested product exists for it.
@@ -24,8 +25,10 @@ Layout on disk = the input layout of the advisor's Generate_AllSky_2.py
 
 Usage:
     pip install earthaccess
-    python3 download_modis.py --dry-run          # search only: counts and total size
-    nohup python3 download_modis.py > /archive/GUY/run.out 2>&1 &   # real download, in the background
+    python3 download_modis.py --start 2008-01-01 --end 2008-12-31 --out /archive/GUY --dry-run   # counts and size
+    nohup python3 download_modis.py --start 2008-01-01 --end 2008-12-31 --out /archive/GUY \
+        > /archive/GUY/run.out 2>&1 &                                                           # real download
+    python3 download_modis.py --start 2009-03-01 --end 2009-03-31 --out /data --region Atlantic --box -60 -10 -50 50
     python3 download_modis.py --reorganize       # move files of the old <product>/<year>/<doy>/ layout
 
 Earthdata login: ~/.netrc with
@@ -149,7 +152,33 @@ def normalize_polygon(points) -> list[tuple[float, float]]:
     return pts + [pts[0]]
 
 
-def target_folder(out_dir: Path, product: str, year: str, doy: str) -> Path:
+def box_polygons(west: float, east: float, south: float, north: float) -> list[list[tuple[float, float]]]:
+    """Lon/lat box -> list of polygons (lon in [-180, 180]); a box crossing the dateline is split in two.
+
+    `west` > `east` means the box crosses 180 (e.g. 150, -120 = 150E eastwards to 120W).
+
+    Example:
+        >>> box_polygons(150, -120, -60, 60)
+        [[(150.0, -60.0), (180.0, -60.0), (180.0, 60.0), (150.0, 60.0)], [(-180.0, -60.0), (-120.0, -60.0), (-120.0, 60.0), (-180.0, 60.0)]]
+        >>> box_polygons(-60, -10, -50, 50)
+        [[(-60.0, -50.0), (-10.0, -50.0), (-10.0, 50.0), (-60.0, 50.0)]]
+
+    Raises:
+        ValueError: coordinates out of range, south >= north, or west == east.
+    """
+    w, e, s, n = (float(x) for x in (west, east, south, north))
+    if not (-180 <= w <= 180 and -180 <= e <= 180):
+        raise ValueError(f"longitudes must be in [-180, 180]: west={w}, east={e}")
+    if not (-90 <= s < n <= 90):
+        raise ValueError(f"need -90 <= south < north <= 90: south={s}, north={n}")
+    if w == e:
+        raise ValueError("west and east are equal: the box has no width")
+    if w < e:
+        return [[(w, s), (e, s), (e, n), (w, n)]]
+    return [[(w, s), (180.0, s), (180.0, n), (w, n)], [(-180.0, s), (e, s), (e, n), (-180.0, n)]]
+
+
+def target_folder(out_dir: Path, product: str, year: str, doy: str, region: str | None = None) -> Path:
     """Folder a granule file goes to: <out>/AQUA/<year>/<region>/<month>/<MODxx>.
 
     Example:
@@ -158,6 +187,7 @@ def target_folder(out_dir: Path, product: str, year: str, doy: str) -> Path:
 
     Raises:
         ValueError: unknown product, or a day-of-year that does not exist in that year.
+    `region` defaults to REGION_NAME.
     """
     if product not in PRODUCT_DIRS:
         raise ValueError(f"no folder defined for product {product!r}; add it to PRODUCT_DIRS")
@@ -165,10 +195,10 @@ def target_folder(out_dir: Path, product: str, year: str, doy: str) -> Path:
     if not 1 <= d <= (366 if calendar.isleap(y) else 365):
         raise ValueError(f"day-of-year {doy} does not exist in {year}")
     month = (date(y, 1, 1) + timedelta(days=d - 1)).month
-    return Path(out_dir) / SATELLITE_DIR / year / REGION_NAME / MONTH_DIRS[month - 1] / PRODUCT_DIRS[product]
+    return Path(out_dir) / SATELLITE_DIR / year / (region or REGION_NAME) / MONTH_DIRS[month - 1] / PRODUCT_DIRS[product]
 
 
-def reorganize(out_dir: Path) -> int:
+def reorganize(out_dir: Path, region: str | None = None) -> int:
     """Move files of the old layout <out>/<product>/<year>/<doy>/*.hdf into target_folder; return how many."""
     moved = 0
     for prod in PRODUCT_DIRS:
@@ -177,7 +207,7 @@ def reorganize(out_dir: Path) -> int:
                 product, _, year, doy = parse_granule_name(f.name)
             except ValueError:
                 continue
-            dest = target_folder(out_dir, product, year, doy)
+            dest = target_folder(out_dir, product, year, doy, region)
             dest.mkdir(parents=True, exist_ok=True)
             f.rename(dest / f.name)
             moved += 1
@@ -262,26 +292,42 @@ def log(msg: str, log_path: Path) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--start", default=START_DATE, help=f"first day, YYYY-MM-DD (default {START_DATE})")
+    p.add_argument("--end", default=END_DATE, help=f"last day, inclusive, YYYY-MM-DD (default {END_DATE})")
+    p.add_argument("--out", default=OUT_DIR, help=f"root folder of the data (default {OUT_DIR})")
+    p.add_argument("--region", default=REGION_NAME, help=f"region folder name (default {REGION_NAME})")
+    p.add_argument("--box", nargs=4, type=float, metavar=("WEST", "EAST", "SOUTH", "NORTH"),
+                   help="region box in degrees, lon in [-180,180]; WEST > EAST crosses the dateline "
+                        "(default: the Pacific polygons in POLYGONS)")
+    p.add_argument("--products", nargs="+", default=PRODUCTS,
+                   help=f"products to fetch (default {' '.join(PRODUCTS)}); add MYD06_L2 MYD35_L2 for MOD06/MOD35")
     p.add_argument("--dry-run", action="store_true", help="search and report size, download nothing")
     p.add_argument("--reorganize", action="store_true",
                    help="only move already-downloaded files from the old <product>/<year>/<doy>/ layout, then exit")
     a = p.parse_args(argv)
+    out = Path(a.out).expanduser()
 
     if a.reorganize:
-        n = reorganize(Path(OUT_DIR).expanduser())
-        print(f"moved {n} files into {OUT_DIR}/{SATELLITE_DIR}/<year>/{REGION_NAME}/<month>/MODxx/")
+        n = reorganize(out, a.region)
+        print(f"moved {n} files into {out}/{SATELLITE_DIR}/<year>/{a.region}/<month>/MODxx/")
         return 0
 
-    chunks = date_chunks(START_DATE, END_DATE)            # validate settings before logging in
-    polygons = [normalize_polygon(poly) for poly in POLYGONS]
+    try:                                                   # validate settings before logging in
+        chunks = date_chunks(a.start, a.end)
+        polygons = [normalize_polygon(poly) for poly in (box_polygons(*a.box) if a.box else POLYGONS)]
+    except ValueError as e:
+        p.error(str(e))
+    products = list(a.products)
+    unknown = [pr for pr in products if pr not in PRODUCT_DIRS]
+    if unknown:
+        p.error(f"unknown products {unknown}; known: {sorted(PRODUCT_DIRS)}")
 
     import earthaccess  # imported here so --help works without it
 
-    out = Path(OUT_DIR).expanduser()
     out.mkdir(parents=True, exist_ok=True)
     log_path = out / "download_log.txt"
 
-    lock = open(out / ".download.lock", "w")              # one download at a time per OUT_DIR
+    lock = open(out / ".download.lock", "w")              # one download at a time per output folder
     try:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
@@ -289,8 +335,8 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     earthaccess.login(strategy="netrc") or earthaccess.login(strategy="interactive", persist=True)
-    log(f"start: {START_DATE}..{END_DATE} products={PRODUCTS} polygons={len(polygons)} "
-        f"day_only={DAY_ONLY} dry_run={a.dry_run}", log_path)
+    log(f"start: {a.start}..{a.end} region={a.region} products={products} polygons={len(polygons)} "
+        f"day_only={DAY_ONLY} out={out} dry_run={a.dry_run}", log_path)
 
     manifest = out / "manifest.csv"
     new_manifest = not manifest.exists()
@@ -302,14 +348,14 @@ def main(argv: list[str] | None = None) -> int:
 
         for start, end in chunks:
             by_product = {}
-            for prod in PRODUCTS:
+            for prod in products:
                 try:
                     by_product[prod] = search_product(earthaccess, prod, start, end, polygons)
                 except Exception as e:  # noqa: BLE001 - keep going with the next product/month
                     log(f"{start}: search failed for {prod}: {e}", log_path)
                     by_product[prod] = {}
             keys = complete_sets(by_product)
-            chunk_mb = sum(_size_mb(by_product[pr][k]) for k in keys for pr in PRODUCTS)
+            chunk_mb = sum(_size_mb(by_product[pr][k]) for k in keys for pr in products)
             total_mb += chunk_mb
             total_sets += len(keys)
             counts = ", ".join(f"{pr}={len(d)}" for pr, d in by_product.items())
@@ -319,11 +365,11 @@ def main(argv: list[str] | None = None) -> int:
 
             pending = defaultdict(list)   # target folder -> files to fetch
             for k in keys:
-                for prod in PRODUCTS:
+                for prod in products:
                     g = by_product[prod][k]
                     name = granule_file_name(g)
                     _, _, year, doy = parse_granule_name(name)
-                    folder = target_folder(out, prod, year, doy)
+                    folder = target_folder(out, prod, year, doy, a.region)
                     target = folder / name
                     if is_complete(target, _size_mb(g)):
                         w.writerow([k, prod, name, f"{_size_mb(g):.1f}", "exists"])

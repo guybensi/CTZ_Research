@@ -284,6 +284,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--out", default=OUT_DIR, help=f"root folder (default {OUT_DIR})")
     p.add_argument("--year", default=YEAR)
     p.add_argument("--region", default=REGION_NAME)
+    p.add_argument("--months", nargs="+", type=int, metavar="M", help="verify only these months (default all 12)")
     p.add_argument("--verify-only", action="store_true", help="only verify the merged files that exist")
     p.add_argument("--no-merge", action="store_true", help="sort the parts into month folders but do not merge")
     a = p.parse_args(argv)
@@ -304,7 +305,7 @@ def main(argv: list[str] | None = None) -> int:
         organize(files, out, a.year, a.region, merge=not a.no_merge)
 
     bad = 0
-    for m in range(1, 13):
+    for m in (a.months or range(1, 13)):
         mdir = month_folder(out, a.year, a.region, m)
         merged = sorted(mdir.glob("CERES*.nc"))
         if not merged:

@@ -141,7 +141,7 @@ python3 -m flux1km.methods.<שם הקובץ> --data-root DIR --manifest M.json  
 | `sampling_study.py` | אסטרטגיות S0–S7: ‏Jaccard, ‏KS, ‏MMD, מטריצת אימון לפי Si מול בדיקה לפי תת־אוכלוסייה, ו־Kendall τ | `python3 -m flux1km.sampling_study --models ...` |
 | `decision.py` | כלל ההחלטה של סעיף 6. מופעל אוטומטית בכל הרצה | — |
 | `cli.py` | הרצה של כל השיטות או של חלקן | `python3 -m flux1km.cli` |
-| `scripts/download_modis.py` | הורדת גרנולות Aqua מ־LAADS DAAC ‏(ברירת מחדל `MYD021KM` ו־`MYD03`; אפשר להוסיף `MYD06_L2` ו־`MYD35_L2`), רק סטים מלאים ורק בשעות היום. התאריכים והפוליגונים מוגדרים במשתנים הגלובליים בראש הקובץ | `python3 scripts/download_modis.py --dry-run` |
+| `scripts/download_modis.py` | הורדת גרנולות Aqua מ־LAADS DAAC ‏(ברירת מחדל `MYD021KM` ו־`MYD03`; אפשר להוסיף `MYD06_L2` ו־`MYD35_L2`), רק סטים מלאים ורק בשעות היום. תאריכים, יעד, שם אזור ותיבה נקבעים בארגומנטים (`--start --end --out --region --box --products`), בלי לערוך את הקובץ | `python3 scripts/download_modis.py --start 2008-01-01 --end 2008-12-31 --out /archive/GUY --dry-run` |
 
 הסקריפט עצמאי, ולכן אפשר להעתיק אותו לכל שרת. הוא צריך רק את `earthaccess` ומשתמש `Earthdata Login` שמוגדר ב־`~/.netrc`. ברירת המחדל היא כל 2008, האוקיינוס השקט בין 60°S ל־60°N, והפלט נשמר ב־`/archive/GUY`.
 
@@ -156,13 +156,14 @@ python3 -m flux1km.methods.<שם הקובץ> --data-root DIR --manifest M.json  
 
 שמות תיקיות החודשים הם כמו ברשימת `MONTH` של המנחה (`mrch`, ‏`june`, ‏`sep`, ‏`dec` וכו'). את קובץ ה־CERES SSF הסקריפט לא מוריד: צריך לשים אותו בכל תיקיית חודש, והשם שלו חייב לכלול `CERES`. קבצים שירדו במבנה הישן (`<product>/<year>/<doy>/`) מעבירים עם `--reorganize`. הרצה חוזרת מדלגת על קבצים שכבר ירדו.
 
-**CERES SSF (אוטומטי).** `scripts/download_ceres.py` מוריד את ה־SSF של Aqua FM3, ‏Edition4A (‏`CER_SSF_Aqua-FM3-MODIS`) מ־ASDC דרך `earthaccess`, באותו משתמש Earthdata כמו ב־MODIS. ב־2008 יש 8,752 קבצים שעתיים גלובליים של כ־60 MB. הסקריפט מוריד רק את השעות שיש להן גרנולות MODIS בתיקיות `MOD02`, חותך כל קובץ לתיבת האוקיינוס השקט ול־12 המשתנים שהמנחה קורא (בשמות של ה־Order Tool), מוחק את הקובץ הגולמי וממזג לקובץ אחד לחודש (`CERES_SSF_Aqua_<year>_<month>.nc`). הוא דורש את `organize_ceres.py` באותה תיקייה.
+**CERES SSF (אוטומטי).** `scripts/download_ceres.py` מוריד את ה־SSF של Aqua FM3, ‏Edition4A (‏`CER_SSF_Aqua-FM3-MODIS`) מ־ASDC דרך `earthaccess`, באותו משתמש Earthdata כמו ב־MODIS. ב־2008 יש 8,752 קבצים שעתיים גלובליים של כ־60 MB. הסקריפט מוריד רק את השעות שיש להן גרנולות MODIS בתיקיות `MOD02`, חותך כל קובץ לתיבת האוקיינוס השקט ול־12 המשתנים שהמנחה קורא (בשמות של ה־Order Tool), מוחק את הקובץ הגולמי וממזג לקובץ אחד לחודש (`CERES_SSF_Aqua_<year>_<month>.nc`). הוא דורש את `organize_ceres.py` ואת `download_modis.py` באותה תיקייה. שני הסקריפטים מקבלים את אותם `--start --end --out --region --box` (ברירת מחדל: האוקיינוס השקט, 2008), אז מריצים אותם עם אותם ערכים; `--box WEST EAST SOUTH NORTH` במעלות, ו־`WEST > EAST` חוצה את קו התאריך. אפשר טווח של כמה שנים, ו־CERES יורד רק לשעות שיש להן MODIS ב־`--out` וב־`--region` שהוזנו.
 
 ```bash
-python3 scripts/download_ceres.py --dry-run          # כמה קבצים וכמה GB
+python3 scripts/download_ceres.py --start 2008-01-01 --end 2008-12-31 --out /archive/GUY --dry-run   # כמה קבצים וכמה GB
 python3 scripts/download_ceres.py --inspect <raw>    # בדיקה שקובץ גולמי אחד מכיל את 12 המשתנים
-nohup python3 scripts/download_ceres.py > /archive/GUY/ceres_run.out 2>&1 &
-python3 scripts/download_ceres.py --merge-only       # מיזוג ובדיקה בלבד
+nohup python3 scripts/download_ceres.py --start 2008-01-01 --end 2008-12-31 --out /archive/GUY \
+    > /archive/GUY/ceres_run.out 2>&1 &
+python3 scripts/download_ceres.py --start 2008-01-01 --end 2008-12-31 --out /archive/GUY --merge-only   # מיזוג ובדיקה בלבד
 ```
 
 **CERES SSF (ידני, גיבוי).** אם ההורדה האוטומטית לא עובדת: מזמינים ב־CERES Order Tool (https://ceres.larc.nasa.gov/data/) חודש־חודש, בפורמט netCDF, עם אותה תיבת אזור והשדות Time/Location/Angles, CERES Observed TOA Fluxes and Radiances, Clear Footprint Area ו־Effective Optical Depth Ocean. את `fileURLs.txt` שמגיע במייל מעבירים ל־`scripts/organize_ceres.py`, שמוריד, ממיין, ממזג ובודק:

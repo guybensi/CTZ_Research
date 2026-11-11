@@ -134,3 +134,68 @@ class TestPartPath:
     def test_month_folder_and_name(self):
         assert dc.part_path(Path("/r"), "2008", "Pacific", 2008, 32, 3).as_posix() == "/r/AQUA/2008/Pacific/feb/ssf_parts/ssf_2008020103.nc"
         assert dc.part_path(Path("/r"), "2008", "Pacific", 2008, 366, 0).name == "ssf_2008123100.nc"
+
+
+class TestBoxRanges:
+    def test_pacific_default(self):
+        assert dc.box_ranges(150, -120, -60, 60) == ((-60.0, 60.0), (150.0, 240.0))
+        assert (dc.LAT_RANGE, dc.LON360_RANGE) == ((-60.0, 60.0), (150.0, 240.0))
+
+    def test_western_hemisphere_box(self):
+        assert dc.box_ranges(-60, -10, -50, 50) == ((-50.0, 50.0), (300.0, 350.0))
+
+    def test_box_across_greenwich_wraps(self):
+        assert dc.box_ranges(-10, 10, -5, 5)[1] == (350.0, 10.0)
+
+    def test_invalid_box(self):
+        with pytest.raises(ValueError):
+            dc.box_ranges(0, 0, -5, 5)
+
+
+class TestKeepMaskWrap:
+    def test_wrapped_range(self):
+        m = dc.keep_mask(np.zeros(5), np.array([100, 355, 5, 100, 100.0]), lon_range=(350, 10))
+        assert m.tolist() == [True, True, True, True, False]   # 100 next to 355 / 5 is kept as neighbour
+
+    def test_nan_coordinates_not_inside(self):
+        assert dc.keep_mask(np.array([np.nan]), np.array([160.0])).tolist() == [False]
+
+
+class TestYearsAndMonths:
+    def test_years(self):
+        assert dc.years_in("2008-12-30", "2009-01-02") == [2008, 2009]
+        assert dc.years_in("2008-05-01", "2008-05-01") == [2008]
+
+    def test_years_bad_order(self):
+        with pytest.raises(ValueError):
+            dc.years_in("2009-01-01", "2008-01-01")
+
+    def test_months(self):
+        assert dc.months_in(2008, "2008-03-15", "2008-03-15") == [3]
+        assert dc.months_in(2008, "2008-11-15", "2009-02-01") == [11, 12]
+        assert dc.months_in(2009, "2008-11-15", "2009-02-01") == [1, 2]
+        assert dc.months_in(2010, "2008-11-15", "2009-02-01") == []
+
+
+class TestSubsetWithBox:
+    def test_custom_box(self, tmp_path):
+        make_raw(tmp_path / "raw", [0, 0, 0], [10, 20, 100])      # all outside the Pacific default
+        n = dc.subset_ssf_file(tmp_path / "raw", tmp_path / "p.nc", (-10.0, 10.0), (5.0, 25.0))
+        assert n == 3                                              # 2 inside + 1 neighbour
+
+
+class TestMainArguments:
+    @pytest.mark.parametrize("args", [
+        ["--start", "2009-01-01", "--end", "2008-01-01"],
+        ["--start", "nonsense"],
+        ["--box", "5", "5", "0", "10"],
+    ])
+    def test_bad_arguments_exit_before_login(self, args):
+        with pytest.raises(SystemExit) as e:
+            dc.main(args + ["--dry-run"])
+        assert e.value.code == 2
+
+    def test_merge_only_multi_year_range_verifies_only_requested_months(self, tmp_path, capsys):
+        rc = dc.main(["--start", "2008-03-01", "--end", "2008-03-31", "--out", str(tmp_path), "--merge-only"])
+        out = capsys.readouterr().out
+        assert rc == 1 and out.count("NO CERES FILE") == 1 and "mrch" in out

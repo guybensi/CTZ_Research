@@ -134,3 +134,53 @@ class TestIsComplete:
         assert not dm.is_complete(f, 0.0)
         f.write_bytes(b"1")
         assert dm.is_complete(f, 0.0)
+
+
+class TestBoxPolygons:
+    def test_dateline_box_is_split_in_two(self):
+        a, b = dm.box_polygons(150, -120, -60, 60)
+        assert a == [(150.0, -60.0), (180.0, -60.0), (180.0, 60.0), (150.0, 60.0)]
+        assert b == [(-180.0, -60.0), (-120.0, -60.0), (-120.0, 60.0), (-180.0, 60.0)]
+
+    def test_plain_box_is_one_polygon(self):
+        assert len(dm.box_polygons(-60, -10, -50, 50)) == 1
+
+    def test_default_polygons_equal_the_pacific_box(self):
+        assert dm.box_polygons(150, -120, -60, 60) == dm.POLYGONS
+
+    @pytest.mark.parametrize("box", [(0, 0, -10, 10), (-200, 10, 0, 10), (0, 10, 10, 10), (0, 10, 20, 10), (0, 10, -91, 0)])
+    def test_invalid(self, box):
+        with pytest.raises(ValueError):
+            dm.box_polygons(*box)
+
+    def test_output_is_accepted_by_normalize_polygon(self):
+        for poly in dm.box_polygons(170, -170, -5, 5):
+            assert dm.normalize_polygon(poly)[0] == dm.normalize_polygon(poly)[-1]
+
+
+class TestTargetFolderRegion:
+    def test_explicit_region(self):
+        assert dm.target_folder(Path("/r"), "MYD03", "2009", "060", "Atlantic").as_posix() == "/r/AQUA/2009/Atlantic/mrch/MOD03"
+
+    def test_default_region_unchanged(self):
+        assert dm.target_folder(Path("/r"), "MYD03", "2009", "060").as_posix() == "/r/AQUA/2009/Pacific/mrch/MOD03"
+
+
+class TestMainArguments:
+    @pytest.mark.parametrize("args", [
+        ["--start", "2008-02-01", "--end", "2008-01-01"],
+        ["--start", "2008-13-01"],
+        ["--box", "0", "0", "-10", "10"],
+        ["--products", "FOO"],
+    ])
+    def test_bad_arguments_exit_before_login(self, args):
+        with pytest.raises(SystemExit) as e:
+            dm.main(args + ["--dry-run"])
+        assert e.value.code == 2
+
+    def test_reorganize_uses_out_and_region(self, tmp_path, capsys):
+        old = tmp_path / "MYD03" / "2008" / "060"
+        old.mkdir(parents=True)
+        (old / "MYD03.A2008060.0245.061.2008061.hdf").write_bytes(b"x")
+        assert dm.main(["--reorganize", "--out", str(tmp_path), "--region", "Atlantic"]) == 0
+        assert (tmp_path / "AQUA/2008/Atlantic/feb/MOD03/MYD03.A2008060.0245.061.2008061.hdf").is_file()
