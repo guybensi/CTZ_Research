@@ -596,10 +596,27 @@ class TestVerify:
 
 
 class TestCommandLine:
-    def test_psf_is_required(self, tmp_path):
+    def test_missing_psf_file(self, tmp_path):
         with pytest.raises(SystemExit) as e:
-            bd.main(["--out", str(tmp_path)])
+            bd.main(["--out", str(tmp_path), "--psf", str(tmp_path / "nope.csv")])
         assert e.value.code == 2
+
+    def test_default_psf_is_the_advisors_file(self):
+        from flux1km import aggregation
+
+        assert bd.DEFAULT_PSF.is_file()
+        p = bd.load_psf(str(bd.DEFAULT_PSF))
+        assert p.shape == (27, 55) and p.sum() == pytest.approx(1.0)
+        assert int(p.sum(axis=0).argmax()) == 18                        # the PSF peak column, not the patch centre
+        assert np.allclose(p, aggregation.load_ceres_psf(bd.DEFAULT_PSF))
+
+    def test_real_psf_puts_its_peak_on_the_footprint_pixel(self):
+        p = bd.load_psf(str(bd.DEFAULT_PSF))
+        m = modis_arrays()
+        fwd = extract(m, ceres_arrays(m["lat"], m["lon"], [(CY, CX), (CY, CX + 3)]), psf=p)
+        bwd = extract(m, ceres_arrays(m["lat"], m["lon"], [(CY, CX), (CY, CX - 3)]), psf=p)
+        assert fwd["images"]["ImSW"][0, 0, 13, 18] == pytest.approx(10 + CX)
+        assert bwd["images"]["ImSW"][0, 0, 13, 36] == pytest.approx(10 + CX)     # mirrored: 54 - 18
 
     def test_bad_dates(self, tmp_path):
         with pytest.raises(SystemExit):
@@ -607,7 +624,7 @@ class TestCommandLine:
 
     def test_end_to_end_with_ellipse_psf(self, tmp_path):
         data, out = make_month(tmp_path)
-        rc = bd.main(["--data", str(data), "--out", str(out), "--psf", "ellipse", "--workers", "1"])
+        rc = bd.main(["--data", str(data), "--out", str(out), "--workers", "1"])               # default PSF
         assert rc == 0 and (out / "Pacific/scalars/A2008001.0300.npz").exists()
         assert bd.main(["--out", str(out), "--verify"]) == 0
         assert "granules" in (out / "build_log.txt").read_text() or "done" in (out / "build_log.txt").read_text()

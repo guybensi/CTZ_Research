@@ -52,5 +52,5 @@ jobs:
           elif [ "$T" = "NONE" ]; then
             echo "No relevant test changes."
           else
-            pytest -q $T
+            pytest -q $T || [ $? -eq 5 ]   # 5 = nothing was collected (all selected tests skipped)
           fi

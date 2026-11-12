@@ -37,7 +37,7 @@ docker run --gpus all --rm -it -v "$PWD":/app ctz_research:gpu
 | 5. אסטרטגיות דגימה, עם 2–3 השיטות המובילות | `python3 -m flux1km.sampling_study --data-root data/paired --manifest benchmark_outputs/e0/split_manifest.json --models M2 M3 M9` | `sampling_results.txt` |
 | 6. אימון מחדש של המנצח עם 5 seeds | `python3 -m flux1km.methods.<קובץ> --data-root data/paired --manifest ... --seeds 0 1 2 3 4` | `results.txt` |
 
-עד שהקובץ `ceres_psf.csv` מגיע מאשכול, מוסיפים לכל פקודה `--psf benchmark_outputs/e0/fitted_operator.npz`. זה ה־PSF ששוחזר בשלב 1. כשהקובץ האמיתי מגיע מחליפים ל־`--psf ceres_psf.csv`.
+הקובץ `ceres_psf.csv` של המנחה כבר בריפו, ב־`resources/ceres_psf.csv`, ומוסיפים אותו לכל פקודה: `--psf resources/ceres_psf.csv`. (`benchmark_outputs/e0/fitted_operator.npz` הוא ה־PSF ששוחזר בשלב 1, כגיבוי.)
 
 כל פקודה עובדת גם עם `--demo` במקום `--data-root`. אז היא רצה על דאטה סינתטי עם אמת ידועה ב־1 ק"מ, ו־`--demo-hard` מריץ את הגרסה הקשה (ראו סעיף 5).
 
@@ -158,7 +158,7 @@ python3 -m flux1km.methods.<שם הקובץ> --data-root DIR --manifest M.json  
 
 מדריך הרצה קצר להורדה: [scripts/HOW_TO_DOWNLOAD.md](scripts/HOW_TO_DOWNLOAD.md).
 
-בניית הדאטה לאימון (`scalars/`, `moments/`, `images/`) מהקבצים שהורדו, עם הגרסה המתוקנת של הממיר של המנחה: `python3 scripts/build_dataset.py --data /archive/GUY --out /archive/GUY/dataset --psf ceres_psf.csv`. מדריך ורשימת התיקונים: [scripts/HOW_TO_BUILD_DATASET.md](scripts/HOW_TO_BUILD_DATASET.md).
+בניית הדאטה לאימון (`scalars/`, `moments/`, `images/`) מהקבצים שהורדו, עם הגרסה המתוקנת של הממיר של המנחה: `python3 scripts/build_dataset.py --data /archive/GUY --out /archive/GUY/dataset` (ה־PSF של המנחה הוא ברירת המחדל). מדריך ורשימת התיקונים: [scripts/HOW_TO_BUILD_DATASET.md](scripts/HOW_TO_BUILD_DATASET.md).
 
 **CERES SSF (אוטומטי).** `scripts/download_ceres.py` מוריד את ה־SSF של Aqua FM3, ‏Edition4A (‏`CER_SSF_Aqua-FM3-MODIS`) מ־ASDC דרך `earthaccess`, באותו משתמש Earthdata כמו ב־MODIS. ב־2008 יש 8,752 קבצים שעתיים גלובליים של כ־60 MB. הסקריפט מוריד רק את השעות שיש להן גרנולות MODIS בתיקיות `MOD02`, חותך כל קובץ לתיבת האוקיינוס השקט ול־12 המשתנים שהמנחה קורא (בשמות של ה־Order Tool), מוחק את הקובץ הגולמי וממזג לקובץ אחד לחודש (`CERES_SSF_Aqua_<year>_<month>.nc`). הוא דורש את `organize_ceres.py` ואת `download_modis.py` באותה תיקייה. שני הסקריפטים מקבלים את אותם `--start --end --out --region --box` (ברירת מחדל: האוקיינוס השקט, 2008), אז מריצים אותם עם אותם ערכים; `--box WEST EAST SOUTH NORTH` במעלות, ו־`WEST > EAST` חוצה את קו התאריך. אפשר טווח של כמה שנים, ו־CERES יורד רק לשעות שיש להן MODIS ב־`--out` וב־`--region` שהוזנו.
 

@@ -47,7 +47,7 @@ Nothing is benchmarked until these items are done:
 - [x] Build one frozen **split manifest** (§4.1) and an automatic pixel-reuse leakage check: `e0.build_frozen_manifest` (Arena A LOGO + interleave, Arena B day k-fold / year / leave-one-month-out with the Arena A days excluded from training, spatial blocks), each fold checked with `splits.pixel_reuse_fraction`. To freeze on the full data.
 - [ ] Re-run the legacy baselines inside the new protocol. The old numbers (17.72 and 15.33 W m⁻²) used random row splits, and early stopping on the test set, so they are optimistic. *Code ready:* `M0-allsky37`, `M0-advisor`, `M0-ridge` (`methods/m0_legacy.py`); run with `python3 -m flux1km.e0 --data-root DIR --run-baselines` or `python3 -m flux1km.methods.m0_legacy --data-root DIR --manifest M.json`.
 - [x] The advisor's data-building code received (§2.3, `pre_master/advisor_code/`).
-- [ ] Get `ceres_psf.csv` from the advisor and switch the primary operator to `ceres_psf`. Fallback: `aggregation.recover_psf_from_moments` on ≥ 60 footprints.
+- [x] `ceres_psf.csv` received from the advisor (`master/resources/ceres_psf.csv`); switch the primary operator to `ceres_psf` (`--psf master/resources/ceres_psf.csv`). Fallback: `aggregation.recover_psf_from_moments` on ≥ 60 footprints.
 - [ ] Report the `LiqPhsf` bug (and the minor ones) to the advisor (§2.3). *Text ready:* `e0.advisor_bug_report()`, written by every E0 run to `advisor_bug_report.txt`.
 
 ### 2.1 What the data looks like
@@ -90,7 +90,7 @@ This section is based on one sample granule, `A2014060.0245`, stored in `data/sa
 - **Footprint overlap is real and large.** Neighbouring footprint centres are about 12.6 km apart, and two patches share up to 72% of their pixels (1,063 of 1,485 identical 0.66 µm values). Random footprint splits are therefore leaky, and the 20 km leakage radius in `splits` is a sensible start (§4.1).
 - **The moments are PSF-weighted**, not uniform patch statistics. They are `Σ w·x` with the CERES PSF `w` resampled to 27×55 and mirrored for `FOVorientation == 0` (§2.3).
   - On the sample, uniform patch statistics miss the stored moments by 23% RMS; a fitted tilted elliptical Gaussian (`fov_ellipse`) gets to 8.6%. The rest is the real PSF's along-scan skew.
-  - The exact operator is `ceres_psf`, available as soon as the advisor's `ceres_psf.csv` is in the repo. Until then `fov_ellipse` is the primary operator, and `uniform` and `gaussian_psf` are sensitivity checks.
+  - The exact operator is `ceres_psf`, available: the advisor's `ceres_psf.csv` is in `master/resources/`. `fov_ellipse`, `uniform` and `gaussian_psf` are sensitivity checks.
   - The M2 bridge (train on moments, apply to pixels) is exact only under this same operator. The synthetic generator therefore builds its labels and moments with it too.
 - **Storage conventions now encoded in `flux1km.schema`**:
   - `MOMENTS_EXCESS_KURTOSIS`;
@@ -152,7 +152,7 @@ Source: `pre_master/advisor_code/` (driver `Generate_AllSky_2.py`; the function 
      - `Cloud_mask_clear_strong_percent_coverage` → `Clrf`;
      - `PSF_wtd_MOD04_effective_optical_depth_average_ocean__0_550_` → `AOD`.
 2. **The PSF.**
-   - The source is `ceres_psf.csv`, the NOAA-20 CERES PSF on a 250 m grid. It is not in the repo yet.
+   - The source is `ceres_psf.csv`, the NOAA-20 CERES PSF on a 250 m grid. It is in the repo: `master/resources/ceres_psf.csv`. Its column peak is at column 18 of 55 (not the patch centre): the advisor aligns that peak with the footprint pixel.
    - It is Fourier-resampled to 27×55 at about 1 km, which rescales it to Aqua's altitude, and then normalised.
    - The 27×55 patch is exactly the PSF's support. That is why the patch is a fixed rectangle, and the footprint ellipse sits inside it.
    - This answers open question 4 (§7) for the stored data: the PSF is not rescaled with VZA, so off-nadir footprints are represented by the same 27×55 weights.
