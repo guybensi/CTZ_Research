@@ -628,3 +628,121 @@ class TestCommandLine:
         assert rc == 0 and (out / "Pacific/scalars/A2008001.0300.npz").exists()
         assert bd.main(["--out", str(out), "--verify"]) == 0
         assert "granules" in (out / "build_log.txt").read_text() or "done" in (out / "build_log.txt").read_text()
+
+
+class TestInvalidChannels:
+    """Dead detectors (Aqua band 6 = SW channel 8, 1.64 um) make whole row groups invalid in one channel."""
+
+    def dead_band6(self):
+        m = modis_arrays()
+        rows = np.arange(H)
+        m["solar"][8][(rows % 10) < 7] = np.nan                  # 70% of the rows: dead detectors
+        return m
+
+    def spots(self, m):
+        return ceres_arrays(m["lat"], m["lon"], [(CY, CX), (CY, CX + 3)])
+
+    def test_footprint_is_kept_with_nan_moments_for_the_bad_channel(self):
+        m = self.dead_band6()
+        res = extract(m, self.spots(m))
+        assert res is not None
+        mom = res["moments"]
+        assert np.isnan(mom["mSWspec"][0, 8]) and np.isnan(mom["stdSWspec"][0, 8])
+        good = [i for i in range(11) if i != 8]
+        assert np.isfinite(mom["mSWspec"][0, good]).all() and np.isfinite(mom["mLWspec"][0]).all()
+
+    def test_bad_channel_stays_nan_in_the_images_and_out_of_the_sum(self):
+        m = self.dead_band6()
+        res = extract(m, self.spots(m))
+        assert np.isnan(res["images"]["ImSW"][0, 8]).any() and np.isfinite(res["images"]["ImSW"][0, 0]).all()
+        # channels hold constants 10..20 (+ the column gradient on channel 0): the sum skips channel 8
+        full = extract(modis_arrays(), self.spots(m))["scalars"]["mSumIsw"][0]
+        assert full - res["scalars"]["mSumIsw"][0] == pytest.approx(10 + 8, rel=1e-4)
+
+    def test_requiring_all_channels_rejects_it_as_the_old_code_did(self):
+        m = self.dead_band6()
+        stats = {}
+        assert extract(m, self.spots(m), required_sw=range(11), required_lw=range(16), stats=stats) is None
+        assert stats["invalid"] == 1 and stats["accepted"] == 0
+
+    def test_invalid_required_channel_rejects(self):
+        m = modis_arrays()
+        m["solar"][3][CY - 3:CY + 4, CX - 3:CX + 4] = np.nan     # 0.85 um, under the PSF core
+        stats = {}
+        assert extract(m, self.spots(m), stats=stats) is None
+        assert stats["invalid"] == 1
+
+    def test_stats_count_every_reason(self):
+        m = modis_arrays()
+        ce = ceres_arrays(m["lat"], m["lon"], [(CY, CX), (CY, CX + 3), (5, CX), (5, CX + 3)])
+        stats = {}
+        extract(m, ce, stats=stats)
+        assert stats == {"candidates": 3, "outside": 0, "edge": 1, "invalid": 0, "accepted": 2}   # the 4th has no next footprint
+
+    def test_a_fully_valid_granule_is_unchanged_by_the_channel_logic(self):
+        m = modis_arrays()
+        res = extract(m, self.spots(m))
+        assert np.isfinite(res["moments"]["mSWspec"]).all() and np.isfinite(res["moments"]["kurtLWspec"]).all()
+
+
+class TestSpread:
+    def test_picks_are_spread_and_include_the_ends(self):
+        assert bd.spread(list(range(100)), 3) == [0, 50, 99]
+
+    def test_more_than_available(self):
+        assert bd.spread([1, 2], 5) == [1, 2]
+        assert bd.spread([], 3) == []
+
+
+class TestLimitDiagnoseRetry:
+    def build(self, data, out, **kw):
+        base = dict(start="2008-01-01", end="2008-12-31", workers=1, gen_images=False, limit=None, dry_run=False,
+                    log=lambda s: None)
+        return bd.build_month(data, out, 2008, "Pacific", 1, psf27(), **{**base, **kw})
+
+    def test_limit_takes_granules_spread_over_the_month(self, tmp_path):
+        data, out = make_month(tmp_path, n_granules=3)
+        c = self.build(data, out, limit=2)
+        assert c["ok"] == 2
+        assert sorted(p.stem for p in (out / "Pacific/2008/jan/scalars").glob("*.npz")) == ["A2008001.0300", "A2008003.0300"]
+
+    def test_empty_granule_records_why(self, tmp_path):
+        data, out = make_month(tmp_path)
+        write_modis_files(data / "AQUA/2008/Pacific/jan", key="A2008001.0900")
+        self.build(data, out)
+        text = (out / "Pacific/2008/jan/granules.csv").read_text()
+        assert "no CERES footprint in this hour" in text
+
+    def test_retry_empty_rebuilds_them(self, tmp_path):
+        data, out = make_month(tmp_path)
+        jan = out / "Pacific/2008/jan"
+        jan.mkdir(parents=True)
+        bd._append_log(jan, {"key": "A2008001.0300", "status": "empty", "n": 0, "sec": 0.0, "msg": "old rule"})
+        assert self.build(data, out)["ok"] == 1                    # only the other granule: this one is "done"
+        c = self.build(data, out, retry_empty=True)
+        assert c["ok"] == 1 and c["skipped"] == 1
+        assert self.build(data, out)["skipped"] == 2               # the new "ok" row wins over the old "empty" one
+
+    def test_diagnose_builds_nothing_and_reports(self, tmp_path):
+        data, out = make_month(tmp_path)
+        logs = []
+        c = self.build(data, out, diagnose=2, log=logs.append)
+        assert c["ok"] == 0 and not (out / "Pacific/2008/jan/scalars").exists()
+        text = "\n".join(logs)
+        assert "A2008001.0300" in text and "accepted=1" in text and "invalid pixels per SW channel: none" in text
+
+    def test_diagnose_names_the_bad_channel(self, tmp_path):
+        data, out = make_month(tmp_path, n_granules=1)
+        f02 = next((data / "AQUA/2008/Pacific/jan/MOD02").glob("*.hdf"))
+        with nc.Dataset(f02, "a") as ds:
+            ds.variables["EV_500_Aggr1km_RefSB"][3, ::2, :] = 65533          # band 6 = 1.64 um: saturated rows
+        logs = []
+        self.build(data, out, diagnose=1, log=logs.append)
+        assert "1.64um=50%" in "\n".join(logs)
+
+    def test_cli_options(self, tmp_path):
+        data, out = make_month(tmp_path)
+        assert bd.main(["--data", str(data), "--out", str(out), "--workers", "1", "--limit", "1", "--no-images",
+                        "--required-channels", "all"]) == 0
+        assert len(list((out / "Pacific/2008/jan/scalars").glob("*.npz"))) == 1
+        assert bd.main(["--data", str(data), "--out", str(out), "--diagnose", "1"]) == 0

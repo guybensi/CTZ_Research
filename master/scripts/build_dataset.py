@@ -56,6 +56,12 @@ LW_WAVELENGTHS = np.array([3.75, 3.96, 3.96, 4.05, 4.46, 4.5, 6.7, 7.32, 8.55, 9
 NAN_PSF_WEIGHT = 0.001                 # a footprint is used if invalid pixels carry less than 0.1% of the PSF
 MIN_FSW = 1.0                          # W m-2; smaller = night, the footprint is skipped
 MAX_FOV_OFFSET_KM = 10.0               # a footprint farther than this from every pixel is outside the granule
+# Channels that must be valid under the PSF for a footprint to be kept: the 13 channels of the advisor's current model
+# (train_Allsky_moments_narrow_values.py). Any other channel with invalid pixels (dead detectors, saturation) gets NaN
+# moments for that footprint instead of rejecting it. SW index: 0.47=0, 0.66=2, 0.85=3, 2.13=9, 1.375=10;
+# LW index: 3.96(B22)=2, 4.05=3, 4.5=5, 6.7=6, 7.3=7, 9.7=9, 11=10, 12=11.
+REQUIRED_SW = (0, 2, 3, 9, 10)
+REQUIRED_LW = (2, 3, 5, 6, 7, 9, 10, 11)
 PSF_COLUMN_OFFSET = 0                  # the advisor's code is equivalent to 1 (see HOW_TO_BUILD_DATASET.md, fix 8)
 EARTH_RADIUS_KM = 6371.0
 CLOUD_MASK_TYPE = "relaxed"            # "relaxed": cloudy = the most confident cloudy class only
@@ -311,7 +317,8 @@ def _mean_std_valid(values: np.ndarray, w: np.ndarray, exclude: np.ndarray) -> t
 
 def extract_footprints(solar, thermal, lat, lon, szen, vzen, raa, cloud, glint, land, cth, phase,
                        ceres: dict, hour_key: int, psf: np.ndarray, gen_images: bool = True,
-                       psf_column_offset: int = PSF_COLUMN_OFFSET):
+                       psf_column_offset: int = PSF_COLUMN_OFFSET, required_sw=REQUIRED_SW, required_lw=REQUIRED_LW,
+                       stats: dict | None = None):
     """Cut the CERES footprints of one granule out of the MODIS arrays.
 
     Args:
@@ -321,6 +328,10 @@ def extract_footprints(solar, thermal, lat, lon, szen, vzen, raa, cloud, glint, 
         ceres: the load_ceres arrays of this hour plus ONE footprint after it (orientation needs footprint i+1).
         hour_key: key of the granule's hour; only footprints with that key are used.
         psf: (27, 55) weights for FOVorientation == 1; they are mirrored for 0.
+        required_sw, required_lw: channel indices that must be valid (invalid PSF weight <= 0.1%) for a footprint to
+            be kept. Every other channel with more invalid weight gets NaN moments (and its pixels stay NaN in the
+            images, and out of mSum*). Pass range(11) and range(16) to require every channel.
+        stats: optional dict that receives the counts candidates / outside / edge / invalid / accepted.
 
     Returns:
         None if the granule yields no footprint, else {"scalars": dict, "moments": dict, "images": dict | None}
@@ -358,8 +369,14 @@ def extract_footprints(solar, thermal, lat, lon, szen, vzen, raa, cloud, glint, 
     _, col1 = np.divmod(flat_idx[j1], w)
     dist_km = 2 * EARTH_RADIUS_KM * np.arcsin(np.clip(d0 / 2, 0, 1))
 
+    sol_ok, th_ok = np.isfinite(solar), np.isfinite(thermal)
+    req_sw, req_lw = list(required_sw), list(required_lw)
     unwanted = (np.isnan(szen) | np.isnan(vzen) | np.isnan(raa)
-                | np.isnan(solar).any(axis=0) | np.isnan(thermal).any(axis=0))
+                | ~sol_ok[req_sw].all(axis=0) | ~th_ok[req_lw].all(axis=0))
+    count = stats if stats is not None else {}
+    for k in ("candidates", "outside", "edge", "invalid", "accepted"):
+        count.setdefault(k, 0)
+    count["candidates"] += len(cand)
     no_cth = cth is None
     dfnc = distance_to_cloud(cloud)
     rows = {k: [] for k in SCALAR_KEYS}
@@ -368,6 +385,7 @@ def extract_footprints(solar, thermal, lat, lon, szen, vzen, raa, cloud, glint, 
 
     for n, fov in enumerate(cand):
         if dist_km[n] > MAX_FOV_OFFSET_KM:
+            count["outside"] += 1
             continue
         cy, cx = int(row0[n]), int(col0[n])
         normal = col1[n] >= cx                                         # next footprint at a larger column
@@ -376,12 +394,17 @@ def extract_footprints(solar, thermal, lat, lon, szen, vzen, raa, cloud, glint, 
         r0, r1 = cy - half, cy + half
         k0, k1 = cx - pc + psf_column_offset, cx + (pw - 1 - pc) + psf_column_offset   # PSF peak on the centre
         if r0 < 0 or r1 > h - 1 or k0 < 0 or k1 > w - 1:               # patch leaves the granule
+            count["edge"] += 1
             continue
         sl = (slice(r0, r1 + 1), slice(k0, k1 + 1))
         unwant = unwanted[sl]
         if fmask[unwant].sum() > NAN_PSF_WEIGHT:                       # too much of the PSF is invalid
+            count["invalid"] += 1
             continue
+        count["accepted"] += 1
         solarfov, thermalfov = solar[(slice(None),) + sl], thermal[(slice(None),) + sl]
+        good_sw = (fmask * ~sol_ok[(slice(None),) + sl]).sum(axis=(1, 2)) <= NAN_PSF_WEIGHT       # channels usable here
+        good_lw = (fmask * ~th_ok[(slice(None),) + sl]).sum(axis=(1, 2)) <= NAN_PSF_WEIGHT
         n_valid = max(int((~unwant).sum()), 1)
         cloud_w, phase_w = cloud[sl], (None if phase is None else phase[sl])
 
@@ -402,18 +425,18 @@ def extract_footprints(solar, thermal, lat, lon, szen, vzen, raa, cloud, glint, 
             r["LiqPhsf"] = float((cloud_w & (phase_w == 1)).sum()) / n_cloud if n_cloud else np.nan
         if not np.isnan(fsw[fov]):
             r["Fsw"], r["Isw"] = fsw[fov], ceres["isw"][fov]
-            s = solarfov.sum(axis=0)
+            s = solarfov[good_sw].sum(axis=0)
             r["mSumIsw"] = float(np.nansum(s * fmask))
             r["stdSumIsw"] = float(np.sqrt(np.nansum(fmask * (s - r["mSumIsw"]) ** 2)))
         if not np.isnan(flw[fov]):
             r["Flw"], r["Ilw"] = flw[fov], ceres["ilw"][fov]
-            s = thermalfov.sum(axis=0)
+            s = thermalfov[good_lw].sum(axis=0)
             r["mSumIlw"] = float(np.nansum(s * fmask))
             r["stdSumIlw"] = float(np.sqrt(np.nansum(fmask * (s - r["mSumIlw"]) ** 2)))
         for k in SCALAR_KEYS:
             rows[k].append(r[k])
-        for tag, arr in (("SW", solarfov), ("LW", thermalfov)):
-            m, s, sk, ku = weighted_moments(arr, fmask)
+        for tag, arr, good in (("SW", solarfov, good_sw), ("LW", thermalfov, good_lw)):
+            m, s, sk, ku = (np.where(good, v, np.nan) for v in weighted_moments(arr, fmask))
             mom[f"m{tag}spec"].append(m)
             mom[f"std{tag}spec"].append(s)
             mom[f"skew{tag}spec"].append(sk)
@@ -448,40 +471,58 @@ def granule_files_done(month_out: Path, key: str, gen_images: bool) -> bool:
     return all((month_out / p / f"{key}.npz").is_file() for p in parts)
 
 
+def read_granule(d: dict) -> dict:
+    """Read every array of one granule from its files (d: paths of MOD02, MOD03, MOD35 or None, MOD06 or None)."""
+    r500 = read_radiance(d["MOD02"], "EV_500_Aggr1km_RefSB")
+    r250 = read_radiance(d["MOD02"], "EV_250_Aggr1km_RefSB")
+    r1km = read_radiance(d["MOD02"], "EV_1KM_RefSB")
+    solar = np.concatenate([r500[0:2], r250, r1km[-4:-1], r500[-3:], r1km[-1:]], axis=0)
+    thermal = read_radiance(d["MOD02"], "EV_1KM_Emissive")
+    del r500, r250, r1km
+    lat, lon = read_plain(d["MOD03"], "Latitude"), read_plain(d["MOD03"], "Longitude")
+    szen, vzen = read_plain(d["MOD03"], "SolarZenith"), read_plain(d["MOD03"], "SensorZenith")
+    raa = relative_azimuth(read_plain(d["MOD03"], "SolarAzimuth"), read_plain(d["MOD03"], "SensorAzimuth"))
+    if d.get("MOD35"):
+        mask = decode_cloud_mask(read_cloud_mask_byte0(d["MOD35"]), CLOUD_MASK_TYPE)
+    else:                                                               # no cloud mask: flags unknown
+        mask = {"cloud": np.zeros(lat.shape, bool), "glint": np.zeros(lat.shape, bool), "land": np.zeros(lat.shape, "int8")}
+    cth = phase = None
+    if d.get("MOD06"):
+        phase = read_plain(d["MOD06"], "Cloud_Phase_Infrared_1km")
+        cth = read_plain(d["MOD06"], "cloud_top_height_1km")
+    return dict(solar=solar, thermal=thermal, lat=lat, lon=lon, szen=szen, vzen=vzen, raa=raa, cloud=mask["cloud"],
+                glint=mask["glint"], land=mask["land"], cth=cth, phase=phase)
+
+
+def _required(task: dict):
+    if task.get("required", "core") == "all":
+        return range(len(SW_WAVELENGTHS)), range(len(LW_WAVELENGTHS))
+    return REQUIRED_SW, REQUIRED_LW
+
+
+def _call_extract(m: dict, task: dict, stats: dict):
+    req_sw, req_lw = _required(task)
+    return extract_footprints(m["solar"], m["thermal"], m["lat"], m["lon"], m["szen"], m["vzen"], m["raa"], m["cloud"],
+                              m["glint"], m["land"], m["cth"], m["phase"], task["ceres"], task["hour_key"], task["psf"],
+                              task["gen_images"], required_sw=req_sw, required_lw=req_lw, stats=stats)
+
+
 def process_granule(task: dict) -> dict:
     """Build the three NPZ files of one granule; never raises (errors come back in the result).
 
-    Returns {"key", "status": ok|empty|error, "n": footprints, "sec", "msg"}.
+    Returns {"key", "status": ok|empty|error, "n": footprints, "sec", "msg"}. For "empty" the message says why
+    (how many footprints were outside the granule, near its edge, or had too many invalid pixels).
     """
     t0 = time.time()
     key = task["key"]
     try:
         d = task["dir"]
-        solar_parts = [read_radiance(d["MOD02"], "EV_500_Aggr1km_RefSB"),
-                       read_radiance(d["MOD02"], "EV_250_Aggr1km_RefSB"),
-                       read_radiance(d["MOD02"], "EV_1KM_RefSB")]
-        r500, r250, r1km = solar_parts
-        solar = np.concatenate([r500[0:2], r250, r1km[-4:-1], r500[-3:], r1km[-1:]], axis=0)
-        thermal = read_radiance(d["MOD02"], "EV_1KM_Emissive")
-        del solar_parts, r500, r250, r1km
-        lat, lon = read_plain(d["MOD03"], "Latitude"), read_plain(d["MOD03"], "Longitude")
-        szen, vzen = read_plain(d["MOD03"], "SolarZenith"), read_plain(d["MOD03"], "SensorZenith")
-        raa = relative_azimuth(read_plain(d["MOD03"], "SolarAzimuth"), read_plain(d["MOD03"], "SensorAzimuth"))
-        if d.get("MOD35"):
-            mask = decode_cloud_mask(read_cloud_mask_byte0(d["MOD35"]), CLOUD_MASK_TYPE)
-        else:                                                           # no cloud mask: flags unknown
-            shape = lat.shape
-            mask = {"cloud": np.zeros(shape, bool), "glint": np.zeros(shape, bool), "land": np.zeros(shape, "int8")}
-        cth = phase = None
-        if d.get("MOD06"):
-            phase = read_plain(d["MOD06"], "Cloud_Phase_Infrared_1km")
-            cth = read_plain(d["MOD06"], "cloud_top_height_1km")
-        res = extract_footprints(solar, thermal, lat, lon, szen, vzen, raa, mask["cloud"], mask["glint"],
-                                 mask["land"], cth, phase, task["ceres"], task["hour_key"], task["psf"],
-                                 task["gen_images"])
+        stats: dict = {}
+        res = _call_extract(read_granule(d), task, stats)
         month_out = Path(task["month_out"])
         if res is None:
-            return {"key": key, "status": "empty", "n": 0, "sec": time.time() - t0, "msg": ""}
+            why = " ".join(f"{k}={v}" for k, v in stats.items())
+            return {"key": key, "status": "empty", "n": 0, "sec": time.time() - t0, "msg": why}
         if not d.get("MOD35"):                                          # unknown, not "no cloud / no glint / water"
             for k in ("CF", "glintf", "landf", "mDFNC", "stdDFNC"):
                 res["scalars"][k][:] = np.nan
@@ -495,6 +536,54 @@ def process_granule(task: dict) -> dict:
     except Exception as e:  # noqa: BLE001 - one bad granule must not stop the month
         return {"key": key, "status": "error", "n": 0, "sec": time.time() - t0,
                 "msg": f"{type(e).__name__}: {e}\n{traceback.format_exc(limit=3)}"}
+
+
+def diagnose_granule(task: dict) -> dict:
+    """Why does a granule give few or no footprints? Invalid-pixel share per channel and the rejection counts.
+
+    Returns {"key", "invalid_sw": {wavelength: fraction}, "invalid_lw": {...}, "geometry": fraction, "stats": {...},
+    "n": footprints kept} or {"key", "error"}.
+    """
+    try:
+        m = read_granule(task["dir"])
+        stats: dict = {}
+        res = _call_extract(m, task, stats)
+        inv_sw = (~np.isfinite(m["solar"])).mean(axis=(1, 2))
+        inv_lw = (~np.isfinite(m["thermal"])).mean(axis=(1, 2))
+        geo = float((np.isnan(m["szen"]) | np.isnan(m["vzen"]) | np.isnan(m["raa"])).mean())
+        return {"key": task["key"], "invalid_sw": [float(x) for x in inv_sw], "invalid_lw": [float(x) for x in inv_lw],
+                "geometry": geo, "stats": stats, "n": 0 if res is None else len(res["scalars"]["Fsw"]),
+                "ceres_in_hour": int(len(task["ceres"]["key"]))}
+    except Exception as e:  # noqa: BLE001
+        return {"key": task["key"], "error": f"{type(e).__name__}: {e}"}
+
+
+def format_diagnosis(d: dict) -> str:
+    """One readable block for a diagnose_granule result."""
+    if "error" in d:
+        return f"{d['key']}: ERROR {d['error']}"
+    bad_sw = ", ".join(f"{w:g}um={f:.0%}" for w, f in zip(SW_WAVELENGTHS, d["invalid_sw"]) if f > 0.001) or "none"
+    bad_lw = ", ".join(f"{w:g}um={f:.0%}" for w, f in zip(LW_WAVELENGTHS, d["invalid_lw"]) if f > 0.001) or "none"
+    st = d["stats"]
+    return (f"{d['key']}: CERES footprints in hour+1={d['ceres_in_hour']}, candidates={st.get('candidates', 0)}, "
+            f"outside granule={st.get('outside', 0)}, near edge={st.get('edge', 0)}, too many invalid pixels="
+            f"{st.get('invalid', 0)}, accepted={st.get('accepted', 0)}, kept={d['n']}\n"
+            f"    invalid pixels per SW channel: {bad_sw}\n    invalid pixels per LW channel: {bad_lw}\n"
+            f"    invalid geometry: {d['geometry']:.1%}")
+
+
+def spread(items: list, n: int) -> list:
+    """n items evenly spread over the list (the first n of a day-ordered list would all be the same orbit).
+
+    Example:
+        >>> spread(list(range(10)), 3)
+        [0, 4, 9]
+        >>> spread([1, 2], 5)
+        [1, 2]
+    """
+    if n >= len(items):
+        return list(items)
+    return [items[i] for i in np.linspace(0, len(items) - 1, n).round().astype(int)]
 
 
 # ===================================== months =====================================
@@ -540,13 +629,14 @@ def list_granules(month_dir: Path, start: str, end: str) -> list[dict]:
     return out
 
 
-def done_keys(month_out: Path, gen_images: bool) -> set[str]:
-    """Granules that need no work: files written, or recorded as having no footprint."""
+def done_keys(month_out: Path, gen_images: bool, retry_empty: bool = False) -> set[str]:
+    """Granules that need no work: files written, or (unless retry_empty) last recorded as having no footprint."""
     done = set()
     log = month_out / "granules.csv"
-    if log.is_file():
+    if log.is_file() and not retry_empty:
         with open(log, newline="") as f:
-            done |= {r["granule"] for r in csv.DictReader(f) if r["status"] == "empty"}
+            last = {r["granule"]: r["status"] for r in csv.DictReader(f)}     # the latest row of a granule wins
+        done |= {k for k, st in last.items() if st == "empty"}
     for p in (month_out / "scalars").glob("*.npz"):
         if granule_files_done(month_out, p.stem, gen_images):
             done.add(p.stem)
@@ -565,8 +655,12 @@ def ceres_slice(ceres: dict, hour_key: int) -> dict | None:
 
 def build_month(data_root: Path, out_root: Path, year: int, region: str, month: int, psf: np.ndarray, *,
                 start: str, end: str, workers: int, gen_images: bool, limit: int | None, dry_run: bool,
-                log) -> dict[str, int]:
-    """Process one month folder; returns counts by status (ok, empty, error, skipped)."""
+                log, required: str = "core", retry_empty: bool = False, diagnose: int = 0) -> dict[str, int]:
+    """Process one month folder; returns counts by status (ok, empty, error, skipped).
+
+    limit: build only that many granules, spread over the month. diagnose: instead of building, report why that
+    many granules (spread over the month) give few footprints. required: "core" or "all" (see REQUIRED_SW).
+    """
     mdir = dm.MONTH_DIRS[month - 1]
     src = Path(data_root) / dm.SATELLITE_DIR / str(year) / region / mdir
     month_out = Path(out_root) / region / str(year) / mdir
@@ -575,11 +669,11 @@ def build_month(data_root: Path, out_root: Path, year: int, region: str, month: 
         log(f"{year}/{mdir}: no folder {src}")
         return counts
     granules = list_granules(src, start, end)
-    already = done_keys(month_out, gen_images)
+    already = set() if diagnose else done_keys(month_out, gen_images, retry_empty)
     todo = [g for g in granules if g["key"] not in already]
     counts["skipped"] = len(granules) - len(todo)
     if limit is not None:
-        todo = todo[:limit]
+        todo = spread(todo, limit)
     log(f"{year}/{mdir}: {len(granules)} granules, {counts['skipped']} done already, {len(todo)} to build")
     if dry_run or not todo:
         return counts
@@ -588,12 +682,18 @@ def build_month(data_root: Path, out_root: Path, year: int, region: str, month: 
     for g in todo:
         sl = ceres_slice(ceres, g["hour_key"])
         if sl is None:
-            counts["empty"] += 1
-            _append_log(month_out, {"key": g["key"], "status": "empty", "n": 0, "sec": 0.0,
-                                    "msg": "no CERES footprint in this hour"})
+            if not diagnose:
+                counts["empty"] += 1
+                _append_log(month_out, {"key": g["key"], "status": "empty", "n": 0, "sec": 0.0,
+                                        "msg": "no CERES footprint in this hour"})
             continue
-        tasks.append({**g, "ceres": sl, "psf": psf, "gen_images": gen_images, "month_out": str(month_out)})
+        tasks.append({**g, "ceres": sl, "psf": psf, "gen_images": gen_images, "month_out": str(month_out),
+                      "required": required})
     del ceres
+    if diagnose:
+        for t in spread(tasks, diagnose):
+            log(format_diagnosis(diagnose_granule(t)))
+        return counts
     def handle(i: int, r: dict) -> None:
         counts[r["status"]] += 1
         _append_log(month_out, r)
@@ -708,7 +808,13 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--region", default=dm.REGION_NAME)
     p.add_argument("--workers", type=int, default=4, help="parallel granules (each needs about 1.5 GB of memory)")
     p.add_argument("--no-images", action="store_true", help="skip images/ (about 10x less disk)")
-    p.add_argument("--limit", type=int, help="build only the first N granules of each month (a test run)")
+    p.add_argument("--limit", type=int, help="build only N granules of each month, spread over the month (a test run)")
+    p.add_argument("--diagnose", type=int, metavar="N",
+                   help="build nothing: report, for N granules spread over each month, why they give few footprints")
+    p.add_argument("--required-channels", choices=["core", "all"], default="core",
+                   help="core (default): a footprint needs the advisor's 13 model channels valid, other channels get "
+                        "NaN where they have invalid pixels; all: every channel must be valid")
+    p.add_argument("--retry-empty", action="store_true", help="also rebuild granules recorded as empty by an earlier run")
     p.add_argument("--dry-run", action="store_true", help="count the granules, build nothing")
     p.add_argument("--gather", action="store_true", help="only make <out>/<region>/{scalars,moments,images} symlinks")
     p.add_argument("--verify", action="store_true", help="only check the triplets of <out>/<region>")
@@ -755,7 +861,8 @@ def main(argv: list[str] | None = None) -> int:
     for year, month in months:
         try:
             c = build_month(Path(a.data).expanduser(), out, year, a.region, month, psf, start=a.start, end=a.end,
-                            workers=a.workers, gen_images=not a.no_images, limit=a.limit, dry_run=a.dry_run, log=log)
+                            workers=a.workers, gen_images=not a.no_images, limit=a.limit, dry_run=a.dry_run, log=log,
+                            required=a.required_channels, retry_empty=a.retry_empty, diagnose=a.diagnose or 0)
         except Exception as e:  # noqa: BLE001 - e.g. a month without its CERES file; go on with the next
             log(f"{year}/{dm.MONTH_DIRS[month - 1]}: FAILED {type(e).__name__}: {e}")
             total["error"] += 1
@@ -763,7 +870,7 @@ def main(argv: list[str] | None = None) -> int:
         for k, v in c.items():
             total[k] += v
     log(f"done: {total}")
-    if not a.dry_run:
+    if not a.dry_run and not a.diagnose:
         gather(out, a.region)
         log(f"gathered: {out / a.region}/{{scalars,moments,images}}")
     return 1 if total["error"] else 0
