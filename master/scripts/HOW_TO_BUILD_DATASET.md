@@ -17,23 +17,23 @@
 
 1. **כל נתוני ההורדה במקום:** `MOD02`, `MOD03`, `MOD06`, `MOD35` וקובץ `CERES*.nc` אחד בכל תיקיית חודש (`download_modis.py` ו־`download_ceres.py`).
    - אם אין `MOD06` או `MOD35`, הגרנולה נבנית בכל זאת. ב־`MOD35` חסר: `CF`, `glintf`, `landf`, `mDFNC`, `stdDFNC` יוצאים NaN. ב־`MOD06` חסר: `meanCTH`, `stdCTH`, `LiqPhsf` יוצאים NaN. רוצים את `MOD35` כדי לסנן אוקיינוס בלבד (`landf == 0`), ולכן כדאי להוריד אותו: `download_modis.py --products MYD021KM MYD03 MYD35_L2 MYD06_L2`.
-2. **קובץ ה־PSF `ceres_psf.csv`.** הוא לא בריפו. הוא אצל המנחה, בשרת שלו: `/export/home/eeytan/projects/Twilight_MODIS_CERES/ceres_psf.csv`. בלעדיו אפשר `--psf ellipse` (אליפסה גאוסית מקורבת), אבל אז המומנטים לא יהיו זהים לשלו. בשביל תוצאות אמיתיות צריך את הקובץ שלו.
+2. **קובץ ה־PSF `ceres_psf.csv`** של המנחה כבר בריפו, ב־`master/resources/ceres_psf.csv`, והסקריפט משתמש בו כברירת מחדל. אפשר להחליף עם `--psf <קובץ>`, או `--psf ellipse` לאליפסה מקורבת (לבדיקות בלבד).
 3. **חבילות:** `numpy`, `scipy`, `pandas`, ו־`netCDF4` מ־conda-forge עם תמיכה ב־HDF4. אין צורך ב־`matplotlib` ולא ב־`scikit-image` (הממיר של המנחה דורש אותן).
 
 ## הרצה
 
 ```bash
 cd ~/GUY/CTZ_Research/master
-python3 scripts/build_dataset.py --data /archive/GUY --out /archive/GUY/dataset --psf ~/GUY/ceres_psf.csv --dry-run
+python3 scripts/build_dataset.py --data /archive/GUY --out /archive/GUY/dataset --dry-run
 ```
 בדיקה קטנה (3 גרנולות בכל חודש, חודש אחד):
 ```bash
-python3 scripts/build_dataset.py --data /archive/GUY --out /archive/GUY/dataset_test --psf ~/GUY/ceres_psf.csv \
+python3 scripts/build_dataset.py --data /archive/GUY --out /archive/GUY/dataset_test \
     --start 2008-01-01 --end 2008-01-31 --limit 3 --workers 2
 ```
 הרצה מלאה ברקע (אפשר לסגור את הטרמינל):
 ```bash
-nohup python3 scripts/build_dataset.py --data /archive/GUY --out /archive/GUY/dataset --psf ~/GUY/ceres_psf.csv \
+nohup python3 scripts/build_dataset.py --data /archive/GUY --out /archive/GUY/dataset \
     --start 2008-01-01 --end 2008-12-31 --workers 8 > /archive/GUY/build_run.out 2>&1 & disown
 tail -f /archive/GUY/dataset/build_log.txt
 ```

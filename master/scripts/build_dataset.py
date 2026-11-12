@@ -20,7 +20,7 @@ Output:
 Usage:
     python3 build_dataset.py --data /archive/GUY --out /archive/GUY/dataset --psf ceres_psf.csv \\
         --start 2008-01-01 --end 2008-12-31 --workers 8
-    python3 build_dataset.py --data /archive/GUY --out /archive/GUY/dataset --psf ceres_psf.csv --dry-run
+    python3 build_dataset.py --data /archive/GUY --out /archive/GUY/dataset --dry-run
     python3 build_dataset.py --out /archive/GUY/dataset --gather      # the three folders, per region
     python3 build_dataset.py --out /archive/GUY/dataset --verify      # check every triplet
 
@@ -59,6 +59,8 @@ MAX_FOV_OFFSET_KM = 10.0               # a footprint farther than this from ever
 PSF_COLUMN_OFFSET = 0                  # the advisor's code is equivalent to 1 (see HOW_TO_BUILD_DATASET.md, fix 8)
 EARTH_RADIUS_KM = 6371.0
 CLOUD_MASK_TYPE = "relaxed"            # "relaxed": cloudy = the most confident cloudy class only
+
+DEFAULT_PSF = Path(__file__).resolve().parents[1] / "resources" / "ceres_psf.csv"   # the advisor's CERES PSF
 
 SCALAR_KEYS = ["Fsw", "Isw", "Flw", "Ilw", "mSumIsw", "stdSumIsw", "mSumIlw", "stdSumIlw", "mDFNC", "stdDFNC", "CF",
                "meanCTH", "stdCTH", "LiqPhsf", "VZA", "SZA", "RAA", "Lat", "Lon", "AOD", "Clrf", "glintf", "landf"]
@@ -698,7 +700,9 @@ def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     p.add_argument("--data", default="/archive/GUY", help="root of the downloaded MODIS/CERES data")
     p.add_argument("--out", default="/archive/GUY/dataset", help="root of the built dataset")
-    p.add_argument("--psf", help="ceres_psf.csv (the advisor's) or a recovered PSF .npy; 'ellipse' = approximation")
+    p.add_argument("--psf", default=str(DEFAULT_PSF),
+                   help="the advisor's ceres_psf.csv (default: master/resources/ceres_psf.csv), a recovered PSF .npy, "
+                        "or 'ellipse' = an approximation")
     p.add_argument("--start", default=dm.START_DATE)
     p.add_argument("--end", default=dm.END_DATE)
     p.add_argument("--region", default=dm.REGION_NAME)
@@ -727,10 +731,9 @@ def main(argv: list[str] | None = None) -> int:
         p.error(str(e))
     if a.workers < 1:
         p.error("--workers must be at least 1")
-    if not a.psf:
-        p.error("--psf is required: the advisor's ceres_psf.csv (in /export/home/eeytan/projects/"
-                "Twilight_MODIS_CERES/ on his server), or 'ellipse' for an approximation")
-    psf = load_psf(a.psf)
+    if a.psf != "ellipse" and not Path(a.psf).expanduser().is_file():
+        p.error(f"PSF file not found: {a.psf}")
+    psf = load_psf(str(Path(a.psf).expanduser()) if a.psf != "ellipse" else a.psf)
 
     out.mkdir(parents=True, exist_ok=True)
     lock = open(out / ".build.lock", "w")
