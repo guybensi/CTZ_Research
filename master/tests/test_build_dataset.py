@@ -11,10 +11,12 @@ pytest.importorskip("scipy")
 
 _DIR = Path(__file__).resolve().parents[1] / "scripts"
 sys.path.insert(0, str(_DIR))
-_spec = importlib.util.spec_from_file_location("build_dataset", _DIR / "build_dataset.py")
-bd = importlib.util.module_from_spec(_spec)
-sys.modules["build_dataset"] = bd      # worker processes pickle functions by module name
-_spec.loader.exec_module(bd)
+bd = sys.modules.get("build_dataset")   # reuse it if another test module already loaded this file
+if bd is None or Path(getattr(bd, "__file__", "")) != _DIR / "build_dataset.py":
+    _spec = importlib.util.spec_from_file_location("build_dataset", _DIR / "build_dataset.py")
+    bd = importlib.util.module_from_spec(_spec)
+    sys.modules["build_dataset"] = bd      # worker processes pickle functions by module name
+    _spec.loader.exec_module(bd)
 
 H, W = 90, 100
 CY, CX = 45, 50
@@ -176,9 +178,10 @@ class TestExtractFootprints:
         assert list(res["scalars"]) == bd.SCALAR_KEYS
         assert list(res["moments"]) == bd.MOMENT_KEYS
         assert list(res["images"]) == bd.IMAGE_KEYS
-        assert res["scalars"]["Fsw"].shape == (1,) and res["scalars"]["Fsw"].dtype == np.float32
-        assert res["moments"]["mSWspec"].shape == (1, 11) and res["moments"]["mLWspec"].shape == (1, 16)
-        assert res["images"]["ImSW"].shape == (1, 11, 27, 55) and res["images"]["Imviews"].shape == (1, 3, 27, 55)
+        # both footprints: the second takes its scan direction from the previous one
+        assert res["scalars"]["Fsw"].shape == (2,) and res["scalars"]["Fsw"].dtype == np.float32
+        assert res["moments"]["mSWspec"].shape == (2, 11) and res["moments"]["mLWspec"].shape == (2, 16)
+        assert res["images"]["ImSW"].shape == (2, 11, 27, 55) and res["images"]["Imviews"].shape == (2, 3, 27, 55)
         assert res["moments"]["SWwavlngs"].tolist() == bd.SW_WAVELENGTHS.tolist()
 
     def test_patch_is_centred_on_the_footprint_and_psf_peak_is_on_it(self):
@@ -201,7 +204,7 @@ class TestExtractFootprints:
         p /= p.sum()
         fwd = extract(m, ceres_arrays(m["lat"], m["lon"], [(CY, CX), (CY, CX + 3)]), psf=p)
         bwd = extract(m, ceres_arrays(m["lat"], m["lon"], [(CY, CX), (CY, CX - 3)]), psf=p)
-        assert fwd["images"]["FOVorientation"].tolist() == [1.0] and bwd["images"]["FOVorientation"].tolist() == [0.0]
+        assert fwd["images"]["FOVorientation"].tolist() == [1.0, 1.0] and bwd["images"]["FOVorientation"].tolist() == [0.0, 0.0]
         # constant channel 5: weighted mean is 10+5 either way, and weights sum to 1 in both orientations
         assert fwd["moments"]["mSWspec"][0, 5] == pytest.approx(15.0, rel=1e-5)
         assert bwd["moments"]["mSWspec"][0, 5] == pytest.approx(15.0, rel=1e-5)
@@ -217,7 +220,41 @@ class TestExtractFootprints:
 
     def test_last_footprint_without_neighbour_does_not_crash(self):
         m = modis_arrays()
-        assert extract(m, ceres_arrays(m["lat"], m["lon"], [(CY, CX)])) is None
+        stats = {}
+        assert extract(m, ceres_arrays(m["lat"], m["lon"], [(CY, CX)]), stats=stats) is None
+        assert stats["no_neighbour"] == 1
+
+    def test_last_footprint_takes_the_direction_from_the_previous_one(self):
+        m = modis_arrays()
+        res = extract(m, ceres_arrays(m["lat"], m["lon"], [(CY, CX + 3), (CY, CX)]))   # scanning towards smaller columns
+        assert res["images"]["FOVorientation"].tolist() == [0.0, 0.0]
+
+    def test_far_neighbour_does_not_give_a_direction(self):
+        m = modis_arrays()
+        ce = ceres_arrays(m["lat"], m["lon"], [(CY, CX), (CY, CX + 3)])
+        ce["lat"][1] += 10.0                                       # next footprint ~1100 km away (end of a scan line)
+        stats = {}
+        assert extract(m, ce, stats=stats) is None and stats["no_neighbour"] == 1
+
+    def test_many_footprints_far_from_the_granule_are_cheap(self):
+        """Most footprints of an hour are thousands of km away; an unbounded nearest-pixel search takes minutes."""
+        import time
+
+        rows, cols = np.mgrid[0:600, 0:600]
+        lat, lon = (10 + 0.009 * rows).astype("float32"), (160 + 0.0095 * cols).astype("float32")
+        n = 20000
+        rng = np.random.default_rng(0)
+        ce = {k: np.full(n, v) for k, v in dict(sza=30.0, vza=20.0, raa=90.0, fsw=300.0, isw=90.0, flw=240.0,
+                                                ilw=75.0, aod=0.1, clrf=10.0).items()}
+        ce.update(key=np.full(n, 1, dtype="int64"), lat=rng.uniform(-60, 0, n), lon=rng.uniform(-170, 150, n))
+        one = np.full((600, 600), 1.0, dtype="float32")
+        stats = {}
+        t0 = time.time()
+        res = bd.extract_footprints(np.stack([one] * 11), np.stack([one] * 16), lat, lon, one, one, one,
+                                    np.zeros((600, 600), bool), np.zeros((600, 600), bool), np.zeros((600, 600), "int8"),
+                                    None, None, ce, 1, psf27(), stats=stats)
+        assert res is None and stats["outside"] == n
+        assert time.time() - t0 < 10
 
     def test_footprint_near_the_edge_is_skipped(self):
         m = modis_arrays()
@@ -243,8 +280,8 @@ class TestExtractFootprints:
         m = modis_arrays(lon0=179.525)                                              # lon wraps from +180 to -180 at col 50
         assert (m["lon"] < 0).any() and (m["lon"] > 0).any()
         res = extract(m, ceres_arrays(m["lat"], m["lon"], [(CY, 45), (CY, 48), (CY, 55), (CY, 58)]))
-        assert len(res["scalars"]["Fsw"]) == 3                                      # the last has no next footprint
-        assert (res["scalars"]["Lon"] > 0).tolist() == [True, True, False]          # one is across the dateline
+        assert len(res["scalars"]["Fsw"]) == 4
+        assert (res["scalars"]["Lon"] > 0).tolist() == [True, True, False, False]   # two are across the dateline
 
     def test_liquid_fraction_is_a_fraction(self):
         m = modis_arrays()
@@ -280,7 +317,7 @@ class TestExtractFootprints:
     def test_more_than_10000_footprints_would_not_overflow(self):
         m = modis_arrays()
         spots = [(CY, CX), (CY, CX + 1)] * 3
-        assert len(extract(m, ceres_arrays(m["lat"], m["lon"], spots))["scalars"]["Fsw"]) == 5
+        assert len(extract(m, ceres_arrays(m["lat"], m["lon"], spots))["scalars"]["Fsw"]) == 6
 
     def test_lw_only_footprint_is_kept(self):
         m = modis_arrays()
@@ -387,11 +424,11 @@ class TestProcessGranule:
     def test_writes_three_files_readable_by_the_project_loader(self, tmp_path):
         files, m = write_modis_files(tmp_path / "in")
         res = bd.process_granule(self.task(tmp_path, files, m))
-        assert res["status"] == "ok" and res["n"] == 1 and res["msg"] == ""
+        assert res["status"] == "ok" and res["n"] == 2 and res["msg"] == ""
         from flux1km import io
 
         g = io.load_granule(tmp_path / "out", "A2008001.0300")
-        assert g.n_footprints == 1 and g.moments["mSWspec"].shape == (1, 11) and g.images["ImSW"].shape == (1, 11, 27, 55)
+        assert g.n_footprints == 2 and g.moments["mSWspec"].shape == (2, 11) and g.images["ImSW"].shape == (2, 11, 27, 55)
         assert g.scalars["landf"][0] == pytest.approx(3.0) and g.scalars["glintf"][0] == 0
         assert g.scalars["SZA"][0] == pytest.approx(30.0)
         assert g.images["Imviews"][0, 2, 0, 0] == pytest.approx(90.0, abs=0.1)     # |100-10| = 90
@@ -530,7 +567,7 @@ class TestBuildMonth:
         from flux1km import io
 
         assert io.find_granules(out / "Pacific") == ["A2008001.0300", "A2008002.0300"]
-        assert io.load_granule(out / "Pacific", "A2008002.0300").n_footprints == 1
+        assert io.load_granule(out / "Pacific", "A2008002.0300").n_footprints == 2
 
     def test_failed_granule_is_retried_and_others_go_on(self, tmp_path):
         data, out = make_month(tmp_path)
@@ -663,21 +700,21 @@ class TestInvalidChannels:
         m = self.dead_band6()
         stats = {}
         assert extract(m, self.spots(m), required_sw=range(11), required_lw=range(16), stats=stats) is None
-        assert stats["invalid"] == 1 and stats["accepted"] == 0
+        assert stats["invalid"] == 2 and stats["accepted"] == 0
 
     def test_invalid_required_channel_rejects(self):
         m = modis_arrays()
         m["solar"][3][CY - 3:CY + 4, CX - 3:CX + 4] = np.nan     # 0.85 um, under the PSF core
         stats = {}
         assert extract(m, self.spots(m), stats=stats) is None
-        assert stats["invalid"] == 1
+        assert stats["invalid"] == 2
 
     def test_stats_count_every_reason(self):
         m = modis_arrays()
         ce = ceres_arrays(m["lat"], m["lon"], [(CY, CX), (CY, CX + 3), (5, CX), (5, CX + 3)])
         stats = {}
         extract(m, ce, stats=stats)
-        assert stats == {"candidates": 3, "outside": 0, "edge": 1, "invalid": 0, "accepted": 2}   # the 4th has no next footprint
+        assert stats == {"candidates": 4, "outside": 0, "no_neighbour": 0, "edge": 2, "invalid": 0, "accepted": 2}
 
     def test_a_fully_valid_granule_is_unchanged_by_the_channel_logic(self):
         m = modis_arrays()
@@ -729,7 +766,7 @@ class TestLimitDiagnoseRetry:
         c = self.build(data, out, diagnose=2, log=logs.append)
         assert c["ok"] == 0 and not (out / "Pacific/2008/jan/scalars").exists()
         text = "\n".join(logs)
-        assert "A2008001.0300" in text and "accepted=1" in text and "invalid pixels per SW channel: none" in text
+        assert "A2008001.0300" in text and "accepted=2" in text and "invalid pixels per SW channel: none" in text
 
     def test_diagnose_names_the_bad_channel(self, tmp_path):
         data, out = make_month(tmp_path, n_granules=1)

@@ -63,6 +63,7 @@ LW_WAVELENGTHS = np.array([3.75, 3.96, 3.96, 4.05, 4.46, 4.5, 6.7, 7.32, 8.55, 9
                            13.93, 14.23])
 NAN_PSF_WEIGHT = 0.001                 # a footprint is used if invalid pixels carry less than 0.1% of the PSF
 MIN_FSW = 1.0                          # W m-2; smaller = night, the footprint is skipped
+NEIGHBOUR_MAX_KM = 200.0               # footprint i+1 (or i-1) farther than this does not give the scan direction
 MAX_FOV_OFFSET_KM = 10.0               # a footprint farther than this from every pixel is outside the granule
 # Channels that must be valid under the PSF for a footprint to be kept: the 13 channels of the advisor's current model
 # (train_Allsky_moments_narrow_values.py). Any other channel with invalid pixels (dead detectors, saturation) gets NaN
@@ -342,7 +343,7 @@ def extract_footprints(solar, thermal, lat, lon, szen, vzen, raa, cloud, glint, 
         required_sw, required_lw: channel indices that must be valid (invalid PSF weight <= 0.1%) for a footprint to
             be kept. Every other channel with more invalid weight gets NaN moments (and its pixels stay NaN in the
             images, and out of mSum*). Pass range(11) and range(16) to require every channel.
-        stats: optional dict that receives the counts candidates / outside / edge / invalid / accepted.
+        stats: optional dict that receives the counts candidates / outside / no_neighbour / edge / invalid / accepted.
 
     Returns:
         None if the granule yields no footprint, else {"scalars": dict, "moments": dict, "images": dict | None}
@@ -363,9 +364,7 @@ def extract_footprints(solar, thermal, lat, lon, szen, vzen, raa, cloud, glint, 
         return None
     fsw, flw = ceres["fsw"], ceres["flw"]
     keep = ~((np.isnan(flw) & np.isnan(fsw)) | (fsw < MIN_FSW))       # not NaN/night
-    cand = cand[keep[cand] & (cand + 1 < n_ce)]                       # footprint i+1 must exist
-    cand = cand[np.isfinite(ceres["lat"][cand]) & np.isfinite(ceres["lon"][cand])
-                & np.isfinite(ceres["lat"][cand + 1]) & np.isfinite(ceres["lon"][cand + 1])]
+    cand = cand[keep[cand] & np.isfinite(ceres["lat"][cand]) & np.isfinite(ceres["lon"][cand])]
     if cand.size == 0:
         return None
 
@@ -374,11 +373,32 @@ def extract_footprints(solar, thermal, lat, lon, szen, vzen, raa, cloud, glint, 
         return None
     flat_idx = np.flatnonzero(valid_px.ravel())
     tree = cKDTree(_unit_vectors(lat.ravel()[flat_idx], lon.ravel()[flat_idx]))
-    d0, j0 = tree.query(_unit_vectors(ceres["lat"][cand], ceres["lon"][cand]))
-    _, j1 = tree.query(_unit_vectors(ceres["lat"][cand + 1], ceres["lon"][cand + 1]))
+
+    def chord(km):
+        return 2 * np.sin(km / EARTH_RADIUS_KM / 2)
+
+    # Bounded searches: a footprint far from the granule (most of the hour's footprints are) is dropped at once.
+    # Without the bound the tree visits almost every pixel for each far point (minutes per granule).
+    d0, j0 = tree.query(_unit_vectors(ceres["lat"][cand], ceres["lon"][cand]), distance_upper_bound=chord(MAX_FOV_OFFSET_KM))
+    found = np.isfinite(d0)
+    n_outside = int((~found).sum())
+    cand, j0 = cand[found], j0[found]
     row0, col0 = np.divmod(flat_idx[j0], w)
-    _, col1 = np.divmod(flat_idx[j1], w)
-    dist_km = 2 * EARTH_RADIUS_KM * np.arcsin(np.clip(d0 / 2, 0, 1))
+
+    def neighbour_cols(idx: np.ndarray) -> np.ndarray:
+        """MODIS column of the footprints idx (-1 where missing, invalid or farther than NEIGHBOUR_MAX_KM)."""
+        cols = np.full(len(idx), -1, dtype="int64")
+        ok = (idx >= 0) & (idx < n_ce)
+        ok[ok] &= np.isfinite(ceres["lat"][idx[ok]]) & np.isfinite(ceres["lon"][idx[ok]])
+        if ok.any():
+            d, j = tree.query(_unit_vectors(ceres["lat"][idx[ok]], ceres["lon"][idx[ok]]),
+                              distance_upper_bound=chord(NEIGHBOUR_MAX_KM))
+            hit = np.isfinite(d)
+            cols[np.nonzero(ok)[0][hit]] = flat_idx[j[hit]] % w
+        return cols
+
+    col_next = neighbour_cols(cand + 1)        # the advisor's rule: scan direction from footprint i+1
+    col_prev = neighbour_cols(cand - 1)        # fallback at the end of a scan line or of the file
 
     sol_ok, th_ok = np.isfinite(solar), np.isfinite(thermal)
     req_sw, req_lw = list(required_sw), list(required_lw)
@@ -387,7 +407,9 @@ def extract_footprints(solar, thermal, lat, lon, szen, vzen, raa, cloud, glint, 
     count = stats if stats is not None else {}
     for k in ("candidates", "outside", "edge", "invalid", "accepted"):
         count.setdefault(k, 0)
-    count["candidates"] += len(cand)
+    count.setdefault("no_neighbour", 0)
+    count["candidates"] += len(cand) + n_outside
+    count["outside"] += n_outside
     no_cth = cth is None
     dfnc = distance_to_cloud(cloud)
     rows = {k: [] for k in SCALAR_KEYS}
@@ -395,11 +417,14 @@ def extract_footprints(solar, thermal, lat, lon, szen, vzen, raa, cloud, glint, 
     ims = {"Imviews": [], "ImSW": [], "ImLW": [], "FOVorientation": []}
 
     for n, fov in enumerate(cand):
-        if dist_km[n] > MAX_FOV_OFFSET_KM:
-            count["outside"] += 1
-            continue
         cy, cx = int(row0[n]), int(col0[n])
-        normal = col1[n] >= cx                                         # next footprint at a larger column
+        if col_next[n] >= 0:
+            normal = col_next[n] >= cx                                 # next footprint at a larger column
+        elif col_prev[n] >= 0:
+            normal = col_prev[n] <= cx                                 # previous one at a smaller column
+        else:
+            count["no_neighbour"] += 1
+            continue
         pc = c1 if normal else c2
         fmask = psf if normal else psf[:, ::-1]
         r0, r1 = cy - half, cy + half
@@ -577,7 +602,8 @@ def format_diagnosis(d: dict) -> str:
     bad_lw = ", ".join(f"{w:g}um={f:.0%}" for w, f in zip(LW_WAVELENGTHS, d["invalid_lw"]) if f > 0.001) or "none"
     st = d["stats"]
     return (f"{d['key']}: CERES footprints in hour+1={d['ceres_in_hour']}, candidates={st.get('candidates', 0)}, "
-            f"outside granule={st.get('outside', 0)}, near edge={st.get('edge', 0)}, too many invalid pixels="
+            f"outside granule={st.get('outside', 0)}, no scan direction={st.get('no_neighbour', 0)}, "
+            f"near edge={st.get('edge', 0)}, too many invalid pixels="
             f"{st.get('invalid', 0)}, accepted={st.get('accepted', 0)}, kept={d['n']}\n"
             f"    invalid pixels per SW channel: {bad_sw}\n    invalid pixels per LW channel: {bad_lw}\n"
             f"    invalid geometry: {d['geometry']:.1%}")
