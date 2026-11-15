@@ -1,5 +1,7 @@
 # בדיקה קטנה על Windows (הורדה והמרה)
 
+> **מה נבדק בפועל (15.11.2026):** במחשב עם Windows 11, הפעלת `numpy` ו־`netCDF4` בגרסה הזו נחסמה (`DLL load failed ... An Application Control policy has blocked this file`, מ־Smart App Control או ממדיניות App Control). לכן הבדיקה רצה ב־**WSL2 (Ubuntu)** עם גרסת הלינוקס (`master/scripts/`), וכל השלבים עברו על נתונים אמיתיים (ראה "מה נבדק" ב־`../HOW_TO_BUILD_DATASET.md`). אם גם במחשב שלך Python נחסם, עבור לסעיף "הדרך המומלצת: WSL" בסוף העמוד.
+
 התיקייה הזו מכילה את גרסת Windows של סקריפטי ההורדה וההמרה. גרסת הלינוקס, שרצה על השרת, נשארת ב־`master/scripts/` בלי שינוי.
 
 | סקריפט | ההבדל מגרסת הלינוקס |
@@ -81,3 +83,22 @@ python -c "from flux1km import io; import os; d = os.path.expanduser(r'~\GUY_DAT
 rmdir /s /q "%USERPROFILE%\GUY_DATA"
 ```
 זה מוחק רק את נתוני הבדיקה במחשב. הריפו והשרת לא נפגעים.
+
+## הדרך המומלצת: WSL (כשהגרסה ל־Windows נחסמת)
+
+ב־CMD כמנהל: `wsl --install -d Ubuntu`, הפעלה מחדש, ושוב `wsl --install -d Ubuntu`. בפעם הזו נוצר משתמש לינוקס. אחר כך, בחלון Ubuntu:
+
+```bash
+curl -L -O https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh
+bash Miniforge3-Linux-x86_64.sh -b && ~/miniforge3/bin/conda init bash && source ~/.bashrc
+conda create -n ctz -c conda-forge python=3.11 numpy scipy pandas netcdf4 -y && conda activate ctz && pip install earthaccess
+git clone https://github.com/guybensi/CTZ_Research.git ~/CTZ_Research && cd ~/CTZ_Research/master
+cp /mnt/c/Users/<you>/_netrc ~/.netrc && chmod 600 ~/.netrc      # if Earthdata was already used from Windows
+```
+
+מכאן משתמשים בגרסת הלינוקס (`scripts/`, לא `scripts/windows/`):
+
+- **נתונים:** כונן `C:` נגיש כ־`/mnt/c`. כך אפשר להשתמש בנתונים שהורדו ב־Windows, למשל `--out /mnt/c/Users/<you>/GUY_DATA` בהורדת CERES.
+- **פלט:** הפלט של `build_dataset.py` צריך להיות בתוך לינוקס, למשל `--out ~/GUY_DATA/dataset`, כי שם הקישורים הסימבוליים עובדים.
+- **זמן:** בערך דקה לגרנולה.
+- **תאריכים:** גרנולה של 23:55 שייכת ליום הקודם. כדאי לכלול אותו ב־`--start` של CERES ושל ההמרה.
