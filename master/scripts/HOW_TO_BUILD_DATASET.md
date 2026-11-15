@@ -2,6 +2,8 @@
 
 `build_dataset.py` הוא הגרסה המתוקנת של הממיר של המנחה (`pre_master/advisor_code/Generate_AllSky_2.py` ו־`MOD_CERES_allsky` ב־`Twilight_module.py`). הקבצים המקוריים נשארו כמו שהם, כי `pre_master/` קפוא לפי `CLAUDE.md`. הפלט זהה לשלו במפתחות, בצורות ובטיפוסים, אז כל מה שקורא את הדאטה שלו (`flux1km`, `All_Sky_AIflux.py`) קורא גם את זה.
 
+גרסת Windows של הסקריפטים, עם מדריך לבדיקה קטנה על מחשב אישי: [windows/README.md](windows/README.md). הגרסה כאן היא גרסת הלינוקס, שרצה על השרת.
+
 ## מה מקבלים
 
 ```
