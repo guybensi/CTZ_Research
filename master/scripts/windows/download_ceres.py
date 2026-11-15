@@ -301,7 +301,7 @@ def main(argv: list[str] | None = None) -> int:
     if not a.merge_only:
         import earthaccess
 
-        earthaccess.login()
+        dm.earthdata_login(earthaccess)
         if a.find:
             for c in earthaccess.search_datasets(keyword="CERES SSF Aqua Edition4A", count=20):
                 print(c.summary().get("short-name"), "|", c.summary().get("entry-title"))

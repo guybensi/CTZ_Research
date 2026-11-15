@@ -290,6 +290,20 @@ def is_complete(path: Path, expected_mb: float) -> bool:
     return size > 0
 
 
+def earthdata_login(earthaccess) -> None:
+    """Log in to NASA Earthdata: with the saved netrc file if there is one, else ask once and save it.
+
+    Newer earthaccess versions raise (LoginStrategyUnavailable) instead of returning False when the netrc file is
+    missing (on Windows: %USERPROFILE%/_netrc), so both outcomes fall back to asking.
+    """
+    try:
+        if earthaccess.login(strategy="netrc"):
+            return
+    except Exception:  # noqa: BLE001 - no netrc file, or a bad one: ask instead
+        pass
+    earthaccess.login(strategy="interactive", persist=True)
+
+
 def lock_folder(folder: Path, name: str):
     """Take an exclusive lock file in `folder`, so a second copy of a script cannot run on the same folder.
 
@@ -389,7 +403,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"another download_modis.py is already running on {out}; not starting a second one", file=sys.stderr)
         return 1
 
-    earthaccess.login(strategy="netrc") or earthaccess.login(strategy="interactive", persist=True)
+    earthdata_login(earthaccess)
     log(f"start: {a.start}..{a.end} region={a.region} products={products} polygons={len(polygons)} "
         f"day_only={DAY_ONLY} out={out} dry_run={a.dry_run}", log_path)
 

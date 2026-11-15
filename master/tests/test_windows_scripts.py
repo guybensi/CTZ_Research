@@ -167,3 +167,30 @@ class TestSpawnEndToEnd:
         data, out = tb.make_month(tmp_path)
         r = run_cli("build_dataset.py", "--data", str(data), "--out", str(out), "--diagnose", "1")
         assert r.returncode == 0 and "accepted=" in r.stdout
+
+
+class TestEarthdataLogin:
+    class Fake:
+        def __init__(self, netrc_result):
+            self.netrc_result, self.calls = netrc_result, []
+
+        def login(self, strategy, persist=False):
+            self.calls.append((strategy, persist))
+            if strategy == "netrc" and isinstance(self.netrc_result, Exception):
+                raise self.netrc_result
+            return self.netrc_result if strategy == "netrc" else True
+
+    def test_missing_netrc_raises_then_asks_and_saves(self):
+        f = self.Fake(FileNotFoundError("No .netrc found at C:\\Users\\x\\_netrc"))
+        wdm.earthdata_login(f)
+        assert f.calls == [("netrc", False), ("interactive", True)]
+
+    def test_netrc_returning_false_asks(self):
+        f = self.Fake(False)
+        wdm.earthdata_login(f)
+        assert f.calls[-1] == ("interactive", True)
+
+    def test_working_netrc_does_not_ask(self):
+        f = self.Fake(True)
+        wdm.earthdata_login(f)
+        assert f.calls == [("netrc", False)]
