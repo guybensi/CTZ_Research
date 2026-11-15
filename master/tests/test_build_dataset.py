@@ -783,3 +783,16 @@ class TestLimitDiagnoseRetry:
                         "--required-channels", "all"]) == 0
         assert len(list((out / "Pacific/2008/jan/scalars").glob("*.npz"))) == 1
         assert bd.main(["--data", str(data), "--out", str(out), "--diagnose", "1"]) == 0
+
+
+class TestFractionsStayBelowOne:
+    def test_cloud_glint_land_on_invalid_pixels_do_not_count(self):
+        m = modis_arrays()
+        m["cloud"][:] = True
+        m["glint"][:] = True
+        m["land"][:] = 3
+        m["solar"][3][CY - 13, CX - 18] = np.nan                  # one invalid pixel of a required channel, far corner
+        res = extract(m, ceres_arrays(m["lat"], m["lon"], [(CY, CX), (CY, CX + 3)]), psf=bd.load_psf(str(bd.DEFAULT_PSF)))
+        s = res["scalars"]
+        assert s["CF"][0] == pytest.approx(1.0) and s["glintf"][0] == pytest.approx(1.0)
+        assert s["landf"][0] == pytest.approx(3.0)

@@ -453,9 +453,10 @@ def extract_footprints(solar, thermal, lat, lon, szen, vzen, raa, cloud, glint, 
         r["SZA"], r["RAA"], r["VZA"] = ceres["sza"][fov], ceres["raa"][fov], ceres["vza"][fov]
         r["Lon"], r["Lat"] = ceres["lon"][fov], ceres["lat"][fov]
         r["AOD"], r["Clrf"] = ceres["aod"][fov], ceres["clrf"][fov]
-        r["CF"] = float(cloud_w.sum()) / n_valid
-        r["glintf"] = float(glint[sl].sum()) / n_valid
-        r["landf"] = float(land[sl].sum()) / n_valid
+        ok_px = ~unwant                                                # numerator and denominator over the same pixels
+        r["CF"] = float((cloud_w & ok_px).sum()) / n_valid             # (the advisor counted the numerator over all,
+        r["glintf"] = float((glint[sl] & ok_px).sum()) / n_valid       #  so values could exceed 1)
+        r["landf"] = float(land[sl][ok_px].sum()) / n_valid
         if phase_w is not None:
             n_cloud = int(cloud_w.sum())
             r["LiqPhsf"] = float((cloud_w & (phase_w == 1)).sum()) / n_cloud if n_cloud else np.nan
