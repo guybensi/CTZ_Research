@@ -318,7 +318,16 @@ def _mean_std_valid(values: np.ndarray, w: np.ndarray, exclude: np.ndarray) -> t
 
     The advisor's code also returns 0 when no pixel qualifies (clear footprint: no cloud top), and the legacy
     training scripts rely on that, so it is kept.
+
+    The resampled PSF has tiny negative lobes at its rim (kept for the radiance moments, to match the advisor's
+    stored values). Over a few qualifying pixels they can make the weight sum or the variance negative (NaN std),
+    so here they count as 0.
+
+    Example:
+        >>> _mean_std_valid(np.array([1.0, 3.0, 5.0]), np.array([0.5, 0.5, -0.1]), np.array([False, False, False]))
+        (2.0, 1.0)
     """
+    w = np.maximum(w, 0.0)
     ok = np.isfinite(values) & ~exclude
     ws = w[ok].sum()
     if ws == 0:

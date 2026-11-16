@@ -796,3 +796,26 @@ class TestFractionsStayBelowOne:
         s = res["scalars"]
         assert s["CF"][0] == pytest.approx(1.0) and s["glintf"][0] == pytest.approx(1.0)
         assert s["landf"][0] == pytest.approx(3.0)
+
+
+class TestMeanStdValid:
+    def test_negative_psf_lobes_count_as_zero(self):
+        # the qualifying pixels sit only on the negative rim of the PSF: no NaN, treated as no qualifying pixel
+        assert bd._mean_std_valid(np.array([100.0, 900.0]), np.array([-1e-6, -2e-6]), np.array([False, False])) == (0.0, 0.0)
+
+    def test_mixed_signs_give_finite_std(self):
+        m, s = bd._mean_std_valid(np.array([100.0, 900.0]), np.array([1e-6, -2e-6]), np.zeros(2, bool))
+        assert (m, s) == (100.0, 0.0)
+
+    def test_no_pixel_qualifies(self):
+        assert bd._mean_std_valid(np.array([np.nan, 5.0]), np.array([0.5, 0.5]), np.array([False, True])) == (0.0, 0.0)
+
+    def test_real_psf_no_warning(self):
+        psf = bd.load_psf(str(bd.DEFAULT_PSF))
+        rng = np.random.default_rng(0)
+        vals = rng.uniform(300, 12000, psf.shape)
+        for _ in range(200):                                    # random sparse cloudy subsets
+            excl = rng.random(psf.shape) > 0.02
+            with np.errstate(invalid="raise"):
+                m, s = bd._mean_std_valid(vals, psf, excl)
+            assert np.isfinite(m) and np.isfinite(s) and s >= 0
