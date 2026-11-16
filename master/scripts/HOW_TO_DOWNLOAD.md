@@ -18,6 +18,19 @@
 ```
 שמות החודשים: `jan feb mrch apr may june july aug sep oct nov dec`.
 
+## בשרת (`ilai@tzag`)
+
+```
+~/GUY/CTZ_Research/          הריפו (main). הסקריפטים: master/scripts/
+~/GUY/old/                   העותק הישן של download_modis.py, מלפני הריפו
+/archive/GUY/                הנתונים: AQUA/2008/Pacific/<חודש>/, download_log.txt, manifest.csv, run.out, ceres_run.out
+/archive/GUY/dataset/        הפלט של build_dataset.py
+```
+מצב ב־16.11.2026: ‏MOD02 ו־MOD03 ו־CERES קיימים ב־12 החודשים (כ־2 TB, 390 GB ו־2.7 GB). ‏MOD06 ו־MOD35 ריקים.
+`ssf_parts/` בכל חודש הם החלקים השעתיים שמהם נבנה קובץ ה־CERES (כ־200 MB לחודש). כדאי להשאיר אותם, כי `--merge-only` בונה מהם מחדש.
+תיקייה `/archive/GUY/tmp_*` היא שארית של הורדה שנקטעה. אפשר למחוק אותה כשאין הורדה שרצה.
+Python עם `scipy` ו־`netCDF4`: ‏`/home/ilai/miniconda3/envs/climate/bin/python` (ל־`python3` של base חסר `scipy`).
+
 ## הכנה (פעם אחת)
 
 ```bash
@@ -46,7 +59,7 @@ machine urs.earthdata.nasa.gov login <USER> password <PASS>
 
 1. **MODIS קודם** (CERES מוריד רק שעות שיש להן MODIS):
 ```bash
-cd ~/GUY
+cd ~/GUY/CTZ_Research/master/scripts
 python3 download_modis.py --start 2008-01-01 --end 2008-12-31 --out /archive/GUY --dry-run
 nohup python3 download_modis.py --start 2008-01-01 --end 2008-12-31 --out /archive/GUY \
     > /archive/GUY/run.out 2>&1 & disown
