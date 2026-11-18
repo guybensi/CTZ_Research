@@ -41,6 +41,30 @@ docker run --gpus all --rm -it -v "$PWD":/app ctz_research:gpu
 
 כל פקודה עובדת גם עם `--demo` במקום `--data-root`. אז היא רצה על דאטה סינתטי עם אמת ידועה ב־1 ק"מ, ו־`--demo-hard` מריץ את הגרסה הקשה (ראו סעיף 5).
 
+### מה הורץ על השרת (`ilai@tzag`)
+
+| מתי | מה | איפה | מצב |
+|---|---|---|---|
+| 16–18.11.2026 | הורדה: MODIS Aqua ‏(MOD02, MOD03, MOD06, MOD35) ו־CERES SSF לכל 2008, ‏Pacific (150E עד 120W, ‏60S עד 60N) | `/archive/GUY/AQUA/2008/Pacific/` (כ־4 TB) | הסתיים, ‏14,208 גרנולות יום |
+| 16–18.11.2026 | המרה: `build_dataset.py --no-images --workers 12` (בלי תמונות: כ־6 TB לשנה, לא נכנס בדיסק) | `/archive/GUY/dataset/Pacific/{scalars,moments}` (‏3.8 GB ו־22 GB) | הסתיים: 13,516 ‏ok, ‏689 ‏empty, ‏0 ‏error, ‏62,000,753 footprints, ‏`--verify`: ‏all triplets OK |
+| 18.11.2026 | מדגם: כל גרנולה עשרים (symlinks בלבד) | `/archive/GUY/subsets/every20/` | 676 גרנולות, כ־3 מיליון footprints |
+| 18.11.2026 | benchmark ראשון על נתונים אמיתיים: רק השיטות בלי תמונות | פלט מסוף: `/archive/GUY/results_run.out`; דוח מלא: `/archive/GUY/results/run_<זמן>/results.txt`; חלוקה: `/archive/GUY/subsets/every20/split_day5.json` | רץ (הוערך 6 שעות עד יום) |
+
+הפקודה של ה־benchmark, מתוך `~/GUY/CTZ_Research/master`:
+
+```bash
+nohup /home/ilai/miniconda3/envs/ctz/bin/python -m flux1km.cli --data-root /archive/GUY/subsets/every20 \
+    --models M0-ridge M0-allsky37 M0-advisor M1-gbm M1-ann --split day --k 5 \
+    --manifest /archive/GUY/subsets/every20/split_day5.json --psf resources/ceres_psf.csv \
+    --out /archive/GUY/results > /archive/GUY/results_run.out 2>&1 & disown
+```
+
+- **השיטות:** רק אלה שחוזות את ה־footprint מהמומנטים, כי אין תמונות. שיטות המפה (B-clim, ‏M2–M10) מדולגות כשאין `images/`.
+- **מדגם ולא כל השנה:** `io.load_dataset` טוען לזיכרון את כל התיקייה. 676 גרנולות תופסות בערך 9 GB של RAM, והשנה כולה לא נכנסת בזיכרון.
+- **`--split day --k 5`:** ימים שלמים בכל fold, ועוד מבחן ה־interleave. החלוקה נשמרת ב־`split_day5.json`, כדי שהרצות הבאות יושוו על אותה חלוקה.
+- **סביבת Python:** ‏`ctz` (‏`conda create -n ctz -c conda-forge python=3.11 numpy scipy pandas scikit-learn`, ואז `pip install torch --index-url https://download.pytorch.org/whl/cu128`, כי PyPI איטי מהשרת). ‏torch 2.11.0+cu128 על ה־GPU של השרת (NVIDIA RTX PRO 4000 Blackwell, ‏24 GB). בסביבה `climate` חסרים sklearn ו־torch. ריצת `--demo` עם אותן 5 שיטות עברה בשרת בלי שגיאות.
+- **מעקב:** `pgrep -af flux1km.cli` (יש שורה = רץ). בסוף, `tail -15 /archive/GUY/results_run.out` מציג את הטבלה ואת הנתיב של `results.txt`.
+
 ---
 
 ## 3. השיטות: קובץ אחד לכל משפחה, וכל אחד רץ לבד

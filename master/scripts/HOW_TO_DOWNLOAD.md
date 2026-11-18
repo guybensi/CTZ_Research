@@ -53,8 +53,8 @@
 /archive/GUY/                הנתונים: AQUA/2008/Pacific/<חודש>/, download_log.txt, manifest.csv, run.out, ceres_run.out
 /archive/GUY/dataset/        הפלט של build_dataset.py (Pacific/scalars, Pacific/moments)
 ```
-מצב ב־18.11.2026: שנת 2008 מלאה. MOD02, MOD03, MOD35 ו־MOD06 בכל 12 החודשים (14,208 סטים; MOD35+MOD06 ירדו ב־16.11, ‏1,623 GB), ו־CERES בכל חודש.
-`ssf_parts/` בכל חודש: כדאי להשאיר אותם, כי `--merge-only` בונה מהם מחדש.
+מצב ב־18.11.2026: כל ארבעת מוצרי MODIS ו־CERES קיימים ב־12 החודשים של 2008 (MOD02 כ־2 TB, ‏MOD03 ‏390 GB, ‏MOD06+MOD35 ‏1.6 TB, ‏CERES ‏2.7 GB). ‏MOD06 ו־MOD35 ירדו ב־16.11 (‏`--products MYD35_L2 MYD06_L2`, כ־11.5 שעות, כ־40 MB/s). ההמרה והבנצ'מרק הראשון: `master/HOW_TO_RUN.md`, סעיף 2.
+`ssf_parts/` בכל חודש הם החלקים השעתיים שמהם נבנה קובץ ה־CERES (כ־200 MB לחודש). כדאי להשאיר אותם, כי `--merge-only` בונה מהם מחדש.
 תיקייה `/archive/GUY/tmp_*` היא שארית של הורדה שנקטעה. אפשר למחוק אותה כשאין הורדה שרצה.
 Python עם `scipy` ו־`netCDF4`: ‏`/home/ilai/miniconda3/envs/climate/bin/python`.
 שם מריצים ברקע עם `nohup ... & disown` (ראה "הרצה בשרת רגיל" למטה).
