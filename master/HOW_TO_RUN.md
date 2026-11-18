@@ -174,13 +174,13 @@ python3 -m flux1km.methods.<שם הקובץ> --data-root DIR --manifest M.json  
 ```
 /archive/GUY/AQUA/<year>/Pacific/<month>/MOD02/   MYD021KM
                                          /MOD03/   MYD03
-                                         /MOD06/   ריקה, אלא אם MYD06_L2 ב־PRODUCTS
-                                         /MOD35/   ריקה, אלא אם MYD35_L2 ב־PRODUCTS
+                                         /MOD06/   MYD06_L2 (עם --products ... MYD06_L2)
+                                         /MOD35/   MYD35_L2 (עם --products ... MYD35_L2)
 ```
 
 שמות תיקיות החודשים הם כמו ברשימת `MONTH` של המנחה (`mrch`, ‏`june`, ‏`sep`, ‏`dec` וכו'). את קובץ ה־CERES SSF הסקריפט לא מוריד: צריך לשים אותו בכל תיקיית חודש, והשם שלו חייב לכלול `CERES`. קבצים שירדו במבנה הישן (`<product>/<year>/<doy>/`) מעבירים עם `--reorganize`. הרצה חוזרת מדלגת על קבצים שכבר ירדו.
 
-מדריך הרצה קצר להורדה: [scripts/HOW_TO_DOWNLOAD.md](scripts/HOW_TO_DOWNLOAD.md).
+מדריך הרצה קצר להורדה, כולל אשכול Slurm ‏(`scripts/slurm/download_year.sbatch`): [scripts/HOW_TO_DOWNLOAD.md](scripts/HOW_TO_DOWNLOAD.md). מורידים את ארבעת המוצרים: `--products MYD021KM MYD03 MYD35_L2 MYD06_L2`.
 
 בניית הדאטה לאימון (`scalars/`, `moments/`, `images/`) מהקבצים שהורדו, עם הגרסה המתוקנת של הממיר של המנחה: `python3 scripts/build_dataset.py --data /archive/GUY --out /archive/GUY/dataset` (ה־PSF של המנחה הוא ברירת המחדל). מדריך ורשימת התיקונים: [scripts/HOW_TO_BUILD_DATASET.md](scripts/HOW_TO_BUILD_DATASET.md).
 
