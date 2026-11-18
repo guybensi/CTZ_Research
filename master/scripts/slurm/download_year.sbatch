@@ -2,15 +2,18 @@
 # One year of Aqua MODIS (MOD02, MOD03, MOD35, MOD06) and CERES SSF for the BGU Slurm cluster.
 #
 #   mkdir -p /colony/bgu-eytane/users/$USER/logs
-#   sbatch --dependency=singleton master/scripts/slurm/download_year.sbatch 2003
-#   for Y in $(seq 2003 2022); do sbatch --dependency=singleton master/scripts/slurm/download_year.sbatch $Y; done
+#   N=4; for Y in $(seq 2003 2022); do L=$(( (Y-2003) % N )); OUT=/colony/bgu-eytane/users/$USER/dl/$Y \
+#       sbatch -J ctz_dl_$L --dependency=singleton master/scripts/slurm/download_year.sbatch $Y; done
 #
-# All jobs share the name ctz_dl, so --dependency=singleton runs them one at a time
-# (download_modis.py allows one run per --out anyway). A job that stops (time limit, node failure)
-# is resubmitted with the same year: finished files are skipped.
+# download_modis.py allows one run per --out, so each year gets its own OUT (dl/<year>) and the years
+# are spread over N lanes: jobs with the same name (-J) run one at a time (--dependency=singleton).
+# The cluster's total rate is about 200 GB/h whatever N is, so keep N at 4-5 or a year (4 TB) will not
+# finish within the 7-day limit. Move a finished year with: mv dl/<year>/AQUA/<year> AQUA/
+# A job that stops (time limit, node failure) is resubmitted with the same year and OUT: finished files
+# are skipped.
 # Override the defaults by exporting OUT, PY or REPO before sbatch.
 #SBATCH --job-name=ctz_dl
-#SBATCH --time=3-00:00:00
+#SBATCH --time=7-00:00:00
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=32G
 #SBATCH --output=/colony/bgu-eytane/users/%u/logs/dl_%j.out

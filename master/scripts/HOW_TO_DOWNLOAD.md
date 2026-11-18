@@ -42,7 +42,7 @@
 | **סך הכול** | **~4 TB** |
 
 שנה היא 14,208 גרנולות יום. 20 שנה (2003–2022) הן כ־81 TB, או כ־48 TB אם מוחקים את MOD35/MOD06 אחרי ההמרה.
-במהירות של השרת הישן (כ־60 MB/s) זה כ־18 שעות לשנה.
+בכ־57–60 MB/s (השרת הישן, וגם הקצב הכולל מאשכול BGU) זה כ־20 שעות לשנה, ו־20 שנה הן כ־17 יום.
 
 ## השרתים
 
@@ -92,24 +92,36 @@ machine urs.earthdata.nasa.gov login <USER> password <PASS>
 ל־MODIS בנוסף: `--products`, `--dry-run`, `--reorganize`.
 ל־CERES בנוסף: `--dry-run`, `--find`, `--inspect FILE`, `--merge-only`, `--all-hours`.
 
-## הרצה באשכול Slurm (שנה לכל job)
+## הרצה באשכול Slurm (שנה לכל job, כמה שנים במקביל)
+
+כל job מוריד שנה אחת: MODIS פעמיים (המעבר השני מוריד מחדש רק מה שנכשל) ואז CERES.
+`download_modis.py` נועל את תיקיית ה־`--out`, ולכן כל שנה יורדת לתיקייה משלה, `dl/<שנה>/`, עם מנעול, לוג ו־`manifest.csv` משלה.
+השנים מחולקות ל"מסלולים": כל מסלול הוא שם job (`-J ctz_dl_<L>`), ו־`--dependency=singleton` מריץ את השנים של אותו מסלול אחת אחרי השנייה.
 
 ```bash
 mkdir -p /colony/bgu-eytane/users/$USER/logs
 cd ~/CTZ_Research
-for Y in $(seq 2003 2022); do sbatch --dependency=singleton master/scripts/slurm/download_year.sbatch $Y; done
+N=4; for Y in $(seq 2003 2022); do L=$(( (Y-2003) % N )); OUT=/colony/bgu-eytane/users/$USER/dl/$Y \
+    sbatch -J ctz_dl_$L --dependency=singleton master/scripts/slurm/download_year.sbatch $Y; done
 ```
-כל ה־jobs נקראים `ctz_dl`, ו־`singleton` מריץ אותם אחד אחרי השני. כל job מריץ MODIS פעמיים (המעבר השני מוריד מחדש רק מה שנכשל) ואז CERES.
-אם האשכול דורש מחיצה, מוסיפים `-p <partition>` ל־`sbatch`. אם מגבלת הזמן קצרה מ־3 ימים, מוסיפים `-t <זמן>`.
-משנים נתיבים בלי לערוך את הקובץ: `OUT=... PY=... REPO=... sbatch ...`.
+
+**כמה מסלולים:** נמדד ב־18.11.2026: הקצב הכולל מהאשכול נעצר על כ־200 GB לשעה (כ־57 MB/s, כמו בשרת הישן), גם עם 9 הורדות במקביל.
+יותר מסלולים רק מחלקים את אותו קצב. עם N במקביל כל שנה מקבלת כ־200/N GB לשעה, ושנה (4 TB) חייבת להסתיים במגבלת ה־job של 7 ימים,
+ולכן N=4 עד 5 (כ־4 ימים לשנה). 20 שנה: כ־17 יום.
+אם האשכול דורש מחיצה, מוסיפים `-p <partition>`. משנים נתיבים בלי לערוך את הקובץ: `OUT=... PY=... REPO=... sbatch ...`.
 
 **מעקב:**
 ```bash
-squeue -u $USER; tail -3 /colony/bgu-eytane/users/$USER/download_log.txt
-du -sh /colony/bgu-eytane/users/$USER/AQUA/*; grep -c FAILED /colony/bgu-eytane/users/$USER/manifest.csv
+squeue -u $USER -o "%.6i %.10j %.2t %.10M %R"
+du -sh /colony/bgu-eytane/users/$USER/dl/*/AQUA/*; date
+grep -c FAILED /colony/bgu-eytane/users/$USER/dl/*/manifest.csv
 ```
-job שנקטע: שולחים שוב את אותה שנה (`sbatch --dependency=singleton master/scripts/slurm/download_year.sbatch 2005`).
-בסוף כל שנה הלוג `logs/dl_<jobid>.out` מדפיס טבלה של 12 חודשי CERES; כולם צריכים להיות `OK`.
+job שנקטע: שולחים שוב את אותה שנה עם אותו `OUT`; קבצים שירדו מדולגים.
+בסוף כל שנה הלוג `logs/dl_<jobid>.out` מדפיס טבלה של 12 חודשי CERES; כולם צריכים להיות `OK`. אז מעבירים את השנה לתיקייה הראשית (אותה מערכת קבצים, מיידי):
+```bash
+cd /colony/bgu-eytane/users/$USER && mv dl/2004/AQUA/2004 AQUA/
+```
+ב־`dl/<שנה>/AQUA/` מופיעה לפעמים גם תיקייה של השנה הקודמת עם גרנולה אחת (31.12 בשעה 23:55, שהחיפוש מחצות מחזיר). היא יורדת גם בשנה שלה, ואפשר למחוק אותה.
 
 ## הרצה בשרת רגיל (בלי Slurm)
 
