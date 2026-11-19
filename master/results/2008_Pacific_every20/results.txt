@@ -1,0 +1,136 @@
+flux1km benchmark results
+written 2026-11-18 15:43 UTC
+run folder: /archive/GUY/results/run_20261118_154214
+
+====================================================================================================
+WINNER
+====================================================================================================
+winner: M1-ann
+ranking by macro RMSE (gate-passing, ranked methods): ['M1-ann', 'M0-allsky37', 'M1-gbm']
+decision log:
+  - M0-ridge fails gates: ['trend:SZA', 'trend:glint']
+  - M0-advisor fails gates: ['swath_asymmetry']
+  - M0-allsky37 does not replace M1-ann: gain -2.25 W/m2 (not significant)
+  - M1-gbm does not replace M1-ann: gain -2.27 W/m2 (not significant)
+
+====================================================================================================
+Configuration
+====================================================================================================
+models: ['M0-ridge', 'M0-allsky37', 'M0-advisor', 'M1-gbm', 'M1-ann']
+primary operator: ceres_psf   sensitivity operators: ('fov_ellipse', 'uniform', 'gaussian_psf')
+PSF file: resources/ceres_psf.csv   tuning budget: 40   seeds: (0,)
+sampling: S0    leakage check: True (radius 20.0 km)
+noise floor by regime: {'clear': 1.9, 'broken': 10.0, 'overcast': 6.0}   trend gate: 5.0   swath gate: 5.0   clear-sky target: (70.0, 90.0)
+image granules: 0
+
+====================================================================================================
+Folds (frozen split manifest)
+====================================================================================================
+fold                           leaky   n_train     n_val    n_test
+day-kfold:0                    False   2290019    384145    653410
+day-kfold:1                    False   2230595    417225    680756
+day-kfold:2                    False   2236894    391541    699638
+day-kfold:3                    False   2260891    406739    661244
+day-kfold:4                    False   2283687    408508    635817
+interleave:2                    True   1663440         0   1665264
+chosen hyper-parameters (validation RMSE):
+  day-kfold:0              M0-ridge     val_rmse=32.01  {'alpha': 10.0, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:0              M0-allsky37  val_rmse=15.39  {'lr': 0.0003, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:0              M0-advisor   val_rmse=29.86  {'lr': 0.001, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:0              M1-gbm       val_rmse=15.27  {'learning_rate': 0.1, 'max_leaf_nodes': 31, 'max_iter': 400, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:0              M1-ann       val_rmse=12.65  {'hidden': (64, 32), 'lr': 0.001, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:1              M0-ridge     val_rmse=32.01  {'alpha': 10.0, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:1              M0-allsky37  val_rmse=15.00  {'lr': 0.003, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:1              M0-advisor   val_rmse=22.85  {'lr': 0.001, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:1              M1-gbm       val_rmse=15.61  {'learning_rate': 0.1, 'max_leaf_nodes': 31, 'max_iter': 400, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:1              M1-ann       val_rmse=12.96  {'hidden': (128, 64, 32), 'lr': 0.001, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:2              M0-ridge     val_rmse=30.98  {'alpha': 10.0, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:2              M0-allsky37  val_rmse=14.14  {'lr': 0.003, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:2              M0-advisor   val_rmse=41.57  {'lr': 0.001, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:2              M1-gbm       val_rmse=14.90  {'learning_rate': 0.1, 'max_leaf_nodes': 31, 'max_iter': 400, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:2              M1-ann       val_rmse=12.39  {'hidden': (128, 64, 32), 'lr': 0.001, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:3              M0-ridge     val_rmse=32.63  {'alpha': 10.0, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:3              M0-allsky37  val_rmse=14.90  {'lr': 0.003, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:3              M0-advisor   val_rmse=993.15  {'lr': 0.001, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:3              M1-gbm       val_rmse=15.62  {'learning_rate': 0.1, 'max_leaf_nodes': 31, 'max_iter': 400, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:3              M1-ann       val_rmse=12.81  {'hidden': (128, 64, 32), 'lr': 0.001, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:4              M0-ridge     val_rmse=30.35  {'alpha': 1.0, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:4              M0-allsky37  val_rmse=14.43  {'lr': 0.003, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:4              M0-advisor   val_rmse=585.31  {'lr': 0.0003, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:4              M1-gbm       val_rmse=14.94  {'learning_rate': 0.1, 'max_leaf_nodes': 31, 'max_iter': 400, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:4              M1-ann       val_rmse=12.37  {'hidden': (128, 64, 32), 'lr': 0.001, 'seed': 0, 'input_set': 'F5'}
+
+====================================================================================================
+Scores (non-leaky folds; W m^-2)
+====================================================================================================
+model        ranked  macroRMSE       RMSE        MAE       bias         R2          n  macro@fov_ellipse  macro@uniform  macro@gaussian_psf  interleave    pixRMSE    pixCorr       SSIM
+M0-ridge        yes      33.14      31.54      24.51      -0.20       0.95    3326597              33.14          33.14               33.14       31.41          -          -          -
+M0-allsky37     yes      13.11      14.95      10.52       0.14       0.99    3326597              13.11          13.11               13.11       14.82          -          -          -
+M0-advisor      yes135596082140549574555477278418110775296.00112700326978858786512073415947351752704.0061790979596356080187141588718190592.0061790979596356080187141588718190592.00-694270670734527138363483790783112765862523231159969804982509526832906240.00    3326597135596082140549574555477278418110775296.00135596082140549574555477278418110775296.00135596082140549574555477278418110775296.00182087111660283380415132437130073259796425003652531511497593665101545492850791153664.00          -          -          -
+M1-gbm          yes      13.13      15.38      10.85       0.04       0.99    3326597              13.13          13.13               13.13       18.96          -          -          -
+M1-ann          yes      10.86      12.78       8.98       0.19       0.99    3326597              10.86          10.86               10.86       12.38          -          -          -
+
+====================================================================================================
+Scores by cloud regime (RMSE / bias / n)
+====================================================================================================
+model            clear     bias      n    broken     bias      n  overcast     bias      n
+M0-ridge         37.35     6.81 255337     30.94    -1.741802407     31.11     0.571268853
+M0-allsky37       8.38     0.69 255337     14.74     0.171802407     16.22    -0.021268853
+M0-advisor  406788246421648742555897766732913180672.00805028990519585249085995814595067904.00 255337     24.33     1.401802407     31.12    -2.291268853
+M1-gbm            7.39     0.58 255337     15.11     0.491802407     16.88    -0.701268853
+M1-ann            5.99     0.65 255337     12.56     0.351802407     14.03    -0.121268853
+
+====================================================================================================
+Residual flatness (gates: trend effect, swath-side asymmetry)
+====================================================================================================
+model              SZA       VZA       RAA     glint     swath
+M0-ridge         23.59      2.66      1.21      7.15      0.41
+M0-allsky37       0.13      0.78      0.27      0.02     -0.05
+M0-advisor  223390842643291472192347556401905664.0048373254527478211360323891061850112.0021458920079088532901953047866900480.0053083801233768898156233269761277952.00-81561562717805521658674989630488576.00
+M1-gbm            0.61      0.10      0.09      0.16     -0.14
+M1-ann            1.92      0.31      0.31      1.47      0.03
+
+====================================================================================================
+Pairwise comparisons (unit = granule group; negative diff = first model better)
+====================================================================================================
+pair                              diff    ci_low   ci_high   p_boot p_holm_b   wilcox p_holm_w     DM p  units
+M0-ridge vs M0-allsky37         867.78    808.68    934.96     0.00     0.00     0.00     0.00     0.00    646
+M0-ridge vs M0-advisor      -9910009940924766127913428474930915471542635082003436637165217077915272871936.00-29730029822774299990678329683783021956589997587172912433698645016538653917184.00-139563.52     0.00     0.00     0.00     0.00     0.31    646
+M0-ridge vs M1-gbm              855.40    796.52    921.61     0.00     0.00     0.00     0.00     0.00    646
+M0-ridge vs M1-ann              933.73    873.98   1001.07     0.00     0.00     0.00     0.00     0.00    646
+M0-allsky37 vs M0-advisor   -9910009940924766127913428474930915471542635082003436637165217077915272871936.00-29730029822774299990678329683783021956589997587172912433698645016538653917184.00-140411.48     0.00     0.00     0.00     0.00     0.31    646
+M0-allsky37 vs M1-gbm           -12.37    -18.21     -5.94     0.00     0.00     0.00     0.00     0.00    646
+M0-allsky37 vs M1-ann            65.95     60.99     71.04     0.00     0.00     0.00     0.00     0.00    646
+M0-advisor vs M1-gbm        9910009940924766127913428474930915471542635082003436637165217077915272871936.00 140398.1529730029822774299990678329683783021956589997587172912433698645016538653917184.00     0.00     0.00     0.00     0.00     0.31    646
+M0-advisor vs M1-ann        9910009940924766127913428474930915471542635082003436637165217077915272871936.00 140478.4529730029822774299990678329683783021956589997587172912433698645016538653917184.00     0.00     0.00     0.00     0.00     0.31    646
+M1-gbm vs M1-ann                 78.33     72.59     83.70     0.00     0.00     0.00     0.00     0.00    646
+
+====================================================================================================
+Gate results
+====================================================================================================
+  M0-ridge     FAIL: trend:SZA, trend:glint
+  M0-allsky37  PASS
+  M0-advisor   FAIL: swath_asymmetry
+  M1-gbm       PASS
+  M1-ann       PASS
+
+====================================================================================================
+Glossary
+====================================================================================================
+How to read this file
+  RMSE / MAE / bias / R2  footprint level, predicted vs CERES Fsw, in W m^-2 (bias = pred - CERES).
+  macro RMSE              mean of the RMSEs of the clear (CF < 5%), broken and overcast (CF >= 95%)
+                          regimes: the PRIMARY score (PLAN.md section 6).
+  macro@<operator>        the same score with a sensitivity aggregation operator; the ranking must not
+                          flip between operators.
+  interleave              RMSE on the leaky interleave test (every 2nd footprint); reported only, never
+                          used for ranking. A small gap to the LOGO RMSE is tie-breaker 2.
+  pixel RMSE/corr/SSIM    against the known 1 km truth (synthetic data only): tie-breaker 1.
+  trend effect            |slope| x range of the residual vs an angle; must stay below the trend gate.
+  swath asymmetry         forward- minus backscatter-side residual at matched VZA.
+  physics                 pcs = far-field pure clear-sky flux (target 80 +- 10 W m^-2), bound = fraction
+                          of pixels above S0 cos(SZA), spacing = power-spectrum peak at the footprint spacing.
+  comparisons             paired tests on per-group losses: bootstrap CI of loss(A) - loss(B) (negative =
+                          A better), bootstrap p and its Holm correction, Wilcoxon (+Holm), Diebold-Mariano.
+  ranked = no             the method reads the test footprints' own CERES labels (B-const, M6e, M7,
+                          M9-local): it is a reference for pixel truth and the interleave test only.
