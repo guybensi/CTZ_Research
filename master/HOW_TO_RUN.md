@@ -48,7 +48,7 @@ docker run --gpus all --rm -it -v "$PWD":/app ctz_research:gpu
 | 16–18.11.2026 | הורדה: MODIS Aqua ‏(MOD02, MOD03, MOD06, MOD35) ו־CERES SSF לכל 2008, ‏Pacific (150E עד 120W, ‏60S עד 60N) | `/archive/GUY/AQUA/2008/Pacific/` (כ־4 TB) | הסתיים, ‏14,208 גרנולות יום |
 | 16–18.11.2026 | המרה: `build_dataset.py --no-images --workers 12` (בלי תמונות: כ־6 TB לשנה, לא נכנס בדיסק) | `/archive/GUY/dataset/Pacific/{scalars,moments}` (‏3.8 GB ו־22 GB) | הסתיים: 13,516 ‏ok, ‏689 ‏empty, ‏0 ‏error, ‏62,000,753 footprints, ‏`--verify`: ‏all triplets OK |
 | 18.11.2026 | מדגם: כל גרנולה עשרים (symlinks בלבד) | `/archive/GUY/subsets/every20/` | 676 גרנולות, כ־3 מיליון footprints |
-| 18.11.2026 | benchmark ראשון על נתונים אמיתיים: רק השיטות בלי תמונות | פלט מסוף: `/archive/GUY/results_run.out`; דוח מלא: `/archive/GUY/results/run_<זמן>/results.txt`; חלוקה: `/archive/GUY/subsets/every20/split_day5.json` | רץ (הוערך 6 שעות עד יום) |
+| 18.11.2026 | benchmark ראשון על נתונים אמיתיים: רק השיטות בלי תמונות | פלט מסוף: `/archive/GUY/results_run.out`; דוח מלא: `/archive/GUY/results/run_<זמן>/results.txt`; חלוקה: `/archive/GUY/subsets/every20/split_day5.json` | הסתיים ב־18.11. ‏`results.txt` ו־`summary.json` מועתקים לריפו: [results/2008_Pacific_every20/](results/2008_Pacific_every20/) |
 
 הפקודה של ה־benchmark, מתוך `~/GUY/CTZ_Research/master`:
 
@@ -63,6 +63,7 @@ nohup /home/ilai/miniconda3/envs/ctz/bin/python -m flux1km.cli --data-root /arch
 - **מדגם ולא כל השנה:** `io.load_dataset` טוען לזיכרון את כל התיקייה. 676 גרנולות תופסות בערך 9 GB של RAM, והשנה כולה לא נכנסת בזיכרון.
 - **`--split day --k 5`:** ימים שלמים בכל fold, ועוד מבחן ה־interleave. החלוקה נשמרת ב־`split_day5.json`, כדי שהרצות הבאות יושוו על אותה חלוקה.
 - **סביבת Python:** ‏`ctz` (‏`conda create -n ctz -c conda-forge python=3.11 numpy scipy pandas scikit-learn`, ואז `pip install torch --index-url https://download.pytorch.org/whl/cu128`, כי PyPI איטי מהשרת). ‏torch 2.11.0+cu128 על ה־GPU של השרת (NVIDIA RTX PRO 4000 Blackwell, ‏24 GB). בסביבה `climate` חסרים sklearn ו־torch. ריצת `--demo` עם אותן 5 שיטות עברה בשרת בלי שגיאות.
+- **תוצאות (macro RMSE של Fsw, ‏W/m²):** ‏M1-ann ‏10.86 (המנצחת), ‏M0-allsky37 ‏13.11, ‏M1-gbm ‏13.13, ‏M0-ridge ‏33.14 (נכשלת במבחני המגמה מול SZA ו־glint). ההפרשים בין M1-ann ל־M0-allsky37 ול־M1-gbm אינם מובהקים. ‏**M0-advisor התבדרה** (RMSE בסדר גודל של 10^38): הרשת של המנחה חוזה ב־log1p ומחזירה עם expm1, וכנראה נכשלה באימון על הנתונים האלה. צריך לבדוק לפני שמשווים אליה.
 - **מעקב:** `pgrep -af flux1km.cli` (יש שורה = רץ). בסוף, `tail -15 /archive/GUY/results_run.out` מציג את הטבלה ואת הנתיב של `results.txt`.
 
 ---
