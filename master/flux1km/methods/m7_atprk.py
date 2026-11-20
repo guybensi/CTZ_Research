@@ -102,6 +102,7 @@ class ATPRK(FluxModel):
     name = "M7"
     uses_test_labels = True
     needs_operator = True
+    joint_per_granule = True  # kriges the footprints of a granule together
     complexity = 4
     defaults = {"trend": "M2", "range_px": 10.0, "nugget": 1e-6, "operator": "fov_ellipse", "psf_path": None,
                 "input_set": "F5", "seed": 0}

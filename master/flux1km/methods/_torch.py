@@ -179,8 +179,11 @@ def train_map_net(net, X: np.ndarray, ins: np.ndarray, W: np.ndarray, y: np.ndar
     sw = np.ones(n) if sw is None else np.asarray(sw, float)
     sw = np.where(ok, sw, 0.0)
     scale = float(np.nanstd(y[ok])) or 1.0
+    # X is the largest array (N, F, H, W): replace NaN in place when it is already float32 (no second copy)
+    xs = np.nan_to_num(X, copy=False) if X.dtype == np.float32 and X.flags.writeable else np.nan_to_num(X)
     t = {k: torch.as_tensor(np.nan_to_num(a), dtype=torch.float32) for k, a in
-         (("X", X), ("I", ins), ("W", W), ("y", y), ("s", sw))}
+         (("I", ins), ("W", W), ("y", y), ("s", sw))}
+    t["X"] = torch.as_tensor(xs, dtype=torch.float32)
     net = net.to(dev)
     fwd = forward or (lambda m, xb, idx: m(xb))
     opt = torch.optim.Adam(net.parameters(), lr=lr, weight_decay=weight_decay)

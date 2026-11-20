@@ -12,8 +12,8 @@ from __future__ import annotations
 import numpy as np
 
 from .. import aggregation, features
-from ..features import Batch
-from ..models import FluxModel
+from ..features import Batch, take_batch
+from ..models import PREDICT_CHUNK, FluxModel, chunk_positions
 from . import _common, _torch
 
 
@@ -56,10 +56,25 @@ class MapNetModel(FluxModel):
         return features.footprint_weights(batch, self.params["operator"], load_psf(self.params["psf_path"], h, w))
 
     def _prepare(self, batch: Batch, fit_scaler: bool = False):
-        X = self.inputs(batch)
+        """Standardised float32 inputs (N, F, H, W) and insolation, built a chunk of footprints at a time.
+
+        Same values as transform(inputs(batch)).astype(float32), but only one chunk's float64 features exist
+        at once (the full float64 array is twice the float32 one). Fitting the scaler reads the inputs once more.
+        """
+        chunks = chunk_positions(batch, PREDICT_CHUNK)
         if fit_scaler:
-            self.scaler = _common.Standardizer(axis=1).fit(X, seed=self.params["seed"])
-        return self.scaler.transform(X).astype(np.float32), _common.pixel_insolation(batch)
+            h, w = batch.images["ImSW"].shape[-2:]
+            self.scaler = _common.Standardizer(axis=1).fit_chunks(
+                (self.inputs(take_batch(batch, c)) for c in chunks), total=len(batch) * h * w, seed=self.params["seed"])
+        X = None
+        for c in chunks:
+            z = self.scaler.transform(self.inputs(take_batch(batch, c))).astype(np.float32)
+            if X is None:
+                X = np.empty((len(batch),) + z.shape[1:], np.float32)
+            X[c] = z
+        if X is None:
+            X = self.scaler.transform(self.inputs(batch)).astype(np.float32)
+        return X, _common.pixel_insolation(batch)
 
     def fit(self, train, val=None):
         if not train.has_images:

@@ -129,3 +129,49 @@ class TestNoCeresInputs:
         junk = {k: rng.normal(size=len(test)) * 1e3 for k in ("Fsw", "Flw", "Isw", "Ilw", "Clrf")}
         scrambled = replace(test, scalars={**test.scalars, **junk}, label=junk["Fsw"])
         np.testing.assert_allclose(m.predict_footprint(test, W), m.predict_footprint(scrambled, W), rtol=1e-6)
+
+
+class TestChunkPositions:
+    def test_slices_cover_every_footprint_once(self):
+        from flux1km.models import chunk_positions
+        b = type("B", (), {"__len__": lambda s: 7, "granule": None})()
+        cov = np.concatenate([np.arange(7)[p] for p in chunk_positions(b, 3)])
+        assert cov.tolist() == list(range(7))
+        assert len(chunk_positions(b, 100)) == 1
+
+    def test_whole_granules(self):
+        from flux1km.models import chunk_positions
+        b = type("B", (), {"__len__": lambda s: 5, "granule": np.array(["b", "a", "b", "a", "c"])})()
+        assert [p.tolist() for p in chunk_positions(b, 1, whole_granules=True)] == [[0, 2], [1, 3], [4]]
+
+    def test_whole_granules_without_ids_is_one_chunk(self):
+        from flux1km.models import chunk_positions
+        b = type("B", (), {"__len__": lambda s: 4, "granule": None})()
+        assert chunk_positions(b, 1, whole_granules=True) == [slice(0, 4)]
+
+    def test_empty_and_bad_size(self):
+        from flux1km.models import chunk_positions
+        b = type("B", (), {"__len__": lambda s: 0, "granule": None})()
+        assert chunk_positions(b, 3) == []
+        with pytest.raises(ValueError):
+            chunk_positions(b, 0)
+
+
+class TestPredictMapChunked:
+    @pytest.mark.parametrize("name", ["M2", "B-bagpixel", "M9", "M7"])
+    def test_same_as_one_call(self, name, monkeypatch):
+        from flux1km import features, synthetic
+        from flux1km import models as mdl
+        from flux1km.table import build_table
+        rng = np.random.default_rng(1)
+        gs = [synthetic.make_synthetic_granule(g, rng, n_rows=2, n_cols=3) for g in ("A2014060.0245", "A2014061.0530")]
+        t = build_table(gs)
+        n = len(t["granule"])
+        b = features.make_batch(gs, t, np.arange(n))
+        m = mdl.get_model(name, seed=0).fit(b)
+        full = m.predict_map(b)
+        np.testing.assert_allclose(mdl.predict_map_chunked(m, b, size=4), full, atol=1e-9)
+        w = np.full(full.shape[1:], 1.0 / np.prod(full.shape[1:]))
+        monkeypatch.setattr(mdl, "PREDICT_CHUNK", 3)
+        np.testing.assert_allclose(m.predict_footprint(b, w) if m.produces_map else 0, (full * w).sum(axis=(1, 2)),
+                                   atol=1e-9)

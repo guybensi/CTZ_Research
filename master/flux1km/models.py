@@ -14,7 +14,7 @@ import numpy as np
 
 from . import features
 from .aggregation import aggregate
-from .features import Batch
+from .features import Batch, take_batch
 from .geometry import toa_insolation
 
 
@@ -27,6 +27,7 @@ class FluxModel(ABC):
     complexity = 0  # decision rule: a more complex model must beat a simpler one significantly
     needs_operator = False  # True: the benchmark passes operator=..., psf_path=... (aggregation-loss training)
     needs_torch = False     # True: fit() imports PyTorch (lazily)
+    joint_per_granule = False  # True: predict_map couples the footprints of a granule (M7), so chunks keep granules whole
 
     def __init__(self, **params):
         self.params = params
@@ -45,8 +46,72 @@ class FluxModel(ABC):
         raise NotImplementedError(f"{self.name} does not produce 1 km maps")
 
     def predict_footprint(self, batch: Batch, weights: np.ndarray) -> np.ndarray:
-        """Footprint flux (N,); default = aggregation operator applied to predict_map."""
-        return aggregate(self.predict_map(batch), weights)
+        """Footprint flux (N,); default = aggregation operator applied to predict_map, a chunk at a time."""
+        w = np.asarray(weights)
+        out = np.empty(len(batch))
+        for pos in chunk_positions(batch, PREDICT_CHUNK, self.joint_per_granule):
+            out[pos] = aggregate(self.predict_map(take_batch(batch, pos)), w[pos] if w.ndim == 3 else w)
+        return out
+
+
+PREDICT_CHUNK = 2000  # footprints per predict_map call: bounds the per-pixel feature arrays (about 1 MB a footprint)
+
+
+def chunk_positions(batch: Batch, size: int, whole_granules: bool = False) -> list:
+    """Split a batch's footprints into chunks of at most `size` (slices), or into whole granules.
+
+    Map prediction and pixel features need memory per footprint, so long batches are processed a chunk at a
+    time. With whole_granules, every chunk is all the footprints of one granule (index arrays), for models whose
+    prediction couples the footprints of a granule (M7 kriges them jointly).
+
+    Example:
+        >>> chunk_positions(np.zeros(5), 2)   # anything with len(); a Batch in practice
+        [slice(0, 2, None), slice(2, 4, None), slice(4, 5, None)]
+
+    Args:
+        batch: Any Batch (only len() and `granule` are used).
+        size: Largest chunk (footprints), at least 1.
+        whole_granules: One chunk per granule instead.
+
+    Returns:
+        A list of slices or integer index arrays that together cover every footprint once. With whole_granules
+        and no granule ids (synthetic windows), one chunk holds the whole batch.
+
+    Raises:
+        ValueError: If size < 1.
+    """
+    if size < 1:
+        raise ValueError("chunk size must be at least 1")
+    n = len(batch)
+    if whole_granules:
+        if getattr(batch, "granule", None) is None:
+            return [slice(0, n)]
+        g = np.asarray(batch.granule)
+        return [np.flatnonzero(g == k) for k in dict.fromkeys(g.tolist())]
+    return [slice(i, min(i + size, n)) for i in range(0, n, size)]
+
+
+def predict_map_chunked(model: FluxModel, batch: Batch, size: int = PREDICT_CHUNK) -> np.ndarray:
+    """model.predict_map(batch), computed a chunk of footprints at a time (same result, bounded memory).
+
+    Example:
+        >>> # maps = predict_map_chunked(model, test)   # == model.predict_map(test), (N, H, W)
+
+    Args:
+        model: A fitted map model.
+        batch: Footprints with images.
+        size: Footprints per chunk (whole granules for joint_per_granule models).
+
+    Returns:
+        (N, H, W) per-pixel flux.
+    """
+    out = None
+    for pos in chunk_positions(batch, size, model.joint_per_granule):
+        m = model.predict_map(take_batch(batch, pos))
+        if out is None:
+            out = np.empty((len(batch),) + m.shape[1:], dtype=m.dtype)
+        out[pos] = m
+    return np.empty((0,) + batch.images["ImSW"].shape[-2:]) if out is None else out
 
 
 # ------------------------------------------------------------------ ridge helper

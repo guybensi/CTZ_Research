@@ -64,6 +64,43 @@ class Standardizer:
         x = np.moveaxis(np.asarray(X, float), self.axis, -1).reshape(-1, np.shape(X)[self.axis])
         if len(x) > max_samples:
             x = x[np.random.default_rng(seed).choice(len(x), max_samples, replace=False)]
+        return self._fit_rows(x)
+
+    def fit_chunks(self, chunks, total: int, max_samples: int = 200_000, seed: int = 0) -> Standardizer:
+        """fit() over an array given as consecutive chunks along axis 0, without holding it whole.
+
+        The chunks, concatenated along axis 0, are the array fit() would get; `total` is its number of
+        entries per feature (the product of all its axes except self.axis). The same random entries are
+        drawn as in fit(), so the result is identical.
+
+        Example:
+            >>> X = np.arange(24.0).reshape(4, 3, 2)
+            >>> a = Standardizer(axis=1).fit(X, max_samples=5)
+            >>> b = Standardizer(axis=1).fit_chunks([X[:1], X[1:]], total=8, max_samples=5)
+            >>> bool(np.array_equal(a.mu, b.mu) and np.array_equal(a.sd, b.sd))
+            True
+
+        Raises:
+            ValueError: If the chunks do not hold exactly `total` entries per feature.
+        """
+        take = None if total <= max_samples else np.random.default_rng(seed).choice(total, max_samples, replace=False)
+        parts, sample, start = [], None, 0
+        for X in chunks:
+            x = np.moveaxis(np.asarray(X, float), self.axis, -1).reshape(-1, np.shape(X)[self.axis])
+            stop = start + len(x)
+            if take is None:
+                parts.append(x)
+            else:
+                sel = (take >= start) & (take < stop)
+                if sample is None:
+                    sample = np.empty((len(take), x.shape[1]))
+                sample[sel] = x[take[sel] - start]
+            start = stop
+        if start != total:
+            raise ValueError(f"chunks hold {start} entries per feature, expected {total}")
+        return self._fit_rows(np.concatenate(parts) if take is None else sample)
+
+    def _fit_rows(self, x: np.ndarray) -> Standardizer:
         self.mu = np.nanmean(x, axis=0)
         self.sd = np.nanstd(x, axis=0)
         self.mu = np.nan_to_num(self.mu)

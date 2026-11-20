@@ -19,7 +19,7 @@ from . import aggregation, decision, metrics, physics, report, sampling, splits
 from .features import Batch, make_batch
 from .io import Granule
 from .methods import _common
-from .models import MODELS, get_model
+from .models import MODELS, get_model, predict_map_chunked
 from .table import FootprintTable
 
 TREND_COLUMNS = ("SZA", "VZA", "RAA", "glint")
@@ -140,7 +140,7 @@ def run_benchmark(granules: list[Granule], table: FootprintTable, folds: list[sp
                 try:
                     params, val_rmse = tune(name, train, val, cfg, seed)
                     model = get_model(name, **params).fit(train, val)
-                    maps = model.predict_map(test) if (cls.produces_map and test.has_images) else None
+                    maps = predict_map_chunked(model, test) if (cls.produces_map and test.has_images) else None
                     preds = {op: _footprint_pred(model, test, _weights(op, cfg, test), maps)
                              for op in (cfg.operator, *cfg.sensitivity_operators)}
                 except (ValueError, RuntimeError, ImportError, KeyError, np.linalg.LinAlgError) as e:

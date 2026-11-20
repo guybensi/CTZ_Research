@@ -41,6 +41,39 @@ class TestMakeBatch:
             features.pixel_features(b)
 
 
+class TestTakeBatch:
+    def test_slice_and_index_match_make_batch(self, data):
+        gs, t = data
+        rows = np.array([7, 0, 6, 1, 3])
+        b = features.make_batch(gs, t, rows)
+        for idx in (slice(1, 4), np.array([4, 0, 2])):
+            sub, ref = features.take_batch(b, idx), features.make_batch(gs, t, rows[idx])
+            assert sub.rows.tolist() == ref.rows.tolist() and sub.granule.tolist() == ref.granule.tolist()
+            for part in ("scalars", "moments", "images"):
+                for k in getattr(ref, part):
+                    np.testing.assert_array_equal(getattr(sub, part)[k], getattr(ref, part)[k])
+            np.testing.assert_array_equal(sub.truth, ref.truth)
+            np.testing.assert_array_equal(sub.label, ref.label)
+
+    def test_slice_is_a_view(self, data):
+        gs, t = data
+        b = features.make_batch(gs, t, np.arange(6))
+        assert np.shares_memory(features.take_batch(b, slice(0, 3)).images["ImSW"], b.images["ImSW"])
+
+    def test_empty_and_moments_only(self, data):
+        gs, t = data
+        b = features.make_batch(gs, t, np.arange(4))
+        assert len(features.take_batch(b, np.array([], int))) == 0
+        b.images = None
+        assert not features.take_batch(b, slice(0, 2)).has_images
+
+    def test_out_of_range(self, data):
+        gs, t = data
+        b = features.make_batch(gs, t, np.arange(3))
+        with pytest.raises(IndexError):
+            features.take_batch(b, [3])
+
+
 class TestPixelFeatures:
     def test_pixel_features_shapes_and_names(self, data):
         gs, t = data

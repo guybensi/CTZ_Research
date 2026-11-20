@@ -86,6 +86,43 @@ def make_batch(granules: list[Granule], table: FootprintTable, rows: np.ndarray,
     )
 
 
+def take_batch(batch: Batch, idx) -> Batch:
+    """The footprints `idx` (positions 0..len-1, a slice or an index array) of a Batch, as a new Batch.
+
+    Used to run memory-heavy steps (pixel features, map prediction) a chunk of footprints at a time.
+    A slice gives views of the arrays (no copy); an index array copies only those footprints.
+
+    Example:
+        >>> b = Batch(rows=np.arange(3), label=np.array([1., 2., 3.]), scalars={"Fsw": np.array([1., 2., 3.])},
+        ...           moments=None, images=None, truth=None, dist_km=None, group=np.array(["a", "a", "b"]),
+        ...           weight=np.ones(3))
+        >>> take_batch(b, slice(1, 3)).label.tolist(), len(take_batch(b, [0]))
+        ([2.0, 3.0], 1)
+
+    Args:
+        batch: Any Batch.
+        idx: A slice or integer positions into the batch.
+
+    Returns:
+        A Batch with the same keys, holding only the chosen footprints in the given order.
+
+    Raises:
+        IndexError: If a position is outside the batch.
+    """
+    if not isinstance(idx, slice):
+        idx = np.asarray(idx, int)
+        if idx.size and (idx.min() < -len(batch) or idx.max() >= len(batch)):
+            raise IndexError(f"positions outside a batch of {len(batch)} footprints")
+
+    def sub(d):
+        return None if d is None else {k: v[idx] for k, v in d.items()}
+
+    return Batch(rows=batch.rows[idx], label=batch.label[idx], scalars=sub(batch.scalars), moments=sub(batch.moments),
+                 images=sub(batch.images), truth=None if batch.truth is None else batch.truth[idx],
+                 dist_km=None if batch.dist_km is None else batch.dist_km[idx], group=batch.group[idx],
+                 weight=batch.weight[idx], granule=None if batch.granule is None else batch.granule[idx])
+
+
 def _empty_batch(template: Granule, table: FootprintTable) -> Batch:
     """A zero-row batch with the same keys and trailing shapes as `template`."""
 
