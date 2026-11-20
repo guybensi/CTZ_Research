@@ -5,12 +5,14 @@ schema.assert_no_ceres_inputs, so CERES-derived quantities cannot reach a model 
 """
 from __future__ import annotations
 
+import tempfile
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 
 from . import aggregation, geometry, moments, schema
-from .io import Granule
+from .io import Granule, LazyNpz, part_shape
 from .table import FootprintTable
 
 
@@ -38,10 +40,15 @@ class Batch:
 
 
 def make_batch(granules: list[Granule], table: FootprintTable, rows: np.ndarray,
-               weights: np.ndarray | None = None) -> Batch:
+               weights: np.ndarray | None = None, store: str | Path | None = None) -> Batch:
     """Gather the given table rows from their granules into one Batch.
 
     Image, moment and truth arrays are kept only if every involved granule has them.
+
+    With `store` (a directory), the image arrays are written to .npy files in a new sub-directory of it
+    and the Batch holds read-only memory maps of them: the images of a large fold then live on disk, and
+    code that indexes them reads only what it uses. The values are the same as without `store`; the caller
+    deletes the directory when the batch is no longer needed (see benchmark.run_benchmark).
 
     Raises:
         KeyError: If a row refers to a granule that is not in `granules`.
@@ -72,18 +79,41 @@ def make_batch(granules: list[Granule], table: FootprintTable, rows: np.ndarray,
     inv = np.argsort(order)  # gather() concatenates per granule; restore the requested row order
     scal = {k: v[inv] for k, v in gather(lambda g: g.scalars).items()}
     mom = gather(lambda g: g.moments)
-    img = gather(lambda g: g.images)
+    img = gather(lambda g: g.images) if store is None else _gather_to_disk([by_id[g].images for g in used], used,
+                                                                          gids, idx, Path(store))
     tru = gather(lambda g: g.truth)
     return Batch(
         rows=rows, label=np.asarray(scal["Fsw"], float), scalars=scal,
         moments=None if mom is None else {k: v[inv] for k, v in mom.items()},
-        images=None if img is None else {k: v[inv] for k, v in img.items()},
+        images=None if img is None else (img if store is not None else {k: v[inv] for k, v in img.items()}),
         truth=None if tru is None else tru["flux"][inv].astype(float),
         dist_km=None if tru is None else tru["dist_km"][inv].astype(float),
         group=np.asarray(table["group"])[rows],
         weight=np.ones(len(rows)) if weights is None else np.asarray(weights, float),
         granule=gids,
     )
+
+
+def _gather_to_disk(parts: list, used: list[str], gids: np.ndarray, idx: np.ndarray, store: Path) -> dict | None:
+    """make_batch's image gathering into .npy memory maps under `store`, rows in the requested order."""
+    if any(p is None for p in parts):
+        return None
+    keys = sorted(set.intersection(*(set(p) for p in parts)) - {"SWwavlngs", "LWwavlngs"})
+    store.mkdir(parents=True, exist_ok=True)
+    folder = Path(tempfile.mkdtemp(prefix="batch_", dir=store))
+    out = {}
+    for k in keys:
+        first = parts[0]
+        dtype = first.dtypes[k] if isinstance(first, LazyNpz) else first[k].dtype
+        mm = np.lib.format.open_memmap(folder / f"{k}.npy", mode="w+", dtype=dtype,
+                                       shape=(len(gids),) + tuple(part_shape(first, k)[1:]))
+        for p, g in zip(parts, used):
+            pos = np.flatnonzero(gids == g)
+            mm[pos] = p[k][idx[pos]]
+        mm.flush()
+        del mm
+        out[k] = np.load(folder / f"{k}.npy", mmap_mode="r")
+    return out
 
 
 def take_batch(batch: Batch, idx) -> Batch:
@@ -127,7 +157,11 @@ def _empty_batch(template: Granule, table: FootprintTable) -> Batch:
     """A zero-row batch with the same keys and trailing shapes as `template`."""
 
     def empty(d):
-        return None if d is None else {k: v[:0] for k, v in d.items() if k not in ("SWwavlngs", "LWwavlngs")}
+        if d is None:
+            return None
+        if isinstance(d, LazyNpz):  # no need to read the arrays for their trailing shapes
+            return {k: np.empty((0,) + d.shapes[k][1:], d.dtypes[k]) for k in d if k not in ("SWwavlngs", "LWwavlngs")}
+        return {k: v[:0] for k, v in d.items() if k not in ("SWwavlngs", "LWwavlngs")}
 
     tru = empty(template.truth)
     scal = empty(template.scalars)

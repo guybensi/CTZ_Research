@@ -128,3 +128,37 @@ class TestFootprintWeights:
         np.testing.assert_allclose(w.sum(axis=(1, 2)), 1.0)
         np.testing.assert_allclose(w, aggregation.fov_weights(g.images["FOVorientation"]))
         assert list(b.granule) == [g.granule_id] * 3
+
+
+class TestMakeBatchStore:
+    def test_disk_batch_equals_memory_batch(self, data, tmp_path):
+        gs, t = data
+        rows = np.array([7, 0, 6, 1, 3])
+        mem = features.make_batch(gs, t, rows)
+        disk = features.make_batch(gs, t, rows, store=tmp_path)
+        for k, v in mem.images.items():
+            assert isinstance(disk.images[k], np.memmap) and not disk.images[k].flags.writeable
+            np.testing.assert_array_equal(disk.images[k], v)
+        np.testing.assert_array_equal(disk.label, mem.label)
+        assert len(list(tmp_path.glob("batch_*/*.npy"))) == len(mem.images)
+
+    def test_lazy_granules_with_and_without_store(self, data, tmp_path):
+        from flux1km import io
+        gs, t = data
+        for g in gs:
+            io.save_granule(tmp_path / "d", g)
+        lazy = io.load_dataset(tmp_path / "d", parts=("moments", "scalars", "images", "truth"), lazy_images=True)
+        rows = np.array([6, 2, 9])
+        ref = features.make_batch(gs, t, rows)
+        for store in (None, tmp_path / "cache"):
+            b = features.make_batch(lazy, t, rows, store=store)
+            for k, v in ref.images.items():
+                np.testing.assert_array_equal(b.images[k], v)
+
+    def test_empty_rows_with_lazy_images(self, data, tmp_path):
+        from flux1km import io
+        gs, t = data
+        io.save_granule(tmp_path, gs[0])
+        lazy = io.load_dataset(tmp_path, lazy_images=True)
+        b = features.make_batch(lazy, t, np.array([], int), store=tmp_path / "cache")
+        assert len(b) == 0 and b.images["ImSW"].shape == (0, 11, 27, 55)

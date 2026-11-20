@@ -54,7 +54,7 @@ class FluxModel(ABC):
         return out
 
 
-PREDICT_CHUNK = 2000  # footprints per predict_map call: bounds the per-pixel feature arrays (about 1 MB a footprint)
+PREDICT_CHUNK = 500  # footprints per chunk of pixel features / map prediction: about 1 MB each, so ~0.5 GB at a time
 
 
 def chunk_positions(batch: Batch, size: int, whole_granules: bool = False) -> list:

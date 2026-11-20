@@ -22,6 +22,14 @@ def load_psf(psf_path: str | None, h: int = 27, w: int = 55) -> np.ndarray | Non
     return None if psf_path is None else aggregation.load_psf_file(psf_path, h, w)
 
 
+def _disk_path(batch: Batch):
+    """A new .npy file name next to a disk-backed batch's image files (deleted with them)."""
+    import os
+    import uuid
+
+    return os.path.join(os.path.dirname(batch.images["ImSW"].filename), f"X_{uuid.uuid4().hex}.npy")
+
+
 class MapNetModel(FluxModel):
     """Per-pixel neural map model trained with MSE(sum w f, F). Subclasses implement build_net."""
 
@@ -60,18 +68,25 @@ class MapNetModel(FluxModel):
 
         Same values as transform(inputs(batch)).astype(float32), but only one chunk's float64 features exist
         at once (the full float64 array is twice the float32 one). Fitting the scaler reads the inputs once more.
+        When the batch's images are memory maps on disk (make_batch(..., store=...)), X is written next to them
+        as a memory-mapped .npy too, so a large training set never has to fit in RAM.
         """
         chunks = chunk_positions(batch, PREDICT_CHUNK)
         if fit_scaler:
             h, w = batch.images["ImSW"].shape[-2:]
             self.scaler = _common.Standardizer(axis=1).fit_chunks(
                 (self.inputs(take_batch(batch, c)) for c in chunks), total=len(batch) * h * w, seed=self.params["seed"])
+        on_disk = isinstance(batch.images["ImSW"], np.memmap)
         X = None
         for c in chunks:
             z = self.scaler.transform(self.inputs(take_batch(batch, c))).astype(np.float32)
             if X is None:
-                X = np.empty((len(batch),) + z.shape[1:], np.float32)
+                shape = (len(batch),) + z.shape[1:]
+                X = (np.lib.format.open_memmap(_disk_path(batch), mode="w+", dtype=np.float32, shape=shape) if on_disk
+                     else np.empty(shape, np.float32))
             X[c] = z
+        if on_disk and X is not None:
+            X.flush()
         if X is None:
             X = self.scaler.transform(self.inputs(batch)).astype(np.float32)
         return X, _common.pixel_insolation(batch)
@@ -84,8 +99,11 @@ class MapNetModel(FluxModel):
         if val is not None and len(val) and val.has_images:
             Xv, iv = self._prepare(val)
             vt = (Xv, iv, self._weights(val), val.label)
+        _torch.set_seed(self.params["seed"])  # the initial weights come from the seed, not from whatever ran before
         self.net = self.build_net(X.shape[1])
-        self.history = self.train(X, ins, self._weights(train), train, vt)
+        # the network sees float32 anyway: cast once here, so training holds no float64 copies of these (N, H, W)
+        # arrays (identical values: the float64 -> float32 rounding is the same as torch's)
+        self.history = self.train(X, ins.astype(np.float32), self._weights(train).astype(np.float32), train, vt)
         return self
 
     def train(self, X, ins, W, train: Batch, vt):

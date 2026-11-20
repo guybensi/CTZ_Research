@@ -55,6 +55,11 @@ def parse_args(argv=None):
                    help="primary aggregation operator (default: ceres_psf with --psf, else fov_ellipse)")
     p.add_argument("--psf", help="path to ceres_psf.csv (the advisor's CERES PSF) or a recovered PSF .npy (e0)")
     p.add_argument("--budget", type=int, default=40, help="max tuning candidates per model")
+    p.add_argument("--cache-dir", default=None,
+                   help="keep images on disk: granule images are read only when a fold needs them, and each fold's "
+                        "images and network inputs are memory-mapped files in a temporary folder here (deleted after "
+                        "the fold). Use a fast local disk with room for about 400 KB per footprint of a fold. Same "
+                        "results, much less RAM")
     p.add_argument("--sampling", default="S0", help="training-data strategy S0..S7")
     p.add_argument("--input-set", default="F5", help="F1..F5 (PLAN.md section 3)")
     p.add_argument("--min-group-size", type=int, default=100, help="merge granule groups smaller than this")
@@ -82,7 +87,7 @@ def main(argv=None) -> dict:
         synthetic.write_demo_dataset(root, seed=args.seed, n_rows=n_rows, n_cols=n_cols, hard=args.demo_hard,
                                      ctz=not args.no_ctz, ctz_visible=args.ctz_visible)
         print(f"demo data written to {root}")
-    granules = io.load_dataset(root, parts=("moments", "scalars", "images", "truth"))
+    granules = io.load_dataset(root, parts=("moments", "scalars", "images", "truth"), lazy_images=bool(args.cache_dir))
     groups = splits.group_granules([g.granule_id for g in granules],
                                    sizes={g.granule_id: g.n_footprints for g in granules}, min_size=args.min_group_size)
     table = build_table(granules, groups)
@@ -106,7 +111,7 @@ def main(argv=None) -> dict:
         sensitivity_operators=tuple(o for o in available if o != operator), budget=args.budget, sampling=args.sampling,
         seeds=tuple(args.seeds) if args.seeds else (args.seed,),
         model_params={m: {"input_set": args.input_set} for m in map_models if m not in ("B-clim", "B-const")},
-        leakage_radius_km=args.leakage_radius_km)
+        leakage_radius_km=args.leakage_radius_km, cache_dir=args.cache_dir)
     res = benchmark.run_benchmark(granules, table, folds, cfg, out_dir=args.out)
     print(format_summary(res["summary"]))
     return res

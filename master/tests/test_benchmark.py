@@ -130,3 +130,31 @@ class TestRobustness:
         res = benchmark.run_benchmark(no_truth, t, folds[:1], benchmark.BenchmarkConfig(models=["M2"], budget=1))
         m2 = res["summary"]["models"]["M2"]
         assert "pixel" not in m2 and m2["physics"]["distance_source"] == "0.66 um brightness proxy"
+
+
+class TestDiskCache:
+    def test_same_results_with_cache_and_lazy_images(self, setup, tmp_path):
+        from flux1km import io
+        gs, t, folds = setup
+        for g in gs:
+            io.save_granule(tmp_path / "data", g)
+        lazy = io.load_dataset(tmp_path / "data", parts=("moments", "scalars", "images", "truth"), lazy_images=True)
+        models = ["M2", "M7"] + (["M5"] if _has_torch() else [])
+        params = {"M5": {"epochs": 2}}
+        cfg = dict(models=models, budget=1, model_params=params)
+        ref = benchmark.run_benchmark(gs, t, folds, benchmark.BenchmarkConfig(**cfg))
+        got = benchmark.run_benchmark(lazy, t, folds, benchmark.BenchmarkConfig(**cfg, cache_dir=str(tmp_path / "cache")))
+        assert [r["pred"] for r in got["records"]] == [r["pred"] for r in ref["records"]]
+        same = json.dumps(got["summary"]["models"]["M2"]["physics"], sort_keys=True, default=str)   # NaN-safe compare
+        assert same == json.dumps(ref["summary"]["models"]["M2"]["physics"], sort_keys=True, default=str)
+        assert not list((tmp_path / "cache").iterdir())          # every fold's folder was deleted
+
+    def test_physics_subset(self):
+        assert benchmark._physics_subset(3, 5, 0).tolist() == [0, 1, 2]
+        k = benchmark._physics_subset(1000, 50, 1)
+        assert len(k) == 50 and np.all(np.diff(k) > 0) and k.max() < 1000
+
+
+def _has_torch():
+    import importlib.util
+    return importlib.util.find_spec("torch") is not None

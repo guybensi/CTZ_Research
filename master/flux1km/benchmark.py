@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import csv
 import json
+import shutil
+import tempfile
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -47,6 +49,8 @@ class BenchmarkConfig:
     pcs_target: tuple[float, float] = (70.0, 90.0)
     patch: tuple[int, int] = (27, 55)
     psf_path: str | None = None    # ceres_psf.csv; required by the "ceres_psf" operator
+    cache_dir: str | None = None   # disk cache for the folds' images and network inputs (None = all in memory)
+    physics_max_footprints: int = 5000  # maps kept per (model, fold, seed) for the physics checks (random subset)
 
 
 _PSF_CACHE: dict[str, np.ndarray] = {}
@@ -116,6 +120,11 @@ def run_benchmark(granules: list[Granule], table: FootprintTable, folds: list[sp
                   cfg: BenchmarkConfig, out_dir: str | Path | None = None) -> dict:
     """Run all models on all folds; return {"records": list[dict], "summary": dict}.
 
+    With cfg.cache_dir, each fold's train/val/test images (and the networks' standardised inputs) are
+    written to a temporary folder under it and read back as memory maps; the folder is deleted when the
+    fold is done. Load the granules with io.load_dataset(..., lazy_images=True) so that their images are not
+    held in memory either. The results are the same as without the cache.
+
     Raises:
         LeakageError: If cfg.check_leakage and a non-leaky fold shares pixels between test and
             train/validation.
@@ -124,44 +133,52 @@ def run_benchmark(granules: list[Granule], table: FootprintTable, folds: list[sp
     if unknown:
         raise KeyError(f"unknown models {unknown}")
     records, maps_store, fold_info, errors = [], {}, [], []
+    if cfg.cache_dir:
+        Path(cfg.cache_dir).mkdir(parents=True, exist_ok=True)
     for fold in folds:
-        if cfg.check_leakage:
-            splits.check_fold(table, fold, radius_km=cfg.leakage_radius_km)
-        tr_mask, tr_w = sampling.apply(cfg.sampling, table, rows=fold.train, **cfg.sampling_params)
-        train = make_batch(granules, table, fold.train[tr_mask], tr_w[tr_mask])
-        val = make_batch(granules, table, fold.val)
-        test = make_batch(granules, table, fold.test)
-        fold_info.append({"name": fold.name, "leaky": fold.leaky, "n_train": len(train), "n_val": len(val), "n_test": len(test)})
-        for name in cfg.models:
-            cls = MODELS[name]
-            if cls.produces_map and not test.has_images:
-                continue
-            for seed in cfg.seeds:
-                try:
-                    params, val_rmse = tune(name, train, val, cfg, seed)
-                    model = get_model(name, **params).fit(train, val)
-                    maps = predict_map_chunked(model, test) if (cls.produces_map and test.has_images) else None
-                    preds = {op: _footprint_pred(model, test, _weights(op, cfg, test), maps)
-                             for op in (cfg.operator, *cfg.sensitivity_operators)}
-                except (ValueError, RuntimeError, ImportError, KeyError, np.linalg.LinAlgError) as e:
-                    # one failing method must not stop a long real-data run; the error goes to the report
-                    errors.append({"model": name, "fold": fold.name, "seed": seed, "error": f"{type(e).__name__}: {e}"})
+        store = tempfile.mkdtemp(prefix="fold_", dir=cfg.cache_dir) if cfg.cache_dir else None
+        try:
+            if cfg.check_leakage:
+                splits.check_fold(table, fold, radius_km=cfg.leakage_radius_km)
+            tr_mask, tr_w = sampling.apply(cfg.sampling, table, rows=fold.train, **cfg.sampling_params)
+            train = make_batch(granules, table, fold.train[tr_mask], tr_w[tr_mask], store=store)
+            val = make_batch(granules, table, fold.val, store=store)
+            test = make_batch(granules, table, fold.test, store=store)
+            fold_info.append({"name": fold.name, "leaky": fold.leaky, "n_train": len(train), "n_val": len(val), "n_test": len(test)})
+            for name in cfg.models:
+                cls = MODELS[name]
+                if cls.produces_map and not test.has_images:
                     continue
-                if maps is not None:
-                    maps_store[(name, fold.name, seed)] = maps
-                for k, row in enumerate(test.rows):
-                    rec = {"model": name, "fold": fold.name, "leaky": fold.leaky, "seed": seed, "row": int(row),
-                           "granule": table["granule"][row], "group": table["group"][row],
-                           "label": float(test.label[k]), "pred": float(preds[cfg.operator][k]),
-                           "regime": sampling.regime(table["CF"][row:row + 1])[0] if "CF" in table else "unknown"}
-                    for op in cfg.sensitivity_operators:
-                        rec[f"pred_{op}"] = float(preds[op][k])
-                    for c in TREND_COLUMNS:
-                        if c in table:
-                            rec[c] = float(table[c][row])
-                    records.append(rec)
-                fold_info[-1].setdefault("params", {})[name] = params
-                fold_info[-1].setdefault("val_rmse", {})[name] = val_rmse
+                for seed in cfg.seeds:
+                    try:
+                        params, val_rmse = tune(name, train, val, cfg, seed)
+                        model = get_model(name, **params).fit(train, val)
+                        maps = predict_map_chunked(model, test) if (cls.produces_map and test.has_images) else None
+                        preds = {op: _footprint_pred(model, test, _weights(op, cfg, test), maps)
+                                 for op in (cfg.operator, *cfg.sensitivity_operators)}
+                    except (ValueError, RuntimeError, ImportError, KeyError, np.linalg.LinAlgError) as e:
+                        # one failing method must not stop a long real-data run; the error goes to the report
+                        errors.append({"model": name, "fold": fold.name, "seed": seed, "error": f"{type(e).__name__}: {e}"})
+                        continue
+                    if maps is not None:
+                        keep = _physics_subset(len(test), cfg.physics_max_footprints, seed)
+                        maps_store[(name, fold.name, seed)] = (np.asarray(test.rows)[keep], maps[keep])
+                    for k, row in enumerate(test.rows):
+                        rec = {"model": name, "fold": fold.name, "leaky": fold.leaky, "seed": seed, "row": int(row),
+                               "granule": table["granule"][row], "group": table["group"][row],
+                               "label": float(test.label[k]), "pred": float(preds[cfg.operator][k]),
+                               "regime": sampling.regime(table["CF"][row:row + 1])[0] if "CF" in table else "unknown"}
+                        for op in cfg.sensitivity_operators:
+                            rec[f"pred_{op}"] = float(preds[op][k])
+                        for c in TREND_COLUMNS:
+                            if c in table:
+                                rec[c] = float(table[c][row])
+                        records.append(rec)
+                    fold_info[-1].setdefault("params", {})[name] = params
+                    fold_info[-1].setdefault("val_rmse", {})[name] = val_rmse
+        finally:
+            if store is not None:
+                shutil.rmtree(store, ignore_errors=True)
     pixel = _pixel_and_physics(granules, table, folds, maps_store, cfg)
     summary = summarize(records, cfg, pixel)
     summary["folds"] = fold_info
@@ -174,20 +191,32 @@ def run_benchmark(granules: list[Granule], table: FootprintTable, folds: list[sp
     return {"records": records, "summary": summary}
 
 
+def _physics_subset(n: int, cap: int, seed: int) -> np.ndarray:
+    """Positions of the test footprints whose maps are kept for the physics checks: all if n <= cap.
+
+    Example:
+        >>> _physics_subset(4, 10, 0).tolist(), len(_physics_subset(100, 10, 0))
+        ([0, 1, 2, 3], 10)
+    """
+    if n <= cap:
+        return np.arange(n)
+    return np.sort(np.random.default_rng(seed).choice(n, cap, replace=False))
+
+
 def _pixel_and_physics(granules, table, folds, maps_store, cfg) -> dict:
     """Pixel scores vs synthetic truth and physics checks, per model (non-leaky folds only)."""
     out: dict[str, dict] = {}
     fold_by_name = {f.name: f for f in folds}
     per_model: dict[str, list] = {}
-    for (name, fname, _seed), maps in maps_store.items():
+    for (name, fname, _seed), (rows, maps) in maps_store.items():
         fold = fold_by_name[fname]
         if fold.leaky:
             continue
-        per_model.setdefault(name, []).append((fold, maps))
+        per_model.setdefault(name, []).append((rows, maps))
     for name, items in per_model.items():
         truth, pred, dist, sza = [], [], [], []
-        for fold, maps in items:
-            b = make_batch(granules, table, fold.test)
+        for rows, maps in items:
+            b = make_batch(granules, table, rows)
             pred.append(maps)
             sza.append(b.images["Imviews"][:, 0])
             if b.truth is not None:

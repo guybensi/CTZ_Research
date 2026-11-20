@@ -49,6 +49,45 @@ class TestSaveLoad:
             io.load_granule(tmp_path, gran.granule_id, parts=("bogus",))
 
 
+class TestLazyNpz:
+    @pytest.mark.parametrize("save", [np.savez, np.savez_compressed])
+    def test_shapes_without_reading_and_values(self, tmp_path, save):
+        a, b = np.arange(12.0).reshape(3, 4), np.ones((3,), np.float32)
+        save(tmp_path / "x.npz", a=a, b=b)
+        z = io.LazyNpz(tmp_path / "x.npz")
+        assert z.shapes == {"a": (3, 4), "b": (3,)} and set(z) == {"a", "b"} and len(z) == 2
+        np.testing.assert_array_equal(z["a"], a)
+        assert z["b"].dtype == np.float32
+
+    def test_nothing_is_kept(self, tmp_path):
+        np.savez(tmp_path / "x.npz", a=np.zeros(3))
+        z = io.LazyNpz(tmp_path / "x.npz")
+        assert z["a"] is not z["a"]
+
+    def test_missing_key_and_file(self, tmp_path):
+        np.savez(tmp_path / "x.npz", a=np.zeros(3))
+        with pytest.raises(KeyError):
+            io.LazyNpz(tmp_path / "x.npz")["b"]
+        with pytest.raises(FileNotFoundError):
+            io.LazyNpz(tmp_path / "missing.npz")
+
+    def test_lazy_granule_equals_eager(self, tmp_path, gran):
+        io.save_granule(tmp_path, gran)
+        lazy = io.load_granule(tmp_path, gran.granule_id, lazy_images=True)
+        eager = io.load_granule(tmp_path, gran.granule_id)
+        assert isinstance(lazy.images, io.LazyNpz) and set(lazy.images) == set(eager.images)
+        for k in eager.images:
+            np.testing.assert_array_equal(lazy.images[k], eager.images[k])
+
+    def test_lazy_validate_catches_row_mismatch(self, tmp_path, gran):
+        io.save_granule(tmp_path, gran)
+        imgs = dict(np.load(tmp_path / "images" / f"{gran.granule_id}.npz"))
+        imgs["ImSW"] = imgs["ImSW"][:-1]
+        np.savez(tmp_path / "images" / f"{gran.granule_id}.npz", **imgs)
+        with pytest.raises(ValueError):
+            io.load_granule(tmp_path, gran.granule_id, lazy_images=True)
+
+
 class TestFindGranules:
     def test_requires_all_parts(self, tmp_path, gran):
         io.save_granule(tmp_path, gran)

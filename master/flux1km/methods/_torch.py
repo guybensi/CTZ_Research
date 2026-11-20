@@ -131,6 +131,35 @@ def _flux(raw, ins):
     return require_torch().sigmoid(raw.squeeze(1)) * ins
 
 
+def _finite32(a: np.ndarray) -> np.ndarray:
+    """NaN/inf -> numbers, in place (no copy) when `a` is a writeable float32 array we own, else a copy."""
+    a = np.asarray(a)
+    if a.dtype == np.float32 and a.flags.writeable and a.flags.owndata:
+        return np.nan_to_num(a, copy=False)
+    return np.nan_to_num(a)
+
+
+def x_rows_source(X: np.ndarray):
+    """What x_rows reads minibatches from: the memory map itself for X on disk, else a float32 tensor.
+
+    X is the largest array (N, F, H, W). On disk (np.memmap) it stays there and each minibatch reads only
+    its rows. In memory, a float32 X is converted without a copy (NaN replaced in place), as before.
+    """
+    torch = require_torch()
+    if isinstance(X, np.memmap):
+        return X
+    xs = np.nan_to_num(X, copy=False) if X.dtype == np.float32 and X.flags.writeable else np.nan_to_num(X)
+    return torch.as_tensor(xs, dtype=torch.float32)
+
+
+def x_rows(src, idx):
+    """Rows idx (a 1-D LongTensor) of an x_rows_source, as a float32 tensor (same values either way)."""
+    torch = require_torch()
+    if isinstance(src, np.memmap):
+        return torch.as_tensor(np.nan_to_num(src[idx.numpy()]), dtype=torch.float32)
+    return src[idx]
+
+
 def train_map_net(net, X: np.ndarray, ins: np.ndarray, W: np.ndarray, y: np.ndarray, sw: np.ndarray | None = None,
                   val: tuple | None = None, *, epochs: int = 60, lr: float = 1e-3, batch_size: int = 32,
                   patience: int = 8, weight_decay: float = 0.0, extra_loss=None, augment: bool = False,
@@ -179,11 +208,9 @@ def train_map_net(net, X: np.ndarray, ins: np.ndarray, W: np.ndarray, y: np.ndar
     sw = np.ones(n) if sw is None else np.asarray(sw, float)
     sw = np.where(ok, sw, 0.0)
     scale = float(np.nanstd(y[ok])) or 1.0
-    # X is the largest array (N, F, H, W): replace NaN in place when it is already float32 (no second copy)
-    xs = np.nan_to_num(X, copy=False) if X.dtype == np.float32 and X.flags.writeable else np.nan_to_num(X)
-    t = {k: torch.as_tensor(np.nan_to_num(a), dtype=torch.float32) for k, a in
-         (("I", ins), ("W", W), ("y", y), ("s", sw))}
-    t["X"] = torch.as_tensor(xs, dtype=torch.float32)
+    t = {k: torch.as_tensor(_finite32(a), dtype=torch.float32) for k, a in (("I", ins), ("W", W))}
+    t.update({k: torch.as_tensor(np.nan_to_num(a), dtype=torch.float32) for k, a in (("y", y), ("s", sw))})
+    t["X"] = x_rows_source(X)
     net = net.to(dev)
     fwd = forward or (lambda m, xb, idx: m(xb))
     opt = torch.optim.Adam(net.parameters(), lr=lr, weight_decay=weight_decay)
@@ -196,7 +223,7 @@ def train_map_net(net, X: np.ndarray, ins: np.ndarray, W: np.ndarray, y: np.ndar
         tot = 0.0
         for b in range(0, n, batch_size):
             idx = perm[b:b + batch_size]
-            xb, ib, wb = t["X"][idx].to(dev), t["I"][idx].to(dev), t["W"][idx].to(dev)
+            xb, ib, wb = x_rows(t["X"], idx).to(dev), t["I"][idx].to(dev), t["W"][idx].to(dev)
             flipped = bool(augment and torch.rand(1, generator=gen).item() < 0.5)
             if flipped:
                 xb, ib, wb = xb.flip(-1), ib.flip(-1), wb.flip(-1)
@@ -252,7 +279,7 @@ def pretrain_map_net(net, X: np.ndarray, ins: np.ndarray, target: np.ndarray, *,
     set_seed(seed)
     dev = device()
     net = net.to(dev)
-    tx = torch.as_tensor(np.nan_to_num(X), dtype=torch.float32)
+    tx = x_rows_source(X)
     ti = torch.as_tensor(ins, dtype=torch.float32)
     tt = torch.as_tensor(np.nan_to_num(target), dtype=torch.float32)
     scale = float(np.nanstd(target)) or 1.0
@@ -264,7 +291,7 @@ def pretrain_map_net(net, X: np.ndarray, ins: np.ndarray, target: np.ndarray, *,
         tot = 0.0
         for b in range(0, len(tx), batch_size):
             idx = perm[b:b + batch_size]
-            flux = _flux(net(tx[idx].to(dev)), ti[idx].to(dev))
+            flux = _flux(net(x_rows(tx, idx).to(dev)), ti[idx].to(dev))
             loss = ((flux - tt[idx].to(dev)) ** 2).mean() / scale**2
             opt.zero_grad()
             loss.backward()

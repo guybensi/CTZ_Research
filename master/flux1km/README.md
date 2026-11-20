@@ -81,6 +81,39 @@ The demo writes the six image-granule names as synthetic granules, groups them b
 3. Put it in its own module under `methods/`, decorate the class with `@models.register`, import the module in `methods/__init__.py`, and end the module with `if __name__ == "__main__": from ..run_single import main_for; main_for(["<name>"])` so it runs alone. Neural models subclass `methods._base.MapNetModel` and import PyTorch only inside `fit` (`methods._torch`), so the core stays light. Set `needs_operator = True` to be trained with the scoring operator, and `uses_test_labels = True` if the method reads the test footprints' labels.
 4. Build inputs with `features.*`, which runs the CERES leakage guard.
 
+## Memory and data larger than RAM (`--cache-dir`)
+
+Per footprint, a granule's images are about 180 KB, and the standardised network input X (N, F, 27, 55) is
+the same again. Without a cache everything is in memory: every granule's images, a copy for each of train/val/
+test, and X, about 0.6-0.7 MB a footprint. With `BenchmarkConfig.cache_dir` (`flux1km.cli --cache-dir DIR`):
+
+| Step | Where | What stays in RAM |
+|---|---|---|
+| granule images | `io.load_granule(..., lazy_images=True)` -> `io.LazyNpz` | shapes only; arrays are read when a batch gathers that granule |
+| fold batches | `features.make_batch(..., store=DIR/fold_*)` | images are `.npy` memory maps (read-only) under the fold folder |
+| network input X | `MapNetModel._prepare` writes `X_*.npy` next to a disk-backed batch | nothing; `_torch.x_rows` reads each minibatch's rows |
+| pixel features, maps | chunks of `models.PREDICT_CHUNK` (500) footprints (`chunk_positions`, `predict_map_chunked`, `FluxModel.predict_footprint`) | one chunk |
+| physics checks | maps of at most `physics_max_footprints` (5000) random test footprints per (model, fold, seed) | that subset |
+| cleanup | `run_benchmark` deletes each fold folder when the fold is done | |
+
+Results are identical with and without the cache (tests: `TestDiskCache`, `TestDiskBackedTraining`,
+`TestMakeBatchStore`, `TestPredictMapChunked`). Measured on synthetic data (M5 + M2): real (anonymous) memory
+stays about 1.3 GB when the footprints double; without the cache it grows by about 0.7 MB a footprint. Disk
+needed: about 400 KB per footprint of the largest fold, on a fast local disk (minibatches read random rows).
+
+What a method must respect so this keeps working:
+- `predict_map` must give each footprint's map independently of the other footprints in the batch, because the
+  batch is cut into chunks. If a method couples footprints, set `joint_per_granule = True` (M7: joint kriging per
+  granule): its chunks are then whole granules.
+- Build per-pixel arrays through `features.*` and `MapNetModel._prepare`; do not concatenate a whole fold's
+  pixel arrays in memory (M6f still does, for its pseudo-bags).
+- Seed the network before building it (`MapNetModel.fit` does `_torch.set_seed` before `build_net`), so the same
+  seed gives the same map.
+
+Still in memory: the per-footprint prediction records (`predictions.csv`, about 1 KB per footprint per method),
+scalars and moments (about 1 KB a footprint), and the (N, 27, 55) insolation and PSF weights of the training fold
+(float32, about 12 KB a footprint).
+
 ## Assumptions to verify in stage E0
 
 These are the guesses made before the real data arrived (see PLAN.md §9):

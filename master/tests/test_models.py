@@ -175,3 +175,38 @@ class TestPredictMapChunked:
         monkeypatch.setattr(mdl, "PREDICT_CHUNK", 3)
         np.testing.assert_allclose(m.predict_footprint(b, w) if m.produces_map else 0, (full * w).sum(axis=(1, 2)),
                                    atol=1e-9)
+
+
+class TestDiskBackedTraining:
+    @pytest.mark.parametrize("name", ["M5", "M6c", "M6a"])
+    def test_same_maps_as_in_memory(self, name, tmp_path):
+        pytest.importorskip("torch")
+        rng = np.random.default_rng(2)
+        gs = [synthetic.make_synthetic_granule(g, rng, n_rows=3, n_cols=4) for g in ("A2014060.0245", "A2014061.0530")]
+        t = build_table(gs)
+        n = len(t["granule"])
+        tr, te = np.arange(0, n - 6), np.arange(n - 6, n)
+        params = dict(epochs=2, seed=0) if name != "M6c" else dict(epochs=2, seed=0, pretrain_epochs=1)
+        maps = []
+        for store in (None, tmp_path):
+            train = features.make_batch(gs, t, tr, store=store)
+            test = features.make_batch(gs, t, te, store=store)
+            m = models.get_model(name, **params).fit(train)
+            maps.append(m.predict_map(test))
+        np.testing.assert_array_equal(maps[0], maps[1])
+        assert list(tmp_path.glob("batch_*/X_*.npy"))      # the training inputs went to disk
+
+
+class TestMapNetReproducible:
+    @pytest.mark.parametrize("name", ["M3", "M5"])
+    def test_same_seed_same_map(self, name):
+        pytest.importorskip("torch")
+        rng = np.random.default_rng(3)
+        gs = [synthetic.make_synthetic_granule(g, rng, n_rows=3, n_cols=4) for g in ("A2014060.0245", "A2014061.0530")]
+        t = build_table(gs)
+        b = features.make_batch(gs, t, np.arange(len(t["granule"])))
+        a = models.get_model(name, epochs=2, seed=0).fit(b).predict_map(b)
+        import torch
+        torch.rand(5)                                   # disturb the global generator in between
+        c = models.get_model(name, epochs=2, seed=0).fit(b).predict_map(b)
+        np.testing.assert_array_equal(a, c)
