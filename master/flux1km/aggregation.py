@@ -161,6 +161,31 @@ def load_ceres_psf(path, h: int = 27, w: int = 55) -> np.ndarray:
     return psf / psf.sum()
 
 
+def nonnegative_weights(psf: np.ndarray) -> np.ndarray:
+    """PSF weights for aggregation: negative entries set to 0, renormalised to sum 1.
+
+    The Fourier-resampled CERES PSF (load_ceres_psf) has tiny negative lobes at its rim (about -2e-6, 48
+    of 1485 entries). They are kept in load_ceres_psf because the stored radiance moments were computed with
+    them, but a weighted mean of flux needs non-negative weights (aggregate rejects negative ones). The
+    change is about 1e-5 of the total weight.
+
+    Example:
+        >>> nonnegative_weights(np.array([[0.5, 0.6, -0.1]])).tolist()
+        [[0.45454545454545453, 0.5454545454545454, 0.0]]
+
+    Raises:
+        ValueError: If no weight is positive.
+    """
+    psf = np.asarray(psf, float)
+    if not np.any(psf < 0):
+        return psf
+    out = np.clip(psf, 0.0, None)
+    total = out.sum()
+    if total <= 0:
+        raise ValueError("the PSF has no positive weight")
+    return out / total
+
+
 def oriented_psf(psf: np.ndarray, orientation) -> np.ndarray:
     """Per-footprint PSF (N, h, w): as stored where FOVorientation == 1, np.fliplr where 0.
 
@@ -360,6 +385,7 @@ def get_operator(name: str, h: int, w: int, orientation=None, psf: np.ndarray | 
     if name == "ceres_psf":
         if psf is None:
             raise ValueError("ceres_psf needs the PSF array (aggregation.load_ceres_psf)")
+        psf = nonnegative_weights(psf)
         return psf if orientation is None else oriented_psf(psf, orientation)
     if name.startswith("fov_ellipse:"):
         return scaled_fov_operator(float(name.split(":", 1)[1]), h, w, orientation)

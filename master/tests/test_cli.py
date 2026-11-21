@@ -17,6 +17,14 @@ class TestCli:
         assert "winner:" in capsys.readouterr().out and (tmp_path / "m.json").exists()
         assert res["summary"]["decision"]["winner"] is not None
 
+    def test_real_psf_runs_every_fast_method(self, tmp_path):
+        # with the advisor's ceres_psf.csv every map method must fit (it once failed on the PSF's negative lobes)
+        from pathlib import Path
+        psf = Path(__file__).resolve().parents[1] / "resources" / "ceres_psf.csv"
+        res = cli.main(_args(tmp_path, "--budget", "1", "--psf", str(psf), "--quiet", "--models", *FAST))
+        assert res["summary"]["errors"] == []
+        assert set(FAST) <= set(res["summary"]["models"])
+
     def test_manifest_is_reused(self, tmp_path):
         args = _args(tmp_path, "--budget", "1", "--models", "B-clim")
         a, b = cli.main(args), cli.main(args)

@@ -141,6 +141,15 @@ class TestCeresPsf:
         psf = ag.uniform_weights(27, 55)
         assert ag.get_operator("ceres_psf", 27, 55, orientation=[1, 0], psf=psf).shape == (2, 27, 55)
 
+    def test_real_psf_operator_is_nonnegative_and_aggregates(self):
+        from pathlib import Path
+        psf = ag.load_psf_file(Path(__file__).resolve().parents[1] / "resources" / "ceres_psf.csv")
+        assert (psf < 0).any()                                   # the resampled PSF has tiny negative lobes
+        op = ag.get_operator("ceres_psf", 27, 55, orientation=[1, 0], psf=psf)
+        assert (op >= 0).all() and np.allclose(op.sum(axis=(1, 2)), 1.0)
+        np.testing.assert_allclose(op[0], psf, atol=1e-5)        # the change is negligible
+        assert np.allclose(ag.aggregate(np.full((2, 27, 55), 7.0), op), 7.0)
+
     def test_recover_psf_from_moments_exactly(self):
         rng = np.random.default_rng(1)
         h, w = 9, 15
@@ -156,6 +165,20 @@ class TestCeresPsf:
     def test_recover_needs_enough_equations(self):
         with pytest.raises(ValueError):
             ag.recover_psf_from_moments(np.ones((2, 3, 9, 15)), np.ones((2, 3)), [1, 0])
+
+
+class TestNonnegativeWeights:
+    def test_clips_and_renormalises(self):
+        out = ag.nonnegative_weights(np.array([[0.5, 0.6, -0.1]]))
+        assert (out >= 0).all() and out.sum() == pytest.approx(1.0) and out[0, 2] == 0.0
+
+    def test_unchanged_when_already_nonnegative(self):
+        w = ag.uniform_weights(3, 4)
+        assert ag.nonnegative_weights(w) is not None and np.array_equal(ag.nonnegative_weights(w), w)
+
+    def test_no_positive_weight(self):
+        with pytest.raises(ValueError):
+            ag.nonnegative_weights(np.array([[-1.0, 0.0]]))
 
 
 class TestScaledOperator:
