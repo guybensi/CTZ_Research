@@ -50,6 +50,11 @@ docker run --gpus all --rm -it -v "$PWD":/app ctz_research:gpu
 | 16–18.11.2026 | המרה: `build_dataset.py --no-images --workers 12` (בלי תמונות: כ־6 TB לשנה, לא נכנס בדיסק) | `/archive/GUY/dataset/Pacific/{scalars,moments}` (‏3.8 GB ו־22 GB) | הסתיים: 13,516 ‏ok, ‏689 ‏empty, ‏0 ‏error, ‏62,000,753 footprints, ‏`--verify`: ‏all triplets OK |
 | 18.11.2026 | מדגם: כל גרנולה עשרים (symlinks בלבד) | `/archive/GUY/subsets/every20/` | 676 גרנולות, כ־3 מיליון footprints |
 | 18.11.2026 | benchmark ראשון על נתונים אמיתיים: רק השיטות בלי תמונות | פלט מסוף: `/archive/GUY/results_run.out`; דוח מלא: `/archive/GUY/results/run_<זמן>/results.txt`; חלוקה: `/archive/GUY/subsets/every20/split_day5.json` | הסתיים ב־18.11. ‏`results.txt` ו־`summary.json` מועתקים לריפו: [results/2008_Pacific_every20/](results/2008_Pacific_every20/) |
+| 19–20.11.2026 | תמונות ל־6 חודשים (ינואר, מרץ, מאי, יולי, ספטמבר, נובמבר): `build_dataset.py` בלי `--no-images`, ‏`--workers 12`, חודש אחרי חודש, עם בלם שעוצר אם נשארים פחות מ־800 GB | `/archive/GUY/dataset/Pacific/2008/<חודש>/images/` (כ־3.1 TB, כ־470 MB לגרנולה); לוג: `/archive/GUY/images_run.out` | הסתיים: כ־6,560 גרנולות עם תמונות, ‏0 ‏error. נשארו פנויים 1.7 TB ב־`/archive` |
+| 20.11.2026 | מדגם עם תמונות: גרנולה אחת מכל אחד מ־6 החודשים (`ls images \| awk 'NR%1093==1'`) | `/archive/GUY/subsets/img6/` | 6 גרנולות, כ־25 אלף footprints |
+| 20.11.2026 | benchmark של כל השיטות על `img6`, ניסיון 1 (בלי `--cache-dir`) | — | נהרג בלי שגיאה (כנראה זיכרון: 17 GB לתהליך, 17 GB פנויים) |
+| 20.11.2026 | ניסיון 2, עם `--cache-dir ~/ctz_cache` (קוד `2d21864`) | — | נהרג באמצע fold 2. ה־fold הראשון לקח כ־2.5 שעות. הסיבה: M4, ‏M10, ‏M6f ו־M6c בנו את כל פיקסלי ה־fold בזיכרון. תוקן בקומיטים `cf509c3`, ‏`d0a0b42` ו־`b92a051` |
+| 21.11.2026 | ניסיון 3, אותה פקודה עם הקוד המתוקן (`b92a051`): כל השיטות, תמונות, מטמון על הדיסק | לוג עם שורת התקדמות לכל fold ושיטה: `/archive/GUY/results_img_run.out`; דוח: `/archive/GUY/results_img/run_<זמן>/results.txt`; חלוקה: `/archive/GUY/subsets/img6/split_day5.json`; מטמון זמני: `~/ctz_cache/fold_*` | רץ (הוערך כ־15 שעות) |
 
 הפקודה של ה־benchmark, מתוך `~/GUY/CTZ_Research/master`:
 
@@ -66,6 +71,20 @@ nohup /home/ilai/miniconda3/envs/ctz/bin/python -m flux1km.cli --data-root /arch
 - **סביבת Python:** ‏`ctz` (‏`conda create -n ctz -c conda-forge python=3.11 numpy scipy pandas scikit-learn`, ואז `pip install torch --index-url https://download.pytorch.org/whl/cu128`, כי PyPI איטי מהשרת). ‏torch 2.11.0+cu128 על ה־GPU של השרת (NVIDIA RTX PRO 4000 Blackwell, ‏24 GB). בסביבה `climate` חסרים sklearn ו־torch. ריצת `--demo` עם אותן 5 שיטות עברה בשרת בלי שגיאות.
 - **תוצאות (macro RMSE של Fsw, ‏W/m²), הדוח המלא ב־[results/2008_Pacific_every20/results.txt](results/2008_Pacific_every20/results.txt):** ‏M1-ann ‏10.86 (המנצחת), ‏M0-allsky37 ‏13.11, ‏M1-gbm ‏13.13, ‏M0-ridge ‏33.14 (נכשלת במבחני המגמה מול SZA ו־glint). לפי ההשוואות הזוגיות על 646 קבוצות גרנולות, M1-ann טובה מכל השאר באופן מובהק (p < 0.01 בכל המבחנים). השורה "not significant" ביומן ההחלטה אומרת רק שהמתחרה לא *שיפרה* מובהקת על M1-ann. לפי סוג עננות, RMSE של M1-ann: בהיר 5.99, חלקי 12.56, מלא 14.03 (M0-allsky37: ‏8.38, ‏14.74, ‏16.22). ‏**M0-advisor התבדרה** (RMSE בסדר גודל של 10^38), רק ב־footprints הבהירים: בחלקי ובמלא היא נותנת 24.33 ו־31.12. הרשת של המנחה חוזה ב־log1p ומחזירה עם expm1, כך שחיזוי חריג אחד בשמיים בהירים מתפוצץ. צריך לבדוק לפני שמשווים אליה.
 - **מעקב:** `pgrep -af flux1km.cli` (יש שורה = רץ). בסוף, `tail -15 /archive/GUY/results_run.out` מציג את הטבלה ואת הנתיב של `results.txt`.
+
+### ההרצה עם התמונות (`img6`)
+
+```bash
+nohup /home/ilai/miniconda3/envs/ctz/bin/python -m flux1km.cli --data-root /archive/GUY/subsets/img6 \
+    --split day --k 5 --manifest /archive/GUY/subsets/img6/split_day5.json --psf resources/ceres_psf.csv \
+    --cache-dir ~/ctz_cache --out /archive/GUY/results_img > /archive/GUY/results_img_run.out 2>&1 & disown
+```
+
+- **השיטות:** כולן (אין `--models`). שיטות המפה דורשות תמונות, ולכן רצות רק כאן.
+- **`--cache-dir ~/ctz_cache`:** התמונות והקלט של הרשתות נשמרים כקבצים זמניים בדיסק ה־NVMe המקומי, כי `/archive` הוא דיסק איטי יותר. כך הזיכרון לא גדל עם כמות הנתונים. הלוגיקה וההגבלות מוסברות בסעיף 4 ("נתונים גדולים מהזיכרון"), ב־`flux1km/README.md` וב־[NEW_SERVER.md](NEW_SERVER.md).
+- **מעקב:** `pgrep -af flux1km.cli; tail -6 /archive/GUY/results_img_run.out`. כל שורה בלוג מראה fold, שיטה, משך וזיכרון. תהליך שנעלם בלי `Traceback`, ותיקיית `fold_*` שנשארת ב־`~/ctz_cache`, אומרים שהתהליך נהרג מבחוץ. אז מוחקים את התיקייה ובודקים בלוג באיזו שיטה זה קרה.
+- **שינוי בתוצאות:** מהקומיט `2d21864`, רשתות המפה מקבלות seed לפני שהן נבנות. לפני כן M3 ו־M5 לא היו ניתנות לשחזור. תוצאות של רשתות מפה מלפני הקומיט הזה לא ניתנות להשוואה.
+- **כמה נתונים:** 6 גרנולות הן בדיקה שהכול עובד וכיוון גס, לא בסיס להחלטה. יש רק 6 סצנות, כל fold נבחן על יום או שניים, והמבחנים הסטטיסטיים מבוססים על 6 יחידות בלבד. ההרצה הבאה מתוכננת על 50 עד 100 גרנולות.
 
 ---
 
