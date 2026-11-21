@@ -78,7 +78,7 @@ class ContextGBM(FluxModel):
             raise ValueError("M4 needs image patches")
         p = self.params
         rng = np.random.default_rng(p["seed"])
-        T, self.names = pixel_table(train, p["input_set"], p["use_context"])
+        T, self.names = _common.chunked_rows(train, lambda b: pixel_table(b, p["input_set"], p["use_context"]))
         n, h, w = len(train), *train.images["ImSW"].shape[-2:]
         P = h * w
         W = self._w(train).reshape(n, P)
@@ -93,7 +93,7 @@ class ContextGBM(FluxModel):
         self.trees = []
         val_state = None
         if val is not None and len(val) and val.has_images:
-            Tv, _ = pixel_table(val, p["input_set"], p["use_context"])
+            Tv, _ = _common.chunked_rows(val, lambda b: pixel_table(b, p["input_set"], p["use_context"]))
             WIv = (self._w(val) * _common.pixel_insolation(val)).reshape(len(val), P)
             val_state = (Tv, WIv, val.label.astype(float), np.full((len(val), P), self.a0))
         best, best_n, bad = np.inf, 0, 0
@@ -109,7 +109,7 @@ class ContextGBM(FluxModel):
                 break
             tree = DecisionTreeRegressor(max_depth=p["max_depth"], min_samples_leaf=p["min_samples_leaf"],
                                          random_state=int(rng.integers(1 << 31))).fit(T[rows], tgt, sample_weight=sw)
-            hgt = tree.predict(T).reshape(n, P)
+            hgt = _common.predict_rows(tree, T).reshape(n, P)
             d = (WI * hgt).sum(1)                                      # footprint change per unit step
             denom = float(np.sum(s * d * d))
             if denom <= 0:
@@ -119,7 +119,7 @@ class ContextGBM(FluxModel):
             self.trees.append((gamma, tree))
             if val_state is not None:
                 Tv, WIv, yv, Av = val_state
-                Av += gamma * tree.predict(Tv).reshape(Av.shape)
+                Av += gamma * _common.predict_rows(tree, Tv).reshape(Av.shape)
                 rm = float(np.sqrt(np.nanmean(((WIv * Av).sum(1) - yv) ** 2)))
                 if rm < best - 1e-6:
                     best, best_n, bad = rm, len(self.trees), 0

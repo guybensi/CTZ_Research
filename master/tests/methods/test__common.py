@@ -23,6 +23,55 @@ class TestStandardizer:
         np.testing.assert_allclose(z.mean(axis=(0, 2, 3)), 0, atol=1e-10)
 
 
+    def test_fit_chunks_equals_fit(self):
+        X = np.random.default_rng(1).normal(size=(7, 3, 4, 5))
+        X[2, 1, 0, 0] = np.nan
+        for cap in (10_000, 37):                                   # all entries, and a random sample of them
+            a = _common.Standardizer(axis=1).fit(X, max_samples=cap, seed=4)
+            b = _common.Standardizer(axis=1).fit_chunks([X[:3], X[3:4], X[4:]], total=7 * 4 * 5, max_samples=cap, seed=4)
+            np.testing.assert_array_equal(a.mu, b.mu)
+            np.testing.assert_array_equal(a.sd, b.sd)
+
+    def test_fit_chunks_wrong_total(self):
+        with pytest.raises(ValueError):
+            _common.Standardizer(axis=1).fit_chunks([np.zeros((2, 3, 4, 5))], total=41)
+
+
+class TestChunkedRows:
+    def test_equals_whole_batch_in_memory_and_on_disk(self, easy, tmp_path, monkeypatch):
+        from flux1km import features
+        from flux1km import models as mdl
+        from flux1km.methods.m4_context_gbm import pixel_table
+        train = easy[0]
+        monkeypatch.setattr(mdl, "PREDICT_CHUNK", 3)
+        ref, names = pixel_table(train, "F5")
+        got, n2 = _common.chunked_rows(train, lambda b: pixel_table(b, "F5"))
+        np.testing.assert_array_equal(got, ref)
+        assert n2 == names
+        # a disk-backed batch gives a memory-mapped result with the same values
+        disk = features.take_batch(train, slice(0, len(train)))
+        disk.images = {k: _to_memmap(v, tmp_path / f"{k}.npy") for k, v in train.images.items()}
+        got_d, _ = _common.chunked_rows(disk, lambda b: pixel_table(b, "F5"))
+        assert isinstance(got_d, np.memmap)
+        np.testing.assert_array_equal(got_d, ref)
+
+
+class TestPredictRows:
+    def test_blocks_give_the_same_prediction(self):
+        from sklearn.tree import DecisionTreeRegressor
+        rng = np.random.default_rng(0)
+        X, y = rng.normal(size=(500, 4)), rng.normal(size=500)
+        tree = DecisionTreeRegressor(max_depth=4, random_state=0).fit(X, y)
+        np.testing.assert_array_equal(_common.predict_rows(tree, X, chunk_rows=37), tree.predict(X))
+
+
+def _to_memmap(a, path):
+    m = np.lib.format.open_memmap(path, mode="w+", dtype=a.dtype, shape=a.shape)
+    m[:] = a
+    m.flush()
+    return np.load(path, mmap_mode="r")
+
+
 class TestInsolationAndTarget:
     def test_shapes_and_albedo(self, easy):
         train, _, _ = easy

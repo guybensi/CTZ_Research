@@ -51,6 +51,7 @@ class BenchmarkConfig:
     psf_path: str | None = None    # ceres_psf.csv; required by the "ceres_psf" operator
     cache_dir: str | None = None   # disk cache for the folds' images and network inputs (None = all in memory)
     physics_max_footprints: int = 5000  # maps kept per (model, fold, seed) for the physics checks (random subset)
+    progress: bool = False         # print one line per fold and per (model, seed): time, duration, memory
 
 
 _PSF_CACHE: dict[str, np.ndarray] = {}
@@ -135,7 +136,7 @@ def run_benchmark(granules: list[Granule], table: FootprintTable, folds: list[sp
     records, maps_store, fold_info, errors = [], {}, [], []
     if cfg.cache_dir:
         Path(cfg.cache_dir).mkdir(parents=True, exist_ok=True)
-    for fold in folds:
+    for k_fold, fold in enumerate(folds, 1):
         store = tempfile.mkdtemp(prefix="fold_", dir=cfg.cache_dir) if cfg.cache_dir else None
         try:
             if cfg.check_leakage:
@@ -145,11 +146,14 @@ def run_benchmark(granules: list[Granule], table: FootprintTable, folds: list[sp
             val = make_batch(granules, table, fold.val, store=store)
             test = make_batch(granules, table, fold.test, store=store)
             fold_info.append({"name": fold.name, "leaky": fold.leaky, "n_train": len(train), "n_val": len(val), "n_test": len(test)})
+            _progress(cfg, f"fold {k_fold}/{len(folds)} {fold.name}: train {len(train)}, val {len(val)}, test {len(test)}")
             for name in cfg.models:
                 cls = MODELS[name]
                 if cls.produces_map and not test.has_images:
                     continue
                 for seed in cfg.seeds:
+                    t0 = datetime.now()
+                    _progress(cfg, f"  {name} seed {seed}: start")
                     try:
                         params, val_rmse = tune(name, train, val, cfg, seed)
                         model = get_model(name, **params).fit(train, val)
@@ -159,7 +163,9 @@ def run_benchmark(granules: list[Granule], table: FootprintTable, folds: list[sp
                     except (ValueError, RuntimeError, ImportError, KeyError, np.linalg.LinAlgError) as e:
                         # one failing method must not stop a long real-data run; the error goes to the report
                         errors.append({"model": name, "fold": fold.name, "seed": seed, "error": f"{type(e).__name__}: {e}"})
+                        _progress(cfg, f"  {name} seed {seed}: ERROR {type(e).__name__}: {e}")
                         continue
+                    _progress(cfg, f"  {name} seed {seed}: done in {(datetime.now() - t0).total_seconds() / 60:.1f} min")
                     if maps is not None:
                         keep = _physics_subset(len(test), cfg.physics_max_footprints, seed)
                         maps_store[(name, fold.name, seed)] = (np.asarray(test.rows)[keep], maps[keep])
@@ -189,6 +195,33 @@ def run_benchmark(granules: list[Granule], table: FootprintTable, folds: list[sp
     if out_dir is not None:
         _write(out_dir, records, summary)
     return {"records": records, "summary": summary}
+
+
+def memory_status() -> str:
+    """This process's real (anonymous) memory and the machine's available memory, from /proc ("" elsewhere).
+
+    Example:
+        >>> isinstance(memory_status(), str)
+        True
+    """
+    vals = {}
+    for path, keys in (("/proc/self/status", ("RssAnon",)), ("/proc/meminfo", ("MemAvailable",))):
+        try:
+            with open(path) as f:
+                for line in f:
+                    k = line.split(":")[0]
+                    if k in keys:
+                        vals[k] = int(line.split()[1]) / 1048576
+        except OSError:
+            return ""
+    if len(vals) < 2:
+        return ""
+    return f"mem {vals['RssAnon']:.1f} GB (machine available {vals['MemAvailable']:.1f} GB)"
+
+
+def _progress(cfg: BenchmarkConfig, msg: str) -> None:
+    if cfg.progress:
+        print(f"{datetime.now():%Y-%m-%d %H:%M:%S}  {msg}  {memory_status()}", flush=True)
 
 
 def _physics_subset(n: int, cap: int, seed: int) -> np.ndarray:

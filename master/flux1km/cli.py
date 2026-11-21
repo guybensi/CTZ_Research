@@ -55,6 +55,7 @@ def parse_args(argv=None):
                    help="primary aggregation operator (default: ceres_psf with --psf, else fov_ellipse)")
     p.add_argument("--psf", help="path to ceres_psf.csv (the advisor's CERES PSF) or a recovered PSF .npy (e0)")
     p.add_argument("--budget", type=int, default=40, help="max tuning candidates per model")
+    p.add_argument("--quiet", action="store_true", help="no progress lines (by default one line per fold and per model)")
     p.add_argument("--cache-dir", default=None,
                    help="keep images on disk: granule images are read only when a fold needs them, and each fold's "
                         "images and network inputs are memory-mapped files in a temporary folder here (deleted after "
@@ -111,7 +112,7 @@ def main(argv=None) -> dict:
         sensitivity_operators=tuple(o for o in available if o != operator), budget=args.budget, sampling=args.sampling,
         seeds=tuple(args.seeds) if args.seeds else (args.seed,),
         model_params={m: {"input_set": args.input_set} for m in map_models if m not in ("B-clim", "B-const")},
-        leakage_radius_km=args.leakage_radius_km, cache_dir=args.cache_dir)
+        leakage_radius_km=args.leakage_radius_km, cache_dir=args.cache_dir, progress=not args.quiet)
     res = benchmark.run_benchmark(granules, table, folds, cfg, out_dir=args.out)
     print(format_summary(res["summary"]))
     return res

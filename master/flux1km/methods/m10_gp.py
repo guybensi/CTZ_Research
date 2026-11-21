@@ -78,13 +78,20 @@ class VBAggRFF(FluxModel):
 
     def bag_features(self, batch: Batch) -> tuple[np.ndarray, np.ndarray]:
         """(PhiBar (N, D), Ibar (N,)): sum_i w_i I_i phi(x_i) and sum_i w_i I_i per footprint."""
-        Z = self._pixels(batch)
-        WI = self._weights(batch) * _common.pixel_insolation(batch)
-        n, f = Z.shape[:2]
-        out = np.empty((n, self.rff.omega.shape[1]))
-        for k in range(n):
-            out[k] = WI[k].ravel() @ self.rff(Z[k].reshape(f, -1).T)
-        return out, WI.sum(axis=(1, 2))
+        from ..features import take_batch
+        from ..models import PREDICT_CHUNK, chunk_positions
+
+        out = np.empty((len(batch), self.rff.omega.shape[1]))
+        ibar = np.empty(len(batch))
+        for c in chunk_positions(batch, PREDICT_CHUNK):     # one chunk of pixel features in memory at a time
+            sub = take_batch(batch, c)
+            Z = self._pixels(sub)
+            WI = self._weights(sub) * _common.pixel_insolation(sub)
+            f = Z.shape[1]
+            for j, k in enumerate(range(c.start, c.stop)):
+                out[k] = WI[j].ravel() @ self.rff(Z[j].reshape(f, -1).T)
+            ibar[c] = WI.sum(axis=(1, 2))
+        return out, ibar
 
     def _posterior(self, Phi, ibar, y, s):
         p = self.params
@@ -100,9 +107,20 @@ class VBAggRFF(FluxModel):
     def _setup(self, train):
         if not train.has_images:
             raise ValueError(f"{self.name} needs image patches")
-        X, _ = features.pixel_features(train, self.params["input_set"])
-        self.scaler = _common.Standardizer(axis=1).fit(X, seed=self.params["seed"])
-        self.rff = RFF(X.shape[1], self.params["n_features"], self.params["lengthscale"], np.random.default_rng(self.params["seed"]))
+        from ..features import take_batch
+        from ..models import PREDICT_CHUNK, chunk_positions
+
+        chunks = chunk_positions(train, PREDICT_CHUNK)      # the same scaler as fit(all pixels), one chunk in memory
+        h, w = train.images["ImSW"].shape[-2:]
+        n_feat = []
+
+        def gen():
+            for c in chunks:
+                X, _ = features.pixel_features(take_batch(train, c), self.params["input_set"])
+                n_feat.append(X.shape[1])
+                yield X
+        self.scaler = _common.Standardizer(axis=1).fit_chunks(gen(), total=len(train) * h * w, seed=self.params["seed"])
+        self.rff = RFF(n_feat[0], self.params["n_features"], self.params["lengthscale"], np.random.default_rng(self.params["seed"]))
 
     def fit(self, train, val=None):
         self._setup(train)
