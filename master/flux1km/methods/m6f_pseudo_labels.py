@@ -105,16 +105,46 @@ class PseudoLabelPixelMLP(PixelMLP):
         for images, Xsrc, Isrc in sources:
             idx, masks, tgt = self._pseudo_bags(images, rng)
             wm = masks.astype(float)
-            Xs.append(Xsrc[idx]); Is.append(Isrc[idx]); Ws.append(wm / wm.sum(axis=(1, 2), keepdims=True))
+            Xs.append((Xsrc, idx)); Is.append(Isrc[idx]); Ws.append(wm / wm.sum(axis=(1, 2), keepdims=True))
             ys.append(tgt); ss.append(np.full(len(idx), self.params["pseudo_weight"]))
         self.n_pseudo = sum(len(y) for y in ys[1:])
         p = self.params
         from . import _torch
 
-        return _torch.train_map_net(self.net, np.concatenate(Xs), np.concatenate(Is), np.concatenate(Ws),
+        return _torch.train_map_net(self.net, _stack_inputs(X, Xs[1:]), np.concatenate(Is), np.concatenate(Ws),
                                     np.concatenate(ys), np.concatenate(ss), vt, epochs=p["epochs"], lr=p["lr"],
                                     batch_size=p["batch_size"], patience=p["patience"], weight_decay=p["weight_decay"],
                                     extra_loss=None, augment=p["augment"], seed=p["seed"])
+
+
+def _stack_inputs(X: np.ndarray, picks: list) -> np.ndarray:
+    """np.concatenate([X] + [src[idx] for src, idx in picks]) without holding the pieces twice.
+
+    The result is a memory-mapped .npy next to X when X is one (disk-backed training), else in memory, and is
+    filled a block of rows at a time.
+    """
+    import os
+    import uuid
+
+    total = len(X) + sum(len(idx) for _, idx in picks)
+    shape = (total,) + X.shape[1:]
+    if isinstance(X, np.memmap):
+        out = np.lib.format.open_memmap(os.path.join(os.path.dirname(X.filename), f"X6f_{uuid.uuid4().hex}.npy"),
+                                        mode="w+", dtype=X.dtype, shape=shape)
+    else:
+        out = np.empty(shape, X.dtype)
+    block = 2000
+    for i in range(0, len(X), block):
+        j = min(i + block, len(X))
+        out[i:j] = X[i:j]
+    o = len(X)
+    for src, idx in picks:
+        for i in range(0, len(idx), block):
+            out[o + i:o + i + min(block, len(idx) - i)] = src[idx[i:i + block]]
+        o += len(idx)
+    if isinstance(out, np.memmap):
+        out.flush()
+    return out
 
 
 class _UnlabeledBatch:

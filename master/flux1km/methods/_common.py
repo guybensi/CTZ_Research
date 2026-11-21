@@ -230,14 +230,17 @@ def window_moments(x: np.ndarray, mask: np.ndarray):
     Returns:
         (mean, std, skew, kurt) each (N, C); kurt is excess kurtosis, like the stored moments.
     """
-    v = np.asarray(x, float)[..., mask]  # (N, C, P)
-    m = v.mean(-1)
-    d = v - m[..., None]
-    m2 = (d**2).mean(-1)
-    with np.errstate(divide="ignore", invalid="ignore"):
-        sk = np.where(m2 > 0, (d**3).mean(-1) / m2**1.5, 0.0)
-        ku = np.where(m2 > 0, (d**4).mean(-1) / m2**2 - 3.0, 0.0)
-    return m, np.sqrt(m2), sk, ku
+    parts = []
+    for i in range(0, max(len(x), 1), 500):  # 500 patches at a time: the float64 temporaries are ~1 MB a patch
+        v = np.asarray(x[i:i + 500], float)[..., mask]  # (n, C, P)
+        m = v.mean(-1)
+        d = v - m[..., None]
+        m2 = (d**2).mean(-1)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            sk = np.where(m2 > 0, (d**3).mean(-1) / m2**1.5, 0.0)
+            ku = np.where(m2 > 0, (d**4).mean(-1) / m2**2 - 3.0, 0.0)
+        parts.append((m, np.sqrt(m2), sk, ku))
+    return tuple(np.concatenate([p[j] for p in parts]) for j in range(4))
 
 
 def moment_batch(sw_moments: tuple, lw_moments: tuple, sza, vza, raa) -> Batch:

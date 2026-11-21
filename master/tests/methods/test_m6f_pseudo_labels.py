@@ -32,3 +32,20 @@ class TestPseudoLabelModel:
         m = get_model("M6f", epochs=2, pseudo_per_patch=2, unlabeled_root=str(tmp_path)).fit(train, val)
         assert m.n_pseudo == 2 * len(train) + 2 * 3
         assert m.predict_map(test).shape == (len(test), 27, 55)
+
+
+class TestStackInputs:
+    @pytest.mark.parametrize("n", [3, 2500])          # fewer rows than a block, and more than one block
+    def test_equals_concatenate_in_memory_and_on_disk(self, n, tmp_path):
+        from flux1km.methods.m6f_pseudo_labels import _stack_inputs
+        rng = np.random.default_rng(0)
+        X = rng.normal(size=(n, 2, 3, 4)).astype(np.float32)
+        Xu = rng.normal(size=(5, 2, 3, 4)).astype(np.float32)
+        picks = [(X, rng.integers(0, n, 2 * n)), (Xu, np.array([4, 0, 0]))]
+        ref = np.concatenate([X] + [s[i] for s, i in picks])
+        np.testing.assert_array_equal(_stack_inputs(X, picks), ref)
+        mm = np.lib.format.open_memmap(tmp_path / "X.npy", mode="w+", dtype=np.float32, shape=X.shape)
+        mm[:] = X
+        out = _stack_inputs(mm, [(mm, picks[0][1]), picks[1]])
+        assert isinstance(out, np.memmap)
+        np.testing.assert_array_equal(out, ref)
