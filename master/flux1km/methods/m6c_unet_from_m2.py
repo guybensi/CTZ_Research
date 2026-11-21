@@ -14,7 +14,7 @@ Run alone:
 """
 from __future__ import annotations
 
-from ..models import get_model, register
+from ..models import get_model, predict_map_chunked, register
 from . import _torch
 from .m5_unet import UNetModel
 
@@ -34,7 +34,7 @@ class UNetFromM2(UNetModel):
     def train(self, X, ins, W, train, vt):
         p = self.params
         self.m2 = get_model("M2", input_set=p["input_set"], degree=p["m2_degree"], alpha=p["m2_alpha"]).fit(train)
-        target = self.m2.predict_map(train)
+        target = predict_map_chunked(self.m2, train)  # same map, one chunk of M2's pixel features at a time
         self.pretrain_loss = _torch.pretrain_map_net(self.net, X, ins, target, epochs=p["pretrain_epochs"], lr=p["lr"],
                                                      batch_size=p["batch_size"], seed=p["seed"])
         return super().train(X, ins, W, train, vt)

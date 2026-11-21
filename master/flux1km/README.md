@@ -105,8 +105,10 @@ What a method must respect so this keeps working:
 - `predict_map` must give each footprint's map independently of the other footprints in the batch, because the
   batch is cut into chunks. If a method couples footprints, set `joint_per_granule = True` (M7: joint kriging per
   granule): its chunks are then whole granules.
-- Build per-pixel arrays through `features.*` and `MapNetModel._prepare`; do not concatenate a whole fold's
-  pixel arrays in memory (M6f still does, for its pseudo-bags).
+- Build per-pixel arrays through `features.*`, `MapNetModel._prepare`, `_common.chunked_rows` (pixel tables, M4)
+  or `predict_map_chunked` (a map of a whole fold, M6c); never concatenate a whole fold's pixel arrays in memory.
+  Measured with the cache on synthetic data (3000 vs 6000 footprints, real memory): every map method stays flat
+  (M3, M5, M6a-M6f, M4, M7-M10, B-bagpixel: 0.4 to 3.4 GB, the M10 chunk being the largest).
 - Seed the network before building it (`MapNetModel.fit` does `_torch.set_seed` before `build_net`), so the same
   seed gives the same map.
 
