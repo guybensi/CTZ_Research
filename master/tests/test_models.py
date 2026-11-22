@@ -179,8 +179,13 @@ class TestPredictMapChunked:
 
 class TestDiskBackedTraining:
     @pytest.mark.parametrize("name", ["M5", "M6c", "M6a"])
-    def test_same_maps_as_in_memory(self, name, tmp_path):
+    def test_same_maps_as_in_memory(self, name, tmp_path, monkeypatch):
         pytest.importorskip("torch")
+        import flux1km.methods._base as base
+        monkeypatch.setattr(base, "PREDICT_CHUNK", 4)          # the training sets count as large: inputs go to disk
+        made = []
+        orig = base.disk_array
+        monkeypatch.setattr(base, "disk_array", lambda *a, **k: made.append(a[0]) or orig(*a, **k))
         rng = np.random.default_rng(2)
         gs = [synthetic.make_synthetic_granule(g, rng, n_rows=3, n_cols=4) for g in ("A2014060.0245", "A2014061.0530")]
         t = build_table(gs)
@@ -194,7 +199,8 @@ class TestDiskBackedTraining:
             m = models.get_model(name, **params).fit(train)
             maps.append(m.predict_map(test))
         np.testing.assert_array_equal(maps[0], maps[1])
-        assert list(tmp_path.glob("batch_*/X_*.npy"))      # the training inputs went to disk
+        assert made                                           # the training inputs went to disk ...
+        assert not list(tmp_path.glob("batch_*/X_*.npy"))    # ... and were deleted when the fit ended
 
 
 class TestMapNetReproducible:

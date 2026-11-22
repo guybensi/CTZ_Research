@@ -12,7 +12,7 @@ from pathlib import Path
 import numpy as np
 
 from . import aggregation, geometry, moments, schema
-from .io import Granule, LazyNpz, part_shape
+from .io import Granule, LazyNpz, disk_array, part_shape
 from .table import FootprintTable
 
 
@@ -105,8 +105,7 @@ def _gather_to_disk(parts: list, used: list[str], gids: np.ndarray, idx: np.ndar
     for k in keys:
         first = parts[0]
         dtype = first.dtypes[k] if isinstance(first, LazyNpz) else first[k].dtype
-        mm = np.lib.format.open_memmap(folder / f"{k}.npy", mode="w+", dtype=dtype,
-                                       shape=(len(gids),) + tuple(part_shape(first, k)[1:]))
+        mm = disk_array(folder / f"{k}.npy", dtype, (len(gids),) + tuple(part_shape(first, k)[1:]))
         for p, g in zip(parts, used):
             pos = np.flatnonzero(gids == g)
             mm[pos] = p[k][idx[pos]]

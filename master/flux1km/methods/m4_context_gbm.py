@@ -129,6 +129,9 @@ class ContextGBM(FluxModel):
                         break
         if val_state is not None and best_n:
             self.trees = self.trees[:best_n]
+        from ..io import discard
+
+        discard(T, None if val_state is None else val_state[0])  # the pixel tables' cache files
         return self
 
     def predict_map(self, batch):

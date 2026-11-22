@@ -283,8 +283,8 @@ def chunked_rows(batch, fn, chunk: int | None = None):
 
     fn(sub) must return (rows, extra) where rows has the same number of rows per footprint for every chunk
     (e.g. 27 * 55 pixel rows each) and does not depend on the other footprints. The result equals fn(batch)[0].
-    When the batch's images are memory maps on disk (make_batch(..., store=...)), the array is a memory-mapped
-    .npy next to them; otherwise it is in memory.
+    When the batch's images are memory maps on disk (make_batch(..., store=...)) and it is larger than one chunk,
+    the array is a memory-mapped .npy next to them (the caller deletes it with io.discard); otherwise in memory.
 
     Example:
         >>> # T, names = chunked_rows(train, lambda b: pixel_table(b, "F5"))   # == pixel_table(train, "F5")
@@ -301,9 +301,10 @@ def chunked_rows(batch, fn, chunk: int | None = None):
     import uuid
 
     from ..features import take_batch
+    from ..io import disk_array
     from ..models import PREDICT_CHUNK, chunk_positions
 
-    on_disk = isinstance(batch.images["ImSW"], np.memmap)
+    on_disk = isinstance(batch.images["ImSW"], np.memmap) and len(batch) > (chunk or PREDICT_CHUNK)
     out, extra = None, None
     for c in chunk_positions(batch, chunk or PREDICT_CHUNK):
         rows, ex = fn(take_batch(batch, c))
@@ -312,7 +313,7 @@ def chunked_rows(batch, fn, chunk: int | None = None):
             per = len(rows) // max(c.stop - c.start, 1)
             shape = (len(batch) * per,) + rows.shape[1:]
             path = os.path.join(os.path.dirname(batch.images["ImSW"].filename), f"rows_{uuid.uuid4().hex}.npy") if on_disk else None
-            out = np.lib.format.open_memmap(path, mode="w+", dtype=rows.dtype, shape=shape) if on_disk else np.empty(shape, rows.dtype)
+            out = disk_array(path, rows.dtype, shape) if on_disk else np.empty(shape, rows.dtype)
         out[c.start * per:c.start * per + len(rows)] = rows
     if out is None:
         return fn(batch)

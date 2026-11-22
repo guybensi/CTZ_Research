@@ -108,10 +108,19 @@ class PseudoLabelPixelMLP(PixelMLP):
             Xs.append((Xsrc, idx)); Is.append(Isrc[idx]); Ws.append(wm / wm.sum(axis=(1, 2), keepdims=True))
             ys.append(tgt); ss.append(np.full(len(idx), self.params["pseudo_weight"]))
         self.n_pseudo = sum(len(y) for y in ys[1:])
+        stacked = _stack_inputs(X, Xs[1:])
+        try:
+            return self._train_stacked(stacked, Is, Ws, ys, ss, vt)
+        finally:
+            from ..io import discard
+
+            discard(stacked)
+
+    def _train_stacked(self, stacked, Is, Ws, ys, ss, vt):
         p = self.params
         from . import _torch
 
-        return _torch.train_map_net(self.net, _stack_inputs(X, Xs[1:]), np.concatenate(Is), np.concatenate(Ws),
+        return _torch.train_map_net(self.net, stacked, np.concatenate(Is), np.concatenate(Ws),
                                     np.concatenate(ys), np.concatenate(ss), vt, epochs=p["epochs"], lr=p["lr"],
                                     batch_size=p["batch_size"], patience=p["patience"], weight_decay=p["weight_decay"],
                                     extra_loss=None, augment=p["augment"], seed=p["seed"])
@@ -129,8 +138,9 @@ def _stack_inputs(X: np.ndarray, picks: list) -> np.ndarray:
     total = len(X) + sum(len(idx) for _, idx in picks)
     shape = (total,) + X.shape[1:]
     if isinstance(X, np.memmap):
-        out = np.lib.format.open_memmap(os.path.join(os.path.dirname(X.filename), f"X6f_{uuid.uuid4().hex}.npy"),
-                                        mode="w+", dtype=X.dtype, shape=shape)
+        from ..io import disk_array
+
+        out = disk_array(os.path.join(os.path.dirname(X.filename), f"X6f_{uuid.uuid4().hex}.npy"), X.dtype, shape)
     else:
         out = np.empty(shape, X.dtype)
     block = 2000

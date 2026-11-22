@@ -11,7 +11,9 @@ Footprints are in the same order in every file of a granule.
 """
 from __future__ import annotations
 
+import os
 import re
+import shutil
 import zipfile
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -109,6 +111,53 @@ class LazyNpz(Mapping):
 
     def __repr__(self) -> str:
         return f"LazyNpz({str(self.path)!r}, keys={list(self.shapes)})"
+
+
+MIN_FREE_GB = float(os.environ.get("CTZ_CACHE_MIN_FREE_GB", "20"))
+
+
+class DiskFullError(RuntimeError):
+    """Writing a cache file would leave less than MIN_FREE_GB free on its disk."""
+
+
+def disk_array(path: str | Path, dtype, shape: tuple[int, ...], min_free_gb: float | None = None) -> np.memmap:
+    """A new memory-mapped .npy (np.lib.format.open_memmap, mode "w+"), refused if the disk would get too full.
+
+    The cache of a large run (--cache-dir) can hold hundreds of GB; a full disk stops everything on it (on a
+    shared server, other people's work too). So before creating a file, its size is checked against the free
+    space: at least `min_free_gb` (default MIN_FREE_GB = $CTZ_CACHE_MIN_FREE_GB or 20 GB) must remain.
+
+    Example:
+        >>> import tempfile, os
+        >>> a = disk_array(os.path.join(tempfile.mkdtemp(), "a.npy"), np.float32, (2, 3), min_free_gb=0)
+        >>> a.shape, a.dtype.name
+        ((2, 3), 'float32')
+
+    Raises:
+        DiskFullError: If the file would leave less than min_free_gb free.
+    """
+    need = int(np.prod(shape)) * np.dtype(dtype).itemsize
+    free = shutil.disk_usage(os.path.dirname(os.path.abspath(path))).free
+    limit = (MIN_FREE_GB if min_free_gb is None else min_free_gb) * 2**30
+    if free - need < limit:
+        raise DiskFullError(f"cache file {path} needs {need / 2**30:.1f} GB, but only {free / 2**30:.1f} GB are free "
+                            f"and {limit / 2**30:.0f} GB must stay free (CTZ_CACHE_MIN_FREE_GB)")
+    return np.lib.format.open_memmap(path, mode="w+", dtype=dtype, shape=tuple(shape))
+
+
+def discard(*arrays) -> None:
+    """Delete the files behind memory-mapped arrays that are no longer needed (other arrays are ignored).
+
+    Example:
+        >>> discard(np.zeros(3), None)   # nothing to delete
+    """
+    for a in arrays:
+        name = getattr(a, "filename", None)
+        if isinstance(a, np.memmap) and name:
+            try:
+                os.remove(name)
+            except OSError:
+                pass
 
 
 def part_shape(part: Mapping, key: str) -> tuple[int, ...]:

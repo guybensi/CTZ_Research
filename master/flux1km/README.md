@@ -94,7 +94,13 @@ test, and X, about 0.6-0.7 MB a footprint. With `BenchmarkConfig.cache_dir` (`fl
 | network input X | `MapNetModel._prepare` writes `X_*.npy` next to a disk-backed batch | nothing; `_torch.x_rows` reads each minibatch's rows |
 | pixel features, maps | chunks of `models.PREDICT_CHUNK` (500) footprints (`chunk_positions`, `predict_map_chunked`, `FluxModel.predict_footprint`) | one chunk |
 | physics checks | maps of at most `physics_max_footprints` (5000) random test footprints per (model, fold, seed) | that subset |
-| cleanup | `run_benchmark` deletes each fold folder when the fold is done | |
+| cleanup | each fit deletes its own `X_*` / `rows_*` / `X6f_*` files when it ends (`io.discard`); `run_benchmark` sweeps any leftovers after every (model, seed) and deletes the fold folder when the fold is done | |
+| disk guard | every cache file goes through `io.disk_array`, which refuses (`DiskFullError`, logged as that method's ERROR) when it would leave less than `$CTZ_CACHE_MIN_FREE_GB` (default 20) GB free | |
+
+Disk use of a fold, at its peak: the fold's images (about 180 KB per footprint of train + val + test) plus the
+inputs of the one fit that is running (about 180 KB per training footprint for a network, about 475 KB for M4's
+pixel table). Before the per-fit cleanup, every fit's files stayed until the fold ended: on 6 granules the cache
+reached 583 GB and filled the server's root disk.
 
 Results are identical with and without the cache (tests: `TestDiskCache`, `TestDiskBackedTraining`,
 `TestMakeBatchStore`, `TestPredictMapChunked`). Measured on synthetic data (M5 + M2): real (anonymous) memory

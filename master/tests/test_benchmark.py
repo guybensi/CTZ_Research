@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -148,6 +149,28 @@ class TestDiskCache:
         same = json.dumps(got["summary"]["models"]["M2"]["physics"], sort_keys=True, default=str)   # NaN-safe compare
         assert same == json.dumps(ref["summary"]["models"]["M2"]["physics"], sort_keys=True, default=str)
         assert not list((tmp_path / "cache").iterdir())          # every fold's folder was deleted
+
+    def test_no_cache_files_left_after_each_model(self, setup, tmp_path, monkeypatch):
+        import flux1km.methods._base as base
+        from flux1km import io
+        from flux1km import models as mdl
+        gs, t, folds = setup
+        for g in gs:
+            io.save_granule(tmp_path / "data", g)
+        lazy = io.load_dataset(tmp_path / "data", parts=("moments", "scalars", "images"), lazy_images=True)
+        monkeypatch.setattr(mdl, "PREDICT_CHUNK", 4)            # so the folds are "large" and use disk inputs
+        monkeypatch.setattr(base, "PREDICT_CHUNK", 4)
+        seen = []
+        orig = benchmark._sweep_cache
+        def spy(store):
+            seen.append(sorted(p.name.split("_")[0] for p in Path(store).glob("batch_*/*_*.npy")))
+            return orig(store)
+        monkeypatch.setattr(benchmark, "_sweep_cache", spy)
+        models = ["M4"] + (["M5"] if _has_torch() else [])
+        cfg = benchmark.BenchmarkConfig(models=models, budget=2, cache_dir=str(tmp_path / "cache"),
+                                        model_params={"M5": {"epochs": 1}, "M4": {"n_rounds": 2}})
+        benchmark.run_benchmark(lazy, t, folds[:1], cfg)
+        assert seen and all(s == [] for s in seen)              # every fit deleted its own X_ / rows_ files
 
     def test_physics_subset(self):
         assert benchmark._physics_subset(3, 5, 0).tolist() == [0, 1, 2]

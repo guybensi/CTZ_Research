@@ -88,6 +88,22 @@ class TestLazyNpz:
             io.load_granule(tmp_path, gran.granule_id, lazy_images=True)
 
 
+class TestDiskArray:
+    def test_creates_memmap_and_discard_deletes_it(self, tmp_path):
+        a = io.disk_array(tmp_path / "a.npy", np.float32, (3, 2), min_free_gb=0)
+        a[:] = 1.0
+        assert isinstance(a, np.memmap) and (tmp_path / "a.npy").exists()
+        io.discard(a, np.zeros(2), None)
+        assert not (tmp_path / "a.npy").exists()
+
+    def test_refuses_when_the_disk_would_get_too_full(self, tmp_path):
+        import shutil
+        free_gb = shutil.disk_usage(tmp_path).free / 2**30
+        with pytest.raises(io.DiskFullError):
+            io.disk_array(tmp_path / "b.npy", np.float32, (4,), min_free_gb=free_gb + 1)
+        assert not (tmp_path / "b.npy").exists()
+
+
 class TestFindGranules:
     def test_requires_all_parts(self, tmp_path, gran):
         io.save_granule(tmp_path, gran)

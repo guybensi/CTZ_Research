@@ -164,8 +164,10 @@ def run_benchmark(granules: list[Granule], table: FootprintTable, folds: list[sp
                         # one failing method must not stop a long real-data run; the error goes to the report
                         errors.append({"model": name, "fold": fold.name, "seed": seed, "error": f"{type(e).__name__}: {e}"})
                         _progress(cfg, f"  {name} seed {seed}: ERROR {type(e).__name__}: {e}")
+                        _sweep_cache(store)
                         continue
                     _progress(cfg, f"  {name} seed {seed}: done in {(datetime.now() - t0).total_seconds() / 60:.1f} min")
+                    _sweep_cache(store)
                     if maps is not None:
                         keep = _physics_subset(len(test), cfg.physics_max_footprints, seed)
                         maps_store[(name, fold.name, seed)] = (np.asarray(test.rows)[keep], maps[keep])
@@ -222,6 +224,29 @@ def memory_status() -> str:
 def _progress(cfg: BenchmarkConfig, msg: str) -> None:
     if cfg.progress:
         print(f"{datetime.now():%Y-%m-%d %H:%M:%S}  {msg}  {memory_status()}", flush=True)
+
+
+def _sweep_cache(store: str | None) -> int:
+    """Delete a model's leftover cache files in a fold folder (inputs X_*, pixel tables rows_*, M6f's X6f_*).
+
+    The fold's batch images (batch_*/<key>.npy) stay until the fold ends. Each method deletes its own files
+    when a fit ends; this sweep also catches the files of a fit that raised. Returns the number deleted.
+
+    Example:
+        >>> _sweep_cache(None)
+        0
+    """
+    if store is None:
+        return 0
+    n = 0
+    for pattern in ("X_*.npy", "rows_*.npy", "X6f_*.npy"):
+        for f in Path(store).glob(f"batch_*/{pattern}"):
+            try:
+                f.unlink()
+                n += 1
+            except OSError:
+                pass
+    return n
 
 
 def _physics_subset(n: int, cap: int, seed: int) -> np.ndarray:

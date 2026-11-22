@@ -13,6 +13,7 @@ import numpy as np
 
 from .. import aggregation, features
 from ..features import Batch, take_batch
+from ..io import discard, disk_array
 from ..models import PREDICT_CHUNK, FluxModel, chunk_positions
 from . import _common, _torch
 
@@ -76,14 +77,14 @@ class MapNetModel(FluxModel):
             h, w = batch.images["ImSW"].shape[-2:]
             self.scaler = _common.Standardizer(axis=1).fit_chunks(
                 (self.inputs(take_batch(batch, c)) for c in chunks), total=len(batch) * h * w, seed=self.params["seed"])
-        on_disk = isinstance(batch.images["ImSW"], np.memmap)
+        # on disk only for a large disk-backed batch (a fold); a prediction chunk stays in memory
+        on_disk = isinstance(batch.images["ImSW"], np.memmap) and len(batch) > PREDICT_CHUNK
         X = None
         for c in chunks:
             z = self.scaler.transform(self.inputs(take_batch(batch, c))).astype(np.float32)
             if X is None:
                 shape = (len(batch),) + z.shape[1:]
-                X = (np.lib.format.open_memmap(_disk_path(batch), mode="w+", dtype=np.float32, shape=shape) if on_disk
-                     else np.empty(shape, np.float32))
+                X = disk_array(_disk_path(batch), np.float32, shape) if on_disk else np.empty(shape, np.float32)
             X[c] = z
         if on_disk and X is not None:
             X.flush()
@@ -99,11 +100,14 @@ class MapNetModel(FluxModel):
         if val is not None and len(val) and val.has_images:
             Xv, iv = self._prepare(val)
             vt = (Xv, iv, self._weights(val), val.label)
-        _torch.set_seed(self.params["seed"])  # the initial weights come from the seed, not from whatever ran before
-        self.net = self.build_net(X.shape[1])
-        # the network sees float32 anyway: cast once here, so training holds no float64 copies of these (N, H, W)
-        # arrays (identical values: the float64 -> float32 rounding is the same as torch's)
-        self.history = self.train(X, ins.astype(np.float32), self._weights(train).astype(np.float32), train, vt)
+        try:
+            _torch.set_seed(self.params["seed"])  # the initial weights come from the seed, not from whatever ran before
+            self.net = self.build_net(X.shape[1])
+            # the network sees float32 anyway: cast once here, so training holds no float64 copies of these (N, H, W)
+            # arrays (identical values: the float64 -> float32 rounding is the same as torch's)
+            self.history = self.train(X, ins.astype(np.float32), self._weights(train).astype(np.float32), train, vt)
+        finally:
+            discard(X, None if vt is None else vt[0])  # the cache files of this fit's inputs are no longer needed
         return self
 
     def train(self, X, ins, W, train: Batch, vt):
@@ -121,6 +125,7 @@ class MapNetModel(FluxModel):
             return _torch.predict_map_net(self.net, X, ins, forward=self.forward())
         finally:
             self._predicting = None
+            discard(X)
 
 
 class TabularFootprintModel(FluxModel):
