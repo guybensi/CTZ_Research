@@ -1,0 +1,35 @@
+# Timeline
+
+Short log of what was done in the code and on the servers since the data download started.
+Dates are 2026 (DD.MM). Servers: **Ilai** = `ilai@tzag` (32 cores, RTX PRO 4000, `/archive/GUY`); **BGU** = Slurm cluster `hpc-slurm.bgu.ac.il` (`/colony/bgu-eytane/users/guybensi`).
+Details: [HOW_TO_RUN.md](../HOW_TO_RUN.md) §2, [scripts/HOW_TO_DOWNLOAD.md](../scripts/HOW_TO_DOWNLOAD.md), [NEW_SERVER.md](../NEW_SERVER.md). Results: [results/](results/).
+
+Add one line per event: date, server or code, what happened, and the file/commit.
+
+## November 2026
+
+- **09.11** - Code: new `scripts/download_modis.py` (Aqua MODIS from LAADS, advisor's `AQUA/<year>/<region>/<month>/MODxx` layout; MOD02+MOD03 only by default).
+- **09-16.11** - Ilai: downloading MODIS MOD02+MOD03 for 2008 Pacific from NASA (LAADS) to `/archive/GUY`, then CERES SSF from ASDC.
+- **10.11** - Code: `download_modis.py` re-fetches truncated files and locks the output folder; new `scripts/download_ceres.py` (CERES SSF Aqua from ASDC, cut to the Pacific box) and `organize_ceres.py`.
+- **11.11** - Code: download scripts take `--start/--end/--out/--region/--box`; new `scripts/build_dataset.py` (fixed, resumable version of the advisor's converter); `HOW_TO_DOWNLOAD.md`. CERES keeps 17 variables (12 of the advisor + 5 GEOS-5).
+- **12.11** - Code: advisor's `ceres_psf.csv` shipped in `resources/`; `build_dataset.py` keeps footprints with dead-detector channels, adds `--diagnose`, `--retry-empty`.
+- **15.11** - Local (WSL on Windows): end-to-end test on real data; Windows versions in `scripts/windows/`. Fixed `build_dataset.py`: bounded nearest-pixel search (was tens of min per granule), CF/glint/land fractions over valid pixels only.
+- **16.11** - Ilai: MOD02 (2 TB), MOD03 (390 GB) and CERES (2.7 GB) for all of 2008 done. MOD06 and MOD35 were missing, downloaded the same day (1.6 TB, ~11.5 h, ~40 MB/s).
+- **16.11** - Code: `build_dataset.py` treats the PSF's negative rim lobes as zero weight (no NaN std in CTH/DFNC).
+- **16-18.11** - Ilai: `build_dataset.py --no-images --workers 12` on all of 2008 (~40 h): 13,516 ok, 689 empty, 0 error, 62 M footprints (scalars 3.8 GB, moments 22 GB). No images: a year of images (~6 TB) does not fit the disk.
+- **18.11** - Ilai: subset `every20` (every 20th granule, 676 granules, ~3 M footprints).
+- **18.11** - Ilai: first real-data benchmark, footprint methods only (M0-ridge, M0-allsky37, M0-advisor, M1-gbm, M1-ann), ~5 h. M1-ann best (macro RMSE 10.86 W/m²); M0-advisor diverged on clear sky. Results: [results/2008_Pacific_every20/](results/2008_Pacific_every20/).
+- **18.11** - BGU: moved to the new cluster for 20 years (2003-2022, ~79 TB). New `scripts/slurm/download_year.sbatch` (one year per job: MODIS twice, then CERES), years split into 4-5 parallel lanes; all 20 years submitted. Measured ~200 GB/h total. Job limit raised from 3 to 7 days (PR #1, #2).
+- **19.11** - Code: analysis of the every20 run, [results/2008_Pacific_every20/ANALYSIS.md](results/2008_Pacific_every20/ANALYSIS.md).
+- **19-20.11** - Ilai: images built for 6 months of 2008 (Jan, Mar, May, Jul, Sep, Nov), ~6,560 granules, ~3.1 TB, 0 errors; 1.7 TB left on `/archive`.
+- **20.11** - Ilai: subset `img6` (1 granule per image month, ~25 k footprints).
+- **20.11** - Ilai: benchmark of all methods on `img6`, attempt 1 - killed, out of RAM (all images held in memory).
+- **20.11** - Code: `--cache-dir` keeps images and network inputs on disk; pixel inputs and map predictions built a chunk at a time; map networks seeded before they are built (`2d21864`, `e3e92d0`).
+- **20.11** - Ilai: attempt 2 with `--cache-dir` - killed in fold 2, out of RAM: M4, M10, M6f, M6c built the whole fold's pixel table in memory.
+- **21.11** - Code: M4/M10 no longer hold the fold's pixel table in memory, M6f stacks on disk, M6c target in chunks, progress lines per method (`cf509c3`, `d0a0b42`, `b92a051`). `NEW_SERVER.md` written. `ceres_psf` operator fixed to non-negative weights - every map method failed with `--psf` (`cb402ea`).
+- **21.11** - Ilai: attempt 3 (all methods, fixed code) started.
+- **21.11** - BGU: 2003-2007 at ~95% (18.7 TB of ~79 TB, ~290 GB/h). Their jobs were sent with the old 3-day limit, so follow-up jobs 398-401 (`ctz_fix_<year>`) were queued for 2004-2007; 2003 continues in job 366. Expected end ~30.11.
+- **22.11** - Ilai: attempt 3 killed at 02:09 (fold 1, M6f): the cache filled the root disk (583 GB in `~/ctz_cache`). Measured in fold 1: M4 471 min, the rest ≤ 27 min each.
+- **22.11** - Code: every fit deletes its cache files; cache writes refused if < 20 GB would stay free (`CTZ_CACHE_MIN_FREE_GB`) (`712f176`).
+- **22.11** - Ilai: next: attempt 4, all methods except M4 (~17-18 h). M4 to run alone later.
+- **22.11** - Docs: `docs/` folder with this timeline; results moved from `master/results/` to `docs/results/`.
