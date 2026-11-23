@@ -33,3 +33,4 @@ Add one line per event: date, server or code, what happened, and the file/commit
 - **22.11** - Code: every fit deletes its cache files; cache writes refused if < 20 GB would stay free (`CTZ_CACHE_MIN_FREE_GB`) (`712f176`).
 - **22.11** - Ilai: next: attempt 4, all methods except M4 (~17-18 h). M4 to run alone later.
 - **22.11** - Docs: `docs/` folder with this timeline; results moved from `master/results/` to `docs/results/`.
+- **22-23.11** - Ilai: attempt 4 finished (all methods except M4, 7 image granules, 46,111 footprints, ~19 h, 0 errors, cache ≤ 8 GB). Best macro RMSE: M5 14.91, M6c 15.16, M6a 16.24; M1-ann 17.68 is the official winner (the map methods fail `ok_pcs`, whose 70-90 W/m² target even the CERES labels miss: B-const 94.2). Differences not significant (7 granule groups). Results pushed from the server with a repo-scoped token: [results/2008_Pacific_img6/](results/2008_Pacific_img6/).
