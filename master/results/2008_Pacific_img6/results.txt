@@ -1,0 +1,515 @@
+flux1km benchmark results
+written 2026-11-23 02:32 UTC
+run folder: /archive/GUY/results_img/run_20261123_023239
+
+====================================================================================================
+WINNER
+====================================================================================================
+winner: M1-ann
+ranking by macro RMSE (gate-passing, ranked methods): ['M1-ann']
+decision log:
+  - B-const reads test labels: reported, never ranked
+  - M6e reads test labels: reported, never ranked
+  - M7 reads test labels: reported, never ranked
+  - M9-local reads test labels: reported, never ranked
+  - B-bagpixel fails gates: ['ok_bounds', 'ok_spacing', 'trend:SZA', 'trend:RAA', 'trend:glint', 'swath_asymmetry']
+  - B-clim fails gates: ['ok_pcs', 'trend:SZA', 'trend:VZA', 'trend:RAA', 'trend:glint', 'swath_asymmetry']
+  - M0-advisor fails gates: ['trend:SZA', 'trend:RAA', 'trend:glint', 'swath_asymmetry']
+  - M0-allsky37 fails gates: ['trend:RAA']
+  - M0-ridge fails gates: ['trend:SZA', 'trend:VZA', 'trend:RAA', 'trend:glint', 'swath_asymmetry']
+  - M1-gbm fails gates: ['trend:SZA', 'trend:RAA', 'trend:glint']
+  - M10 fails gates: ['trend:SZA', 'trend:RAA', 'trend:glint', 'swath_asymmetry']
+  - M10-cmp fails gates: ['ok_pcs', 'trend:SZA', 'trend:VZA', 'trend:RAA', 'trend:glint', 'swath_asymmetry']
+  - M2 fails gates: ['ok_bounds', 'ok_spacing', 'trend:SZA', 'trend:RAA', 'trend:glint', 'swath_asymmetry']
+  - M3 fails gates: ['ok_pcs', 'trend:SZA', 'trend:RAA', 'swath_asymmetry']
+  - M5 fails gates: ['ok_pcs', 'ranking_flip:M6a@fov_ellipse,M6a@uniform,M6a@gaussian_psf']
+  - M6a fails gates: ['ok_pcs', 'trend:SZA', 'ranking_flip:M5@fov_ellipse,M6c@fov_ellipse,M5@uniform,M5@gaussian_psf,M6c@gaussian_psf']
+  - M6b fails gates: ['ok_pcs', 'trend:VZA']
+  - M6c fails gates: ['ok_pcs', 'ranking_flip:M6a@fov_ellipse,M6a@gaussian_psf']
+  - M6d fails gates: ['ok_pcs']
+  - M6f fails gates: ['ok_pcs']
+  - M8 fails gates: ['ok_pcs', 'ok_spacing', 'trend:VZA', 'trend:RAA', 'trend:glint']
+  - M9 fails gates: ['ok_pcs', 'trend:SZA', 'trend:VZA', 'trend:RAA']
+
+====================================================================================================
+Configuration
+====================================================================================================
+models: ['B-bagpixel', 'B-clim', 'B-const', 'M0-advisor', 'M0-allsky37', 'M0-ridge', 'M1-ann', 'M1-gbm', 'M10', 'M10-cmp', 'M2', 'M3', 'M5', 'M6a', 'M6b', 'M6c', 'M6d', 'M6e', 'M6f', 'M7', 'M8', 'M9', 'M9-local']
+primary operator: ceres_psf   sensitivity operators: ('fov_ellipse', 'uniform', 'gaussian_psf')
+PSF file: resources/ceres_psf.csv   tuning budget: 40   seeds: (0,)
+sampling: S0    leakage check: True (radius 20.0 km)
+noise floor by regime: {'clear': 1.9, 'broken': 10.0, 'overcast': 6.0}   trend gate: 5.0   swath gate: 5.0   clear-sky target: (70.0, 90.0)
+image granules: 7
+
+====================================================================================================
+Folds (frozen split manifest)
+====================================================================================================
+fold                           leaky   n_train     n_val    n_test
+day-kfold:0                    False     25893      6243     13975
+day-kfold:1                    False     28216      4645     13050
+day-kfold:2                    False     31274      7497      7135
+day-kfold:3                    False     33947      7318      4645
+day-kfold:4                    False     32349      6243      7318
+interleave:2                    True     22957         0     23059
+chosen hyper-parameters (validation RMSE):
+  day-kfold:0              B-bagpixel   val_rmse=44.92  {'alpha': 1.0, 'degree': 2, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:0              B-clim       val_rmse=nan  {'seed': 0}
+  day-kfold:0              B-const      val_rmse=nan  {'seed': 0}
+  day-kfold:0              M0-advisor   val_rmse=51.95  {'lr': 0.0003, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:0              M0-allsky37  val_rmse=19.76  {'lr': 0.003, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:0              M0-ridge     val_rmse=47.71  {'alpha': 1.0, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:0              M1-ann       val_rmse=16.97  {'hidden': (64, 32), 'lr': 0.003, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:0              M1-gbm       val_rmse=20.93  {'learning_rate': 0.1, 'max_leaf_nodes': 15, 'max_iter': 400, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:0              M10          val_rmse=40.75  {'lengthscale': 6.0, 'noise': 10.0, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:0              M10-cmp      val_rmse=306.39  {'lengthscale': 1.5, 'noise': 10.0, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:0              M2           val_rmse=43.45  {'alpha': 1.0, 'degree': 2, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:0              M3           val_rmse=19.93  {'hidden': (64, 64), 'lr': 0.003, 'reg': 'manifold', 'seed': 0, 'input_set': 'F5'}
+  day-kfold:0              M5           val_rmse=15.74  {'base': 16, 'smooth_weight': 0.01, 'lr': 0.0003, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:0              M6a          val_rmse=15.30  {'base': 16, 'lr': 0.0003, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:0              M6b          val_rmse=18.91  {'context_penalty': 0.1, 'lr': 0.003, 'width': 16, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:0              M6c          val_rmse=15.55  {'pretrain_epochs': 5, 'lr': 0.0003, 'smooth_weight': 0.0, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:0              M6d          val_rmse=19.46  {'distill_weight': 0.1, 'lr': 0.003, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:0              M6e          val_rmse=0.00  {'mode': 'scene', 'seed': 0, 'input_set': 'F5'}
+  day-kfold:0              M6f          val_rmse=22.34  {'pseudo_weight': 1.0, 'pseudo_per_patch': 1, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:0              M7           val_rmse=32.23  {'range_px': 5.0, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:0              M8           val_rmse=113.31  {'swir': '2.13', 'alpha2': 0.1, 'cv_max': 0.2, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:0              M9           val_rmse=18.61  {'learner': 'gbm', 'cv_max': 0.2, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:0              M9-local     val_rmse=18.61  {'learner': 'gbm', 'cv_max': 0.2, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:1              B-bagpixel   val_rmse=59.37  {'alpha': 10.0, 'degree': 1, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:1              B-clim       val_rmse=nan  {'seed': 0}
+  day-kfold:1              B-const      val_rmse=nan  {'seed': 0}
+  day-kfold:1              M0-advisor   val_rmse=140.87  {'lr': 0.001, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:1              M0-allsky37  val_rmse=28.97  {'lr': 0.003, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:1              M0-ridge     val_rmse=65.09  {'alpha': 10.0, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:1              M1-ann       val_rmse=29.77  {'hidden': (128, 64, 32), 'lr': 0.001, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:1              M1-gbm       val_rmse=52.61  {'learning_rate': 0.1, 'max_leaf_nodes': 31, 'max_iter': 400, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:1              M10          val_rmse=34.72  {'lengthscale': 6.0, 'noise': 10.0, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:1              M10-cmp      val_rmse=181.19  {'lengthscale': 6.0, 'noise': 10.0, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:1              M2           val_rmse=59.37  {'alpha': 10.0, 'degree': 1, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:1              M3           val_rmse=23.24  {'hidden': (64, 64), 'lr': 0.001, 'reg': 'subset', 'seed': 0, 'input_set': 'F5'}
+  day-kfold:1              M5           val_rmse=21.24  {'base': 32, 'smooth_weight': 0.1, 'lr': 0.0003, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:1              M6a          val_rmse=20.91  {'base': 16, 'lr': 0.0003, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:1              M6b          val_rmse=22.06  {'context_penalty': 0.01, 'lr': 0.001, 'width': 16, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:1              M6c          val_rmse=20.92  {'pretrain_epochs': 5, 'lr': 0.001, 'smooth_weight': 0.01, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:1              M6d          val_rmse=23.65  {'distill_weight': 0.1, 'lr': 0.001, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:1              M6e          val_rmse=0.00  {'mode': 'scene', 'seed': 0, 'input_set': 'F5'}
+  day-kfold:1              M6f          val_rmse=23.41  {'pseudo_weight': 0.1, 'pseudo_per_patch': 1, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:1              M7           val_rmse=48.41  {'range_px': 5.0, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:1              M8           val_rmse=28.65  {'swir': '2.13', 'alpha2': 0.1, 'cv_max': 0.2, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:1              M9           val_rmse=59.44  {'learner': 'gbm', 'cv_max': 0.2, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:1              M9-local     val_rmse=59.44  {'learner': 'gbm', 'cv_max': 0.2, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:2              B-bagpixel   val_rmse=31.53  {'alpha': 1.0, 'degree': 2, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:2              B-clim       val_rmse=nan  {'seed': 0}
+  day-kfold:2              B-const      val_rmse=nan  {'seed': 0}
+  day-kfold:2              M0-advisor   val_rmse=52.57  {'lr': 0.003, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:2              M0-allsky37  val_rmse=33.58  {'lr': 0.003, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:2              M0-ridge     val_rmse=36.60  {'alpha': 1.0, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:2              M1-ann       val_rmse=22.64  {'hidden': (128, 64, 32), 'lr': 0.001, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:2              M1-gbm       val_rmse=26.79  {'learning_rate': 0.05, 'max_leaf_nodes': 15, 'max_iter': 400, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:2              M10          val_rmse=23.28  {'lengthscale': 6.0, 'noise': 10.0, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:2              M10-cmp      val_rmse=114.22  {'lengthscale': 6.0, 'noise': 10.0, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:2              M2           val_rmse=31.43  {'alpha': 1.0, 'degree': 2, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:2              M3           val_rmse=20.54  {'hidden': (128, 64, 32), 'lr': 0.001, 'reg': 'manifold', 'seed': 0, 'input_set': 'F5'}
+  day-kfold:2              M5           val_rmse=15.99  {'base': 16, 'smooth_weight': 0.0, 'lr': 0.0003, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:2              M6a          val_rmse=21.10  {'base': 32, 'lr': 0.0003, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:2              M6b          val_rmse=18.66  {'context_penalty': 0.01, 'lr': 0.001, 'width': 16, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:2              M6c          val_rmse=18.07  {'pretrain_epochs': 5, 'lr': 0.0003, 'smooth_weight': 0.01, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:2              M6d          val_rmse=17.15  {'distill_weight': 0.5, 'lr': 0.001, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:2              M6e          val_rmse=0.00  {'mode': 'scene', 'seed': 0, 'input_set': 'F5'}
+  day-kfold:2              M6f          val_rmse=20.50  {'pseudo_weight': 0.1, 'pseudo_per_patch': 1, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:2              M7           val_rmse=4.39  {'range_px': 5.0, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:2              M8           val_rmse=22.20  {'swir': '2.13', 'alpha2': 0.001, 'cv_max': 0.2, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:2              M9           val_rmse=39.69  {'learner': 'gbm', 'cv_max': 0.2, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:2              M9-local     val_rmse=39.69  {'learner': 'gbm', 'cv_max': 0.2, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:3              B-bagpixel   val_rmse=24.99  {'alpha': 10.0, 'degree': 2, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:3              B-clim       val_rmse=nan  {'seed': 0}
+  day-kfold:3              B-const      val_rmse=nan  {'seed': 0}
+  day-kfold:3              M0-advisor   val_rmse=24.68  {'lr': 0.0003, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:3              M0-allsky37  val_rmse=14.21  {'lr': 0.003, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:3              M0-ridge     val_rmse=26.94  {'alpha': 1.0, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:3              M1-ann       val_rmse=13.07  {'hidden': (64, 32), 'lr': 0.001, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:3              M1-gbm       val_rmse=16.10  {'learning_rate': 0.1, 'max_leaf_nodes': 15, 'max_iter': 400, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:3              M10          val_rmse=18.60  {'lengthscale': 6.0, 'noise': 10.0, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:3              M10-cmp      val_rmse=105.92  {'lengthscale': 6.0, 'noise': 10.0, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:3              M2           val_rmse=27.17  {'alpha': 10.0, 'degree': 2, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:3              M3           val_rmse=12.41  {'hidden': (64, 64), 'lr': 0.001, 'reg': 'none', 'seed': 0, 'input_set': 'F5'}
+  day-kfold:3              M5           val_rmse=10.54  {'base': 32, 'smooth_weight': 0.1, 'lr': 0.0003, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:3              M6a          val_rmse=11.31  {'base': 16, 'lr': 0.0003, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:3              M6b          val_rmse=9.95  {'context_penalty': 0.001, 'lr': 0.001, 'width': 16, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:3              M6c          val_rmse=10.09  {'pretrain_epochs': 20, 'lr': 0.0003, 'smooth_weight': 0.0, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:3              M6d          val_rmse=12.51  {'distill_weight': 0.5, 'lr': 0.003, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:3              M6e          val_rmse=0.00  {'mode': 'scene', 'seed': 0, 'input_set': 'F5'}
+  day-kfold:3              M6f          val_rmse=12.54  {'pseudo_weight': 0.1, 'pseudo_per_patch': 1, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:3              M7           val_rmse=14.48  {'range_px': 5.0, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:3              M8           val_rmse=18.26  {'swir': '1.24', 'alpha2': 0.001, 'cv_max': 0.2, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:3              M9           val_rmse=22.30  {'learner': 'gbm', 'cv_max': 0.2, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:3              M9-local     val_rmse=22.30  {'learner': 'gbm', 'cv_max': 0.2, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:4              B-bagpixel   val_rmse=45.41  {'alpha': 1.0, 'degree': 2, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:4              B-clim       val_rmse=nan  {'seed': 0}
+  day-kfold:4              B-const      val_rmse=nan  {'seed': 0}
+  day-kfold:4              M0-advisor   val_rmse=38.04  {'lr': 0.001, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:4              M0-allsky37  val_rmse=21.61  {'lr': 0.0003, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:4              M0-ridge     val_rmse=50.18  {'alpha': 1.0, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:4              M1-ann       val_rmse=18.19  {'hidden': (128, 64, 32), 'lr': 0.003, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:4              M1-gbm       val_rmse=22.94  {'learning_rate': 0.1, 'max_leaf_nodes': 15, 'max_iter': 400, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:4              M10          val_rmse=70.25  {'lengthscale': 6.0, 'noise': 10.0, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:4              M10-cmp      val_rmse=263.84  {'lengthscale': 6.0, 'noise': 10.0, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:4              M2           val_rmse=45.19  {'alpha': 1.0, 'degree': 2, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:4              M3           val_rmse=22.04  {'hidden': (128, 64, 32), 'lr': 0.001, 'reg': 'subset', 'seed': 0, 'input_set': 'F5'}
+  day-kfold:4              M5           val_rmse=16.29  {'base': 16, 'smooth_weight': 0.0, 'lr': 0.0003, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:4              M6a          val_rmse=15.75  {'base': 16, 'lr': 0.0003, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:4              M6b          val_rmse=17.63  {'context_penalty': 0.001, 'lr': 0.001, 'width': 16, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:4              M6c          val_rmse=15.94  {'pretrain_epochs': 20, 'lr': 0.0003, 'smooth_weight': 0.0, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:4              M6d          val_rmse=20.19  {'distill_weight': 0.5, 'lr': 0.003, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:4              M6e          val_rmse=0.00  {'mode': 'scene', 'seed': 0, 'input_set': 'F5'}
+  day-kfold:4              M6f          val_rmse=22.21  {'pseudo_weight': 0.1, 'pseudo_per_patch': 3, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:4              M7           val_rmse=33.89  {'range_px': 5.0, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:4              M8           val_rmse=111.64  {'swir': '2.13', 'alpha2': 0.1, 'cv_max': 0.2, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:4              M9           val_rmse=18.36  {'learner': 'gbm', 'cv_max': 0.2, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:4              M9-local     val_rmse=18.36  {'learner': 'gbm', 'cv_max': 0.2, 'seed': 0, 'input_set': 'F5'}
+
+====================================================================================================
+Scores (non-leaky folds; W m^-2)
+====================================================================================================
+model        ranked  macroRMSE       RMSE        MAE       bias         R2          n  macro@fov_ellipse  macro@uniform  macro@gaussian_psf  interleave    pixRMSE    pixCorr       SSIM
+B-bagpixel      yes      39.00      40.84      28.29      -8.23       0.88      45905              42.37          40.98               41.49       28.21          -          -          -
+B-clim          yes     183.60     163.35     138.32      52.71      -0.97      45905             183.61         183.60              183.61      151.92          -          -          -
+B-const          no       0.00       0.00       0.00       0.00       1.00      45905               0.00           0.00                0.00        0.00          -          -          -
+M0-advisor      yes      47.57      58.77      37.46       3.31       0.75      45905              47.57          47.57               47.57       25.02          -          -          -
+M0-allsky37     yes      20.13      23.15      17.00      -1.63       0.96      45905              20.13          20.13               20.13       13.96          -          -          -
+M0-ridge        yes      37.17      38.55      28.28      -8.78       0.89      45905              37.17          37.17               37.17       26.19          -          -          -
+M1-ann          yes      17.68      20.57      14.88      -2.88       0.97      45905              17.68          17.68               17.68       11.50          -          -          -
+M1-gbm          yes      26.07      26.72      18.01       2.78       0.95      45905              26.07          26.07               26.07       14.27          -          -          -
+M10             yes      31.09      32.51      23.89       0.64       0.92      45905              35.18          34.10               34.30       35.10          -          -          -
+M10-cmp         yes     132.87     146.23     114.26      20.64      -0.57      45905             133.86         128.91              132.30      359.67          -          -          -
+M2              yes      38.34      40.03      28.36      -6.59       0.88      45905              41.78          40.30               40.87       28.21          -          -          -
+M3              yes      17.76      21.71      16.05      -3.45       0.97      45905              23.55          22.94               22.60       11.74          -          -          -
+M5              yes      14.91      16.67      12.47       0.36       0.98      45905              21.16          21.34               20.57       10.89          -          -          -
+M6a             yes      16.24      19.20      13.53      -0.06       0.97      45905              19.59          20.69               19.14       10.47          -          -          -
+M6b             yes      17.04      19.60      14.11      -2.97       0.97      45905              22.94          22.72               22.18        9.29          -          -          -
+M6c             yes      15.16      17.80      13.39       0.64       0.98      45905              21.31          21.18               20.62       10.52          -          -          -
+M6d             yes      19.28      22.00      15.76      -4.09       0.96      45905              24.73          24.12               23.84       11.74          -          -          -
+M6e              no       0.00       0.00       0.00       0.00       1.00      39832              15.62          18.29               14.30        0.00          -          -          -
+M6f             yes      19.27      21.89      16.45      -2.54       0.96      45905              24.87          24.11               23.94       12.04          -          -          -
+M7               no      17.33      23.81       5.93      -4.27       0.96      45905              24.72          30.66               24.20       16.37          -          -          -
+M8              yes      33.45      47.19      19.70       4.16       0.84      45905              37.86          35.93               36.73       22.26          -          -          -
+M9              yes      29.32      31.42      22.60      -2.39       0.93      45905              33.15          33.28               32.63       14.09          -          -          -
+M9-local         no      29.32      31.42      22.60      -2.39       0.93      45905              33.15          33.28               32.63       14.09          -          -          -
+
+====================================================================================================
+Scores by cloud regime (RMSE / bias / n)
+====================================================================================================
+model            clear     bias      n    broken     bias      n  overcast     bias      n
+B-bagpixel       36.03     0.44   2155     46.05    -6.78  22643     34.93   -10.66  21107
+B-clim          244.19   236.77   2155    187.78   158.30  22643    118.83   -79.36  21107
+B-const           0.00     0.00   2155      0.00     0.00  22643      0.00     0.00  21107
+M0-advisor       24.26    -8.77   2155     47.58    11.16  22643     70.87    -3.86  21107
+M0-allsky37      13.69     3.62   2155     19.55     1.66  22643     27.15    -5.70  21107
+M0-ridge         35.70     2.71   2155     44.45    -9.48  22643     31.35    -9.20  21107
+M1-ann           11.26     2.21   2155     19.01     0.84  22643     22.79    -7.39  21107
+M1-gbm           24.63    11.59   2155     27.48     9.65  22643     26.08    -5.49  21107
+M10              28.30     4.44   2155     35.23     6.78  22643     29.75    -6.35  21107
+M10-cmp         103.53    12.93   2155    129.41    41.57  22643    165.68    -1.04  21107
+M2               35.74     1.82   2155     45.28    -5.66  22643     33.99    -8.44  21107
+M3                9.65     6.57   2155     17.17     1.11  22643     26.45    -9.37  21107
+M5               10.93     2.62   2155     15.63     0.70  22643     18.17    -0.23  21107
+M6a              10.43     5.49   2155     14.55     3.64  22643     23.74    -4.60  21107
+M6b              11.39     3.43   2155     17.54    -0.68  22643     22.18    -6.09  21107
+M6c               9.32     0.08   2155     16.14     1.80  22643     20.01    -0.55  21107
+M6d              13.19     3.48   2155     20.23    -1.34  22643     24.40    -7.81  21107
+M6e               0.00     0.00   2152      0.00     0.00  18736      0.00     0.00  18944
+M6f              13.59     2.51   2155     19.01     0.69  22643     25.22    -6.52  21107
+M7                3.48    -0.09   2155     25.97    -4.78  22643     22.54    -4.16  21107
+M8               12.59     1.12   2155     22.19     0.62  22643     65.57     8.27  21107
+M9               25.14    12.00   2155     25.89     5.91  22643     36.92   -12.77  21107
+M9-local         25.14    12.00   2155     25.89     5.91  22643     36.92   -12.77  21107
+
+====================================================================================================
+Residual flatness (gates: trend effect, swath-side asymmetry)
+====================================================================================================
+model              SZA       VZA       RAA     glint     swath
+B-bagpixel       14.24      2.20     22.53     11.38     13.44
+B-clim          365.31     36.48    134.46    273.88    177.65
+B-const           0.00      0.00      0.00      0.00     -0.00
+M0-advisor       59.26      0.65     18.76     60.07     15.10
+M0-allsky37       4.35      2.97      6.96      0.20      3.55
+M0-ridge         14.99      5.48     22.36     10.62      7.89
+M1-ann            4.93      0.16      3.13      0.82      1.13
+M1-gbm           15.60      4.64      5.40     16.64      0.58
+M10              15.96      0.32      6.23      5.85      5.81
+M10-cmp           9.92     19.85     20.97     21.01     -9.01
+M2               15.47      3.04     19.12     13.19     10.25
+M3                5.38      3.36      8.62      2.14      7.59
+M5                0.57      1.80      1.60      0.93     -0.94
+M6a               7.28      3.15      3.28      1.78      2.74
+M6b               3.32      5.15      3.42      3.46      0.95
+M6c               2.29      2.47      0.03      3.04      1.23
+M6d               1.34      3.97      2.18      2.07      0.15
+M6e               0.00      0.00      0.00      0.00     -0.00
+M6f               4.41      3.21      0.71      1.28     -0.69
+M7               14.32      0.54      3.63     13.68      1.33
+M8                4.27      8.51     13.19     19.55     -0.03
+M9                8.54     15.70     10.84      1.57     -0.36
+M9-local          8.54     15.70     10.84      1.57     -0.36
+
+====================================================================================================
+Physics checks of the 1 km maps
+====================================================================================================
+model         clear_sky bound_frac   spacing     decay  passed               distance from
+B-bagpixel        80.16       0.04       nan     -1.00   False    0.66 um brightness proxy
+B-clim           327.59       0.00      0.79      0.70   False    0.66 um brightness proxy
+B-const           94.22       0.00       nan     -1.00   False    0.66 um brightness proxy
+M10               87.57       0.00      0.86     -1.00    True    0.66 um brightness proxy
+M10-cmp          108.46       0.00      0.85     -1.00   False    0.66 um brightness proxy
+M2                81.18       0.04       nan     -1.00   False    0.66 um brightness proxy
+M3                96.80       0.00      0.82     -1.00   False    0.66 um brightness proxy
+M5                93.75       0.00      0.68     -1.00   False    0.66 um brightness proxy
+M6a              100.70       0.00      0.67     -1.00   False    0.66 um brightness proxy
+M6b               95.14       0.00      1.05     -1.00   False    0.66 um brightness proxy
+M6c               90.93       0.00      0.79     -1.00   False    0.66 um brightness proxy
+M6d               96.38       0.00      0.83     -1.00   False    0.66 um brightness proxy
+M6e               89.64       0.02       nan     -1.00   False    0.66 um brightness proxy
+M6f               93.67       0.00      0.82     -1.00   False    0.66 um brightness proxy
+M7                82.56       0.04       nan     -1.00   False    0.66 um brightness proxy
+M8                90.33       0.00       nan     -1.00   False    0.66 um brightness proxy
+M9               105.93       0.00      0.83     -1.00   False    0.66 um brightness proxy
+M9-local         105.93       0.00      0.83     -1.00   False    0.66 um brightness proxy
+  B-bagpixel   flux vs distance to cloud: [127.4, 105.9, 96.9, 90.2, 81.2]
+  B-clim       flux vs distance to cloud: [262.7, 310.9, 332.1, 335.9, 328.7]
+  B-const      flux vs distance to cloud: [164.8, 157.1, 142.5, 126.3, 97.8]
+  M10          flux vs distance to cloud: [146.8, 129.9, 118.7, 107.5, 89.8]
+  M10-cmp      flux vs distance to cloud: [220.7, 156.0, 126.5, 114.1, 108.6]
+  M2           flux vs distance to cloud: [128.1, 106.6, 97.5, 90.8, 82.2]
+  M3           flux vs distance to cloud: [147.5, 125.8, 114.9, 106.9, 97.9]
+  M5           flux vs distance to cloud: [168.3, 147.2, 125.3, 107.4, 94.6]
+  M6a          flux vs distance to cloud: [170.8, 153.5, 137.7, 121.3, 102.6]
+  M6b          flux vs distance to cloud: [154.4, 154.1, 116.2, 104.4, 96.0]
+  M6c          flux vs distance to cloud: [168.9, 142.0, 122.2, 105.6, 92.1]
+  M6d          flux vs distance to cloud: [144.2, 123.6, 113.0, 105.2, 97.3]
+  M6e          flux vs distance to cloud: [131.3, 115.2, 106.9, 98.8, 90.6]
+  M6f          flux vs distance to cloud: [149.6, 124.5, 112.0, 103.4, 94.6]
+  M7           flux vs distance to cloud: [122.5, 105.8, 99.0, 93.0, 83.8]
+  M8           flux vs distance to cloud: [145.4, 120.5, 109.3, 101.3, 91.5]
+  M9           flux vs distance to cloud: [156.7, 133.4, 121.8, 114.2, 106.8]
+  M9-local     flux vs distance to cloud: [156.7, 133.4, 121.8, 114.2, 106.8]
+
+====================================================================================================
+Pairwise comparisons (unit = granule group; negative diff = first model better)
+====================================================================================================
+pair                              diff    ci_low   ci_high   p_boot p_holm_b   wilcox p_holm_w     DM p  units
+B-bagpixel vs B-clim         -24358.25 -36055.14 -12597.31     0.00     0.00     0.02     1.00     0.00      7
+B-bagpixel vs M0-advisor      -1763.93  -3888.48   -255.09     0.00     0.33     0.11     1.00     0.06      7
+B-bagpixel vs M0-allsky37      1423.80    311.44   3430.50     0.00     0.00     0.02     1.00     0.11      7
+B-bagpixel vs M0-ridge          280.81   -132.42    972.86     0.53     1.00     1.00     1.00     0.32      7
+B-bagpixel vs M1-ann           1521.25    457.94   3435.70     0.00     0.00     0.02     1.00     0.07      7
+B-bagpixel vs M1-gbm           1129.36    384.99   2384.77     0.00     0.00     0.02     1.00     0.03      7
+B-bagpixel vs M10               820.99   -283.72   2501.30     0.27     1.00     0.47     1.00     0.23      7
+B-bagpixel vs M10-cmp        -20092.13 -28131.69 -12358.34     0.00     0.00     0.02     1.00     0.00      7
+B-bagpixel vs M2                 94.57    -49.47    316.17     0.43     1.00     0.81     1.00     0.29      7
+B-bagpixel vs M3               1500.03    344.09   3612.77     0.00     0.00     0.02     1.00     0.11      7
+B-bagpixel vs M5               1670.97    523.03   3705.56     0.00     0.00     0.02     1.00     0.05      7
+B-bagpixel vs M6a              1595.98    415.62   3660.52     0.00     0.00     0.02     1.00     0.08      7
+B-bagpixel vs M6b              1561.49    450.21   3571.40     0.00     0.00     0.02     1.00     0.07      7
+B-bagpixel vs M6c              1635.35    458.72   3715.46     0.00     0.00     0.02     1.00     0.06      7
+B-bagpixel vs M6d              1455.27    392.66   3383.16     0.00     0.00     0.02     1.00     0.08      7
+B-bagpixel vs M6f              1475.42    333.15   3511.79     0.00     0.00     0.02     1.00     0.09      7
+B-bagpixel vs M8               -376.81  -4658.13   3140.01     0.89     1.00     0.30     1.00     0.84      7
+B-bagpixel vs M9                899.57    -82.55   2381.08     0.11     1.00     0.38     1.00     0.17      7
+B-clim vs M0-advisor          22594.32  11033.84  34461.35     0.00     0.00     0.02     1.00     0.00      7
+B-clim vs M0-allsky37         25782.05  13804.29  37438.48     0.00     0.00     0.02     1.00     0.00      7
+B-clim vs M0-ridge            24639.06  12892.82  36283.96     0.00     0.00     0.02     1.00     0.00      7
+B-clim vs M1-ann              25879.50  13982.39  37510.08     0.00     0.00     0.02     1.00     0.00      7
+B-clim vs M1-gbm              25487.61  13667.54  37178.26     0.00     0.00     0.02     1.00     0.00      7
+B-clim vs M10                 25179.25  13523.72  36755.38     0.00     0.00     0.02     1.00     0.00      7
+B-clim vs M10-cmp              4266.13 -11008.67  20209.88     0.63     1.00     0.81     1.00     0.43      7
+B-clim vs M2                  24452.83  12673.65  36166.77     0.00     0.00     0.02     1.00     0.00      7
+B-clim vs M3                  25858.29  13854.37  37558.84     0.00     0.00     0.02     1.00     0.00      7
+B-clim vs M5                  26029.22  14123.06  37716.23     0.00     0.00     0.02     1.00     0.00      7
+B-clim vs M6a                 25954.23  13899.95  37664.07     0.00     0.00     0.02     1.00     0.00      7
+B-clim vs M6b                 25919.74  13984.88  37618.74     0.00     0.00     0.02     1.00     0.00      7
+B-clim vs M6c                 25993.61  14053.54  37699.80     0.00     0.00     0.02     1.00     0.00      7
+B-clim vs M6d                 25813.53  13942.11  37486.56     0.00     0.00     0.02     1.00     0.00      7
+B-clim vs M6f                 25833.67  13934.31  37535.38     0.00     0.00     0.02     1.00     0.00      7
+B-clim vs M8                  23981.44  12285.00  36007.86     0.00     0.00     0.02     1.00     0.00      7
+B-clim vs M9                  25257.82  13409.59  36969.31     0.00     0.00     0.02     1.00     0.00      7
+M0-advisor vs M0-allsky37      3187.73   1043.06   5629.93     0.00     0.00     0.02     1.00     0.01      7
+M0-advisor vs M0-ridge         2044.74    568.95   4138.05     0.00     0.00     0.03     1.00     0.02      7
+M0-advisor vs M1-ann           3285.18   1177.41   5710.45     0.00     0.00     0.02     1.00     0.00      7
+M0-advisor vs M1-gbm           2893.29   1138.57   5194.24     0.00     0.00     0.02     1.00     0.00      7
+M0-advisor vs M10              2584.93    874.39   4543.25     0.00     0.00     0.02     1.00     0.00      7
+M0-advisor vs M10-cmp        -18328.20 -26051.66 -10898.47     0.00     0.00     0.02     1.00     0.00      7
+M0-advisor vs M2               1858.50    375.29   3976.78     0.00     0.03     0.08     1.00     0.04      7
+M0-advisor vs M3               3263.97   1102.59   5734.34     0.00     0.00     0.02     1.00     0.01      7
+M0-advisor vs M5               3434.90   1261.26   5945.45     0.00     0.00     0.02     1.00     0.00      7
+M0-advisor vs M6a              3359.91   1171.12   5872.58     0.00     0.00     0.02     1.00     0.00      7
+M0-advisor vs M6b              3325.42   1273.13   5665.67     0.00     0.00     0.02     1.00     0.00      7
+M0-advisor vs M6c              3399.29   1208.34   5934.28     0.00     0.00     0.02     1.00     0.00      7
+M0-advisor vs M6d              3219.20   1187.08   5545.56     0.00     0.00     0.02     1.00     0.00      7
+M0-advisor vs M6f              3239.35   1119.28   5672.84     0.00     0.00     0.02     1.00     0.00      7
+M0-advisor vs M8               1387.12   -713.17   3685.32     0.20     1.00     0.22     1.00     0.23      7
+M0-advisor vs M9               2663.50    818.09   5062.67     0.00     0.00     0.02     1.00     0.01      7
+M0-allsky37 vs M0-ridge       -1142.99  -2471.74   -373.68     0.00     0.00     0.02     1.00     0.06      7
+M0-allsky37 vs M1-ann            97.45    -22.24    198.59     0.10     1.00     0.22     1.00     0.11      7
+M0-allsky37 vs M1-gbm          -294.44  -1089.62    152.63     0.65     1.00     0.69     1.00     0.41      7
+M0-allsky37 vs M10             -602.80  -1209.30    -10.31     0.04     1.00     0.11     1.00     0.06      7
+M0-allsky37 vs M10-cmp       -21515.92 -30081.86 -12944.67     0.00     0.00     0.02     1.00     0.00      7
+M0-allsky37 vs M2             -1329.22  -3118.56   -303.71     0.00     0.00     0.02     1.00     0.10      7
+M0-allsky37 vs M3                76.24    -21.97    198.48     0.17     1.00     0.58     1.00     0.15      7
+M0-allsky37 vs M5               247.17    117.55    429.47     0.00     0.00     0.02     1.00     0.00      7
+M0-allsky37 vs M6a              172.18     79.96    270.87     0.00     0.00     0.03     1.00     0.00      7
+M0-allsky37 vs M6b              137.69    -57.00    321.61     0.14     1.00     0.16     1.00     0.08      7
+M0-allsky37 vs M6c              211.56     43.01    427.00     0.00     0.19     0.08     1.00     0.01      7
+M0-allsky37 vs M6d               31.48   -129.53    186.43     0.69     1.00     0.69     1.00     0.67      7
+M0-allsky37 vs M6f               51.62    -58.85    171.90     0.40     1.00     0.81     1.00     0.18      7
+M0-allsky37 vs M8             -1800.61  -5403.99    143.86     0.27     1.00     0.22     1.00     0.27      7
+M0-allsky37 vs M9              -524.23  -1160.05    -63.70     0.02     1.00     0.11     1.00     0.09      7
+M0-ridge vs M1-ann             1240.44    538.81   2472.20     0.00     0.00     0.02     1.00     0.02      7
+M0-ridge vs M1-gbm              848.55    464.84   1414.37     0.00     0.00     0.02     1.00     0.00      7
+M0-ridge vs M10                 540.19   -196.61   1555.98     0.21     1.00     0.30     1.00     0.20      7
+M0-ridge vs M10-cmp          -20372.94 -28611.93 -12370.10     0.00     0.00     0.02     1.00     0.00      7
+M0-ridge vs M2                 -186.24   -669.07    119.70     0.50     1.00     0.94     1.00     0.36      7
+M0-ridge vs M3                 1219.23    392.80   2655.93     0.00     0.00     0.02     1.00     0.06      7
+M0-ridge vs M5                 1390.16    586.23   2729.24     0.00     0.00     0.02     1.00     0.02      7
+M0-ridge vs M6a                1315.17    474.12   2705.01     0.00     0.00     0.02     1.00     0.03      7
+M0-ridge vs M6b                1280.68    530.73   2610.33     0.00     0.00     0.02     1.00     0.03      7
+M0-ridge vs M6c                1354.55    508.00   2731.47     0.00     0.00     0.02     1.00     0.03      7
+M0-ridge vs M6d                1174.46    486.58   2409.56     0.00     0.00     0.02     1.00     0.03      7
+M0-ridge vs M6f                1194.61    415.85   2553.32     0.00     0.00     0.02     1.00     0.05      7
+M0-ridge vs M8                 -657.62  -4617.93   2231.40     0.76     1.00     0.30     1.00     0.71      7
+M0-ridge vs M9                  618.76     -5.26   1417.57     0.06     1.00     0.16     1.00     0.11      7
+M1-ann vs M1-gbm               -391.89  -1079.98     -7.19     0.04     1.00     0.11     1.00     0.19      7
+M1-ann vs M10                  -700.25  -1231.89   -196.16     0.00     0.19     0.05     1.00     0.01      7
+M1-ann vs M10-cmp            -21613.38 -30223.24 -13108.73     0.00     0.00     0.02     1.00     0.00      7
+M1-ann vs M2                  -1426.67  -3129.11   -472.45     0.00     0.00     0.02     1.00     0.05      7
+M1-ann vs M3                    -21.21   -192.59    205.63     0.77     1.00     0.58     1.00     0.85      7
+M1-ann vs M5                    149.72      9.73    301.66     0.03     1.00     0.16     1.00     0.03      7
+M1-ann vs M6a                    74.73    -92.40    249.21     0.40     1.00     0.47     1.00     0.43      7
+M1-ann vs M6b                    40.24   -150.68    207.49     0.64     1.00     0.58     1.00     0.62      7
+M1-ann vs M6c                   114.11    -70.23    315.40     0.26     1.00     0.47     1.00     0.22      7
+M1-ann vs M6d                   -65.98   -190.83     28.17     0.25     1.00     0.38     1.00     0.16      7
+M1-ann vs M6f                   -45.83   -170.10    100.64     0.50     1.00     0.69     1.00     0.50      7
+M1-ann vs M8                  -1898.06  -5474.17     -2.46     0.05     1.00     0.16     1.00     0.24      7
+M1-ann vs M9                   -621.68  -1165.69   -188.43     0.00     0.06     0.05     1.00     0.02      7
+M1-gbm vs M10                  -308.36   -897.27    250.91     0.31     1.00     0.47     1.00     0.28      7
+M1-gbm vs M10-cmp            -21221.49 -29489.68 -13005.76     0.00     0.00     0.02     1.00     0.00      7
+M1-gbm vs M2                  -1034.79  -2067.99   -415.43     0.00     0.00     0.02     1.00     0.02      7
+M1-gbm vs M3                    370.68   -114.43   1258.89     0.66     1.00     0.58     1.00     0.36      7
+M1-gbm vs M5                    541.61     75.04   1329.36     0.00     0.00     0.03     1.00     0.12      7
+M1-gbm vs M6a                   466.62    -18.66   1293.00     0.09     1.00     0.30     1.00     0.21      7
+M1-gbm vs M6b                   432.13    -54.23   1240.26     0.15     1.00     0.22     1.00     0.22      7
+M1-gbm vs M6c                   506.00      0.19   1334.78     0.05     1.00     0.11     1.00     0.16      7
+M1-gbm vs M6d                   325.91    -96.69   1046.14     0.42     1.00     0.30     1.00     0.30      7
+M1-gbm vs M6f                   346.06    -76.08   1140.11     0.65     1.00     0.58     1.00     0.33      7
+M1-gbm vs M8                  -1506.17  -5349.25    889.39     0.53     1.00     0.69     1.00     0.38      7
+M1-gbm vs M9                   -229.79   -534.95     45.52     0.11     1.00     0.22     1.00     0.16      7
+M10 vs M10-cmp               -20913.12 -29541.46 -12605.91     0.00     0.00     0.02     1.00     0.00      7
+M10 vs M2                      -726.42  -2195.77    252.64     0.25     1.00     0.47     1.00     0.23      7
+M10 vs M3                       679.04     42.54   1342.27     0.03     1.00     0.11     1.00     0.06      7
+M10 vs M5                       849.97    342.89   1409.37     0.00     0.00     0.02     1.00     0.00      7
+M10 vs M6a                      774.98    120.55   1449.51     0.02     1.00     0.08     1.00     0.03      7
+M10 vs M6b                      740.49    284.73   1244.43     0.00     0.00     0.03     1.00     0.01      7
+M10 vs M6c                      814.36    290.01   1393.82     0.00     0.00     0.03     1.00     0.01      7
+M10 vs M6d                      634.28    178.38   1092.64     0.00     0.25     0.05     1.00     0.01      7
+M10 vs M6f                      654.42    120.14   1217.93     0.01     0.71     0.08     1.00     0.03      7
+M10 vs M8                     -1197.81  -4399.74    679.34     0.67     1.00     0.69     1.00     0.41      7
+M10 vs M9                        78.57   -561.41    779.12     0.85     1.00     1.00     1.00     0.83      7
+M10-cmp vs M2                 20186.70  12299.00  28380.08     0.00     0.00     0.02     1.00     0.00      7
+M10-cmp vs M3                 21592.16  13020.47  30209.01     0.00     0.00     0.02     1.00     0.00      7
+M10-cmp vs M5                 21763.09  13118.36  30485.37     0.00     0.00     0.02     1.00     0.00      7
+M10-cmp vs M6a                21688.11  13106.61  30251.69     0.00     0.00     0.02     1.00     0.00      7
+M10-cmp vs M6b                21653.62  13134.42  30298.97     0.00     0.00     0.02     1.00     0.00      7
+M10-cmp vs M6c                21727.48  13037.46  30479.60     0.00     0.00     0.02     1.00     0.00      7
+M10-cmp vs M6d                21547.40  13084.69  30150.69     0.00     0.00     0.02     1.00     0.00      7
+M10-cmp vs M6f                21567.54  12986.35  30216.81     0.00     0.00     0.02     1.00     0.00      7
+M10-cmp vs M8                 19715.31  11546.65  28859.52     0.00     0.00     0.02     1.00     0.00      7
+M10-cmp vs M9                 20991.69  12750.30  29342.61     0.00     0.00     0.02     1.00     0.00      7
+M2 vs M3                       1405.46    324.86   3308.63     0.00     0.00     0.02     1.00     0.10      7
+M2 vs M5                       1576.39    544.84   3389.84     0.00     0.00     0.02     1.00     0.04      7
+M2 vs M6a                      1501.41    411.40   3351.83     0.00     0.00     0.02     1.00     0.07      7
+M2 vs M6b                      1466.91    467.35   3258.82     0.00     0.00     0.02     1.00     0.06      7
+M2 vs M6c                      1540.78    483.62   3402.06     0.00     0.00     0.02     1.00     0.05      7
+M2 vs M6d                      1360.70    411.24   3067.25     0.00     0.00     0.02     1.00     0.07      7
+M2 vs M6f                      1380.84    351.27   3203.79     0.00     0.00     0.02     1.00     0.08      7
+M2 vs M8                       -471.39  -4654.41   2844.61     0.89     1.00     0.30     1.00     0.80      7
+M2 vs M9                        804.99   -101.67   2079.65     0.11     1.00     0.30     1.00     0.16      7
+M3 vs M5                        170.93      0.20    393.59     0.05     1.00     0.16     1.00     0.07      7
+M3 vs M6a                        95.94     -3.45    204.61     0.05     1.00     0.11     1.00     0.10      7
+M3 vs M6b                        61.45   -113.43    246.23     0.51     1.00     0.69     1.00     0.51      7
+M3 vs M6c                       135.32    -25.07    368.31     0.18     1.00     0.38     1.00     0.16      7
+M3 vs M6d                       -44.76   -266.06    137.00     0.70     1.00     0.94     1.00     0.68      7
+M3 vs M6f                       -24.62   -137.26     98.97     0.67     1.00     0.58     1.00     0.66      7
+M3 vs M8                      -1876.85  -5440.99     83.68     0.12     1.00     0.16     1.00     0.25      7
+M3 vs M9                       -600.47  -1329.45   -105.48     0.01     0.41     0.11     1.00     0.08      7
+M5 vs M6a                       -74.99   -284.46     60.52     0.58     1.00     0.94     1.00     0.41      7
+M5 vs M6b                      -109.48   -274.02     22.84     0.14     1.00     0.47     1.00     0.12      7
+M5 vs M6c                       -35.61    -80.97     13.18     0.16     1.00     0.30     1.00     0.12      7
+M5 vs M6d                      -215.69   -376.06    -62.06     0.00     0.25     0.05     1.00     0.00      7
+M5 vs M6f                      -195.55   -300.20   -101.80     0.00     0.00     0.02     1.00     0.00      7
+M5 vs M8                      -2047.78  -5604.27   -201.55     0.00     0.00     0.02     1.00     0.21      7
+M5 vs M9                       -771.40  -1441.40   -242.68     0.00     0.00     0.02     1.00     0.01      7
+M6a vs M6b                      -34.49   -285.50    178.39     0.82     1.00     1.00     1.00     0.77      7
+M6a vs M6c                       39.38   -104.35    273.05     0.70     1.00     0.38     1.00     0.68      7
+M6a vs M6d                     -140.71   -357.27     59.66     0.19     1.00     0.47     1.00     0.22      7
+M6a vs M6f                     -120.56   -260.79     21.77     0.09     1.00     0.30     1.00     0.07      7
+M6a vs M8                     -1972.79  -5637.33     29.95     0.07     1.00     0.16     1.00     0.24      7
+M6a vs M9                      -696.41  -1354.86   -255.07     0.00     0.00     0.02     1.00     0.02      7
+M6b vs M6c                       73.87    -81.53    253.45     0.42     1.00     0.69     1.00     0.35      7
+M6b vs M6d                     -106.22   -204.55    -23.28     0.01     0.46     0.08     1.00     0.02      7
+M6b vs M6f                      -86.07   -169.94     28.81     0.12     1.00     0.30     1.00     0.10      7
+M6b vs M8                     -1938.30  -5351.55   -141.41     0.00     0.00     0.03     1.00     0.21      7
+M6b vs M9                      -661.92  -1323.73   -116.05     0.01     0.97     0.08     1.00     0.04      7
+M6c vs M6d                     -180.08   -359.15     10.16     0.07     1.00     0.38     1.00     0.06      7
+M6c vs M6f                     -159.94   -289.72    -46.79     0.00     0.25     0.05     1.00     0.01      7
+M6c vs M8                     -2012.17  -5569.43   -146.97     0.00     0.00     0.03     1.00     0.21      7
+M6c vs M9                      -735.79  -1447.32   -170.50     0.00     0.00     0.02     1.00     0.03      7
+M6d vs M6f                       20.14    -87.72    143.29     0.77     1.00     1.00     1.00     0.74      7
+M6d vs M8                     -1832.09  -5292.30     -2.53     0.05     1.00     0.11     1.00     0.25      7
+M6d vs M9                      -555.71  -1128.55    -79.08     0.02     1.00     0.08     1.00     0.05      7
+M6f vs M8                     -1852.23  -5377.00     13.84     0.07     1.00     0.16     1.00     0.25      7
+M6f vs M9                      -575.85  -1234.31    -83.05     0.01     0.78     0.08     1.00     0.07      7
+M8 vs M9                       1276.38  -1044.50   5116.02     0.67     1.00     0.58     1.00     0.47      7
+
+====================================================================================================
+Gate results
+====================================================================================================
+  B-bagpixel   FAIL: ok_bounds, ok_spacing, trend:SZA, trend:RAA, trend:glint, swath_asymmetry
+  B-clim       FAIL: ok_pcs, trend:SZA, trend:VZA, trend:RAA, trend:glint, swath_asymmetry
+  M0-advisor   FAIL: trend:SZA, trend:RAA, trend:glint, swath_asymmetry
+  M0-allsky37  FAIL: trend:RAA
+  M0-ridge     FAIL: trend:SZA, trend:VZA, trend:RAA, trend:glint, swath_asymmetry
+  M1-ann       PASS
+  M1-gbm       FAIL: trend:SZA, trend:RAA, trend:glint
+  M10          FAIL: trend:SZA, trend:RAA, trend:glint, swath_asymmetry
+  M10-cmp      FAIL: ok_pcs, trend:SZA, trend:VZA, trend:RAA, trend:glint, swath_asymmetry
+  M2           FAIL: ok_bounds, ok_spacing, trend:SZA, trend:RAA, trend:glint, swath_asymmetry
+  M3           FAIL: ok_pcs, trend:SZA, trend:RAA, swath_asymmetry
+  M5           FAIL: ok_pcs, ranking_flip:M6a@fov_ellipse,M6a@uniform,M6a@gaussian_psf
+  M6a          FAIL: ok_pcs, trend:SZA, ranking_flip:M5@fov_ellipse,M6c@fov_ellipse,M5@uniform,M5@gaussian_psf,M6c@gaussian_psf
+  M6b          FAIL: ok_pcs, trend:VZA
+  M6c          FAIL: ok_pcs, ranking_flip:M6a@fov_ellipse,M6a@gaussian_psf
+  M6d          FAIL: ok_pcs
+  M6f          FAIL: ok_pcs
+  M8           FAIL: ok_pcs, ok_spacing, trend:VZA, trend:RAA, trend:glint
+  M9           FAIL: ok_pcs, trend:SZA, trend:VZA, trend:RAA
+
+====================================================================================================
+Glossary
+====================================================================================================
+How to read this file
+  RMSE / MAE / bias / R2  footprint level, predicted vs CERES Fsw, in W m^-2 (bias = pred - CERES).
+  macro RMSE              mean of the RMSEs of the clear (CF < 5%), broken and overcast (CF >= 95%)
+                          regimes: the PRIMARY score (PLAN.md section 6).
+  macro@<operator>        the same score with a sensitivity aggregation operator; the ranking must not
+                          flip between operators.
+  interleave              RMSE on the leaky interleave test (every 2nd footprint); reported only, never
+                          used for ranking. A small gap to the LOGO RMSE is tie-breaker 2.
+  pixel RMSE/corr/SSIM    against the known 1 km truth (synthetic data only): tie-breaker 1.
+  trend effect            |slope| x range of the residual vs an angle; must stay below the trend gate.
+  swath asymmetry         forward- minus backscatter-side residual at matched VZA.
+  physics                 pcs = far-field pure clear-sky flux (target 80 +- 10 W m^-2), bound = fraction
+                          of pixels above S0 cos(SZA), spacing = power-spectrum peak at the footprint spacing.
+  comparisons             paired tests on per-group losses: bootstrap CI of loss(A) - loss(B) (negative =
+                          A better), bootstrap p and its Holm correction, Wilcoxon (+Holm), Diebold-Mariano.
+  ranked = no             the method reads the test footprints' own CERES labels (B-const, M6e, M7,
+                          M9-local): it is a reference for pixel truth and the interleave test only.
+
