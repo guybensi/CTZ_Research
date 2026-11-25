@@ -102,14 +102,17 @@ def tune(name: str, train: Batch, val: Batch, cfg: BenchmarkConfig, seed: int = 
         return {**grid[0], **fixed}, np.nan
     w = _weights(cfg.operator, cfg, val)
     best, best_score = None, np.inf
-    for params in grid:
-        p = {**params, **fixed}
+    for i, params in enumerate(grid, 1):
+        p, t0 = {**params, **fixed}, datetime.now()
         try:
             model = get_model(name, **p).fit(train, val)
             pred = model.predict_footprint(val, w)
-        except (ValueError, np.linalg.LinAlgError):
+        except (ValueError, np.linalg.LinAlgError) as e:
+            _progress(cfg, f"    {name} candidate {i}/{len(grid)} {params}: skipped ({type(e).__name__})")
             continue
         score = metrics.footprint_scores(val.label, pred)["rmse"]
+        _progress(cfg, f"    {name} candidate {i}/{len(grid)} {params}: val RMSE {score:.2f}"
+                       f" in {(datetime.now() - t0).total_seconds() / 60:.1f} min")
         if score < best_score:
             best, best_score = p, score
     if best is None:

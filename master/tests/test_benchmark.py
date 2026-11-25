@@ -181,3 +181,20 @@ class TestDiskCache:
 def _has_torch():
     import importlib.util
     return importlib.util.find_spec("torch") is not None
+
+
+class TestTuneProgress:
+    def test_one_line_per_candidate(self, capsys):
+        from flux1km.features import make_batch
+        rng = np.random.default_rng(0)
+        gs = [synthetic.make_synthetic_granule(g, rng, n_rows=3, n_cols=4) for g in ("A2014060.0245", "A2014061.0245")]
+        t = build_table(gs)
+        tr, va = make_batch(gs, t, np.arange(12)), make_batch(gs, t, np.arange(12, 24))
+        cfg = benchmark.BenchmarkConfig(models=("M0-ridge",), progress=True)
+        n = len(benchmark.get_model("M0-ridge").param_grid()[: cfg.budget])
+        benchmark.tune("M0-ridge", tr, va, cfg)
+        lines = [ln for ln in capsys.readouterr().out.splitlines() if "candidate" in ln]
+        assert len(lines) == n and lines[-1].split("candidate ")[1].startswith(f"{n}/{n}")
+        cfg.progress = False
+        benchmark.tune("M0-ridge", tr, va, cfg)
+        assert "candidate" not in capsys.readouterr().out
