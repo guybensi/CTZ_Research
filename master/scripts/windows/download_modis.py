@@ -51,6 +51,7 @@ import calendar
 import csv
 import os
 import re
+import socket
 import sys
 import time
 from collections import defaultdict
@@ -79,6 +80,9 @@ VERSION = "6.1"         # MODIS collection 6.1 (CMR spelling; the file names say
 DAY_ONLY = True         # daytime granules only
 OUT_DIR = str(Path.home() / "GUY_DATA")   # Windows: C:\\Users\\<you>\\GUY_DATA
 THREADS = 4             # parallel downloads
+SEARCH_TRIES = 5        # tries per catalogue search (NASA CMR sometimes answers "Internal Error")
+SEARCH_WAIT = 60        # seconds before the 2nd try; doubles after each failure (60+120+240+480 s)
+NET_TIMEOUT = 300       # seconds a network read may stall before it fails (no timeout = can hang forever)
 
 # Folder layout (matches Generate_AllSky_2.py; change only if that code changes)
 SATELLITE_DIR = "AQUA"
@@ -237,14 +241,53 @@ def granule_file_name(granule) -> str:
     return links[0].rstrip("/").split("/")[-1]
 
 
-def search_product(earthaccess, product: str, start: str, end: str, polygons) -> dict:
-    """Search one product over all polygons; return {granule key: granule result} (merged)."""
+def retry(fn, tries: int | None = None, wait: float | None = None, on_error=None, sleep=time.sleep):
+    """Call fn() until it returns; after each failure wait, then try again, doubling the wait.
+
+    tries and wait default to SEARCH_TRIES and SEARCH_WAIT (read at call time).
+
+    on_error(try_number, exception) is called after every failed try that will be retried.
+    The exception of the last try is raised.
+
+    Example:
+        >>> calls = []
+        >>> def flaky():
+        ...     calls.append(1)
+        ...     if len(calls) < 3:
+        ...         raise RuntimeError("An Internal Error has occurred.")
+        ...     return "ok"
+        >>> retry(flaky, tries=5, wait=0, sleep=lambda s: None), len(calls)
+        ('ok', 3)
+
+    Raises:
+        ValueError: tries < 1.
+    """
+    tries = SEARCH_TRIES if tries is None else tries
+    wait = SEARCH_WAIT if wait is None else wait
+    if tries < 1:
+        raise ValueError(f"tries must be >= 1, got {tries}")
+    for n in range(1, tries + 1):
+        try:
+            return fn()
+        except Exception as e:  # noqa: BLE001 - any failure of the remote call is retried
+            if n == tries:
+                raise
+            if on_error is not None:
+                on_error(n, e)
+            sleep(wait * 2 ** (n - 1))
+
+
+def search_product(earthaccess, product: str, start: str, end: str, polygons, on_error=None) -> dict:
+    """Search one product over all polygons; return {granule key: granule result} (merged).
+
+    Each polygon's search is retried (retry); on_error is passed on to it.
+    """
     found = {}
     for poly in polygons:
         kwargs = dict(short_name=product, version=VERSION, temporal=(start, end), polygon=poly)
         if DAY_ONLY:
             kwargs["day_night_flag"] = "day"
-        for g in earthaccess.search_data(**kwargs):
+        for g in retry(lambda kw=kwargs: list(earthaccess.search_data(**kw)), on_error=on_error):
             _, key, _, _ = parse_granule_name(granule_file_name(g))
             found[key] = g
     return found
@@ -395,6 +438,8 @@ def main(argv: list[str] | None = None) -> int:
 
     import earthaccess  # imported here so --help works without it
 
+    socket.setdefaulttimeout(NET_TIMEOUT)                # a stalled read fails instead of hanging
+
     out.mkdir(parents=True, exist_ok=True)
     log_path = out / "download_log.txt"
 
@@ -410,6 +455,7 @@ def main(argv: list[str] | None = None) -> int:
     manifest = out / "manifest.csv"
     new_manifest = not manifest.exists()
     total_mb, total_sets = 0.0, 0
+    failed_searches = []
     with open(manifest, "a", newline="") as mf:
         w = csv.writer(mf)
         if new_manifest:
@@ -419,10 +465,14 @@ def main(argv: list[str] | None = None) -> int:
             by_product = {}
             for prod in products:
                 try:
-                    by_product[prod] = search_product(earthaccess, prod, start, end, polygons)
+                    by_product[prod] = search_product(
+                        earthaccess, prod, start, end, polygons,
+                        on_error=lambda n, e, pr=prod, st=start: log(f"{st}: {pr} search try {n} failed: {e}; retrying",
+                                                                     log_path))
                 except Exception as e:  # noqa: BLE001 - keep going with the next product/month
                     log(f"{start}: search failed for {prod}: {e}", log_path)
                     by_product[prod] = {}
+                    failed_searches.append(f"{start[:7]} {prod}")
             keys = complete_sets(by_product)
             if a.max_granules is not None:
                 keys = spread(keys, max(a.max_granules - total_sets, 0))
@@ -461,6 +511,10 @@ def main(argv: list[str] | None = None) -> int:
             log(f"{start}..{end}: done", log_path)
 
     log(f"total: {total_sets} complete sets, {total_mb / 1024:.1f} GB", log_path)
+    if failed_searches:
+        log(f"SEARCH FAILED after {SEARCH_TRIES} tries for {len(failed_searches)} month/product(s): "
+            f"{', '.join(failed_searches)}. Those months were not downloaded: run the same command again.", log_path)
+        return 2
     return 0
 
 

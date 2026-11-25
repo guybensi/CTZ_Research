@@ -41,6 +41,7 @@ from __future__ import annotations
 import argparse
 import re
 import shutil
+import socket
 import sys
 import tempfile
 from datetime import date
@@ -254,8 +255,13 @@ def part_path(out_dir: Path, year: str, region: str, y: int, doy: int, hour: int
 
 
 def search(earthaccess, start: str, end: str, wanted: set | None) -> list:
-    """SSF granules in [start, end], restricted to the (year, doy, hour) in `wanted` if given."""
-    found = earthaccess.search_data(short_name=SHORT_NAME, version=VERSION, temporal=(start, end))
+    """SSF granules in [start, end], restricted to the (year, doy, hour) in `wanted` if given.
+
+    The catalogue search is retried (download_modis.retry), printing each failed try.
+    """
+    found = dm.retry(lambda: list(earthaccess.search_data(short_name=SHORT_NAME, version=VERSION,
+                                                           temporal=(start, end))),
+                     on_error=lambda n, e: print(f"CERES search try {n} failed: {e}; retrying", flush=True))
     out = []
     for g in found:
         links = g.data_links()
@@ -300,6 +306,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if not a.merge_only:
         import earthaccess
+
+        socket.setdefaulttimeout(dm.NET_TIMEOUT)    # a stalled read fails instead of hanging
 
         dm.earthdata_login(earthaccess)
         if a.find:
