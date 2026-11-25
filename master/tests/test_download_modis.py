@@ -184,3 +184,123 @@ class TestMainArguments:
         (old / "MYD03.A2008060.0245.061.2008061.hdf").write_bytes(b"x")
         assert dm.main(["--reorganize", "--out", str(tmp_path), "--region", "Atlantic"]) == 0
         assert (tmp_path / "AQUA/2008/Atlantic/feb/MOD03/MYD03.A2008060.0245.061.2008061.hdf").is_file()
+
+
+class TestRetry:
+    def test_returns_after_failures_with_doubling_waits(self):
+        calls, waits, errors = [], [], []
+
+        def flaky():
+            calls.append(1)
+            if len(calls) < 3:
+                raise RuntimeError("An Internal Error has occurred.")
+            return "ok"
+
+        out = dm.retry(flaky, tries=5, wait=10, on_error=lambda n, e: errors.append(n), sleep=waits.append)
+        assert out == "ok" and len(calls) == 3 and waits == [10, 20] and errors == [1, 2]
+
+    def test_first_success_does_not_wait(self):
+        waits = []
+        assert dm.retry(lambda: 7, tries=3, wait=10, sleep=waits.append) == 7 and waits == []
+
+    def test_last_exception_is_raised_after_all_tries(self):
+        calls = []
+
+        def always():
+            calls.append(1)
+            raise RuntimeError(f"fail {len(calls)}")
+
+        with pytest.raises(RuntimeError, match="fail 4"):
+            dm.retry(always, tries=4, wait=0, sleep=lambda s: None)
+        assert len(calls) == 4
+
+    def test_one_try_means_no_retry(self):
+        with pytest.raises(ValueError, match="boom"):
+            dm.retry(lambda: (_ for _ in ()).throw(ValueError("boom")), tries=1, sleep=lambda s: None)
+
+    def test_tries_below_one_is_refused(self):
+        with pytest.raises(ValueError, match="tries"):
+            dm.retry(lambda: 1, tries=0)
+
+    def test_defaults_are_read_at_call_time(self, monkeypatch):
+        monkeypatch.setattr(dm, "SEARCH_TRIES", 2)
+        waits, calls = [], []
+
+        def always():
+            calls.append(1)
+            raise OSError("down")
+
+        with pytest.raises(OSError):
+            dm.retry(always, sleep=waits.append)
+        assert len(calls) == 2 and len(waits) == 1
+
+
+class _Granule:
+    def __init__(self, name):
+        self.name, self.size = name, 1.0
+
+    def data_links(self):
+        return [f"https://example.invalid/{self.name}"]
+
+
+class _FlakyEarthaccess:
+    """search_data raises for the first `fails` calls, then returns 3 daytime granules of 2008-01-15."""
+
+    def __init__(self, fails):
+        self.fails, self.calls, self.downloaded = fails, 0, []
+
+    def login(self, **kw):
+        return True
+
+    def search_data(self, short_name, **kw):
+        self.calls += 1
+        if self.calls <= self.fails:
+            raise RuntimeError('{"errors":["An Internal Error has occurred."]}')
+        return [_Granule(f"{short_name}.A2008015.{h:02d}00.061.2008016000000.hdf") for h in (0, 8, 16)]
+
+    def download(self, granules, local_path, threads=4):
+        for g in granules:
+            (Path(local_path) / g.name).write_bytes(b"x" * (1024 * 1024))
+            self.downloaded.append(g.name)
+
+
+class TestSearchProduct:
+    def test_a_failed_search_is_retried(self, monkeypatch):
+        monkeypatch.setattr(dm, "SEARCH_WAIT", 0)
+        fake, errors = _FlakyEarthaccess(fails=2), []
+        found = dm.search_product(fake, "MYD03", "2008-01-01", "2008-01-31", [[(0, 0)]],
+                                  on_error=lambda n, e: errors.append(n))
+        assert sorted(found) == ["A2008015.0000", "A2008015.0800", "A2008015.1600"] and errors == [1, 2]
+
+    def test_gives_up_after_the_tries(self, monkeypatch):
+        monkeypatch.setattr(dm, "SEARCH_WAIT", 0)
+        monkeypatch.setattr(dm, "SEARCH_TRIES", 3)
+        fake = _FlakyEarthaccess(fails=99)
+        with pytest.raises(RuntimeError, match="Internal Error"):
+            dm.search_product(fake, "MYD03", "2008-01-01", "2008-01-31", [[(0, 0)]])
+        assert fake.calls == 3
+
+
+class TestMainSearchFailures:
+    ARGS = ["--start", "2008-01-15", "--end", "2008-01-15", "--products", "MYD021KM", "MYD03"]
+
+    def test_transient_failures_still_download_everything(self, tmp_path, monkeypatch):
+        import sys
+        monkeypatch.setattr(dm, "SEARCH_WAIT", 0)
+        fake = _FlakyEarthaccess(fails=3)
+        monkeypatch.setitem(sys.modules, "earthaccess", fake)
+        assert dm.main([*self.ARGS, "--out", str(tmp_path)]) == 0
+        assert len(fake.downloaded) == 6
+        log = (tmp_path / "download_log.txt").read_text()
+        assert "search try 1 failed" in log and "SEARCH FAILED" not in log
+
+    def test_a_month_that_never_answers_is_reported_and_exit_code_is_2(self, tmp_path, monkeypatch):
+        import sys
+        monkeypatch.setattr(dm, "SEARCH_WAIT", 0)
+        monkeypatch.setattr(dm, "SEARCH_TRIES", 2)
+        fake = _FlakyEarthaccess(fails=99)
+        monkeypatch.setitem(sys.modules, "earthaccess", fake)
+        assert dm.main([*self.ARGS, "--out", str(tmp_path)]) == 2
+        log = (tmp_path / "download_log.txt").read_text()
+        assert "SEARCH FAILED after 2 tries for 2 month/product(s): 2008-01 MYD021KM, 2008-01 MYD03" in log
+        assert fake.downloaded == []
