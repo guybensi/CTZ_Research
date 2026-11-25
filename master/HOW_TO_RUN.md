@@ -69,7 +69,7 @@ nohup /home/ilai/miniconda3/envs/ctz/bin/python -m flux1km.cli --data-root /arch
 - **השיטות:** רק אלה שחוזות את ה־footprint מהמומנטים, כי אין תמונות. שיטות המפה (B-clim, ‏M2–M10) מדולגות כשאין `images/`.
 - **מדגם ולא כל השנה:** `io.load_dataset` טוען לזיכרון את כל התיקייה. 676 גרנולות תופסות בערך 9 GB של RAM, והשנה כולה לא נכנסת בזיכרון.
 - **`--split day --k 5`:** ימים שלמים בכל fold, ועוד מבחן ה־interleave. החלוקה נשמרת ב־`split_day5.json`, כדי שהרצות הבאות יושוו על אותה חלוקה.
-- **סביבת Python:** ‏`ctz` (‏`conda create -n ctz -c conda-forge python=3.11 numpy scipy pandas scikit-learn`, ואז `pip install torch --index-url https://download.pytorch.org/whl/cu128`, כי PyPI איטי מהשרת). ‏torch 2.11.0+cu128 על ה־GPU של השרת (NVIDIA RTX PRO 4000 Blackwell, ‏24 GB). בסביבה `climate` חסרים sklearn ו־torch. ריצת `--demo` עם אותן 5 שיטות עברה בשרת בלי שגיאות.
+- **סביבות Python:** בניית הדאטה (`build_dataset.py`) רצה בסביבה `climate`, היחידה בשרת שיש בה `netCDF4` (‏1.7.4, עם HDF4). המודלים רצים ב־`ctz`, שאין בה `netCDF4`. ‏`ctz` (‏`conda create -n ctz -c conda-forge python=3.11 numpy scipy pandas scikit-learn`, ואז `pip install torch --index-url https://download.pytorch.org/whl/cu128`, כי PyPI איטי מהשרת). ‏torch 2.11.0+cu128 על ה־GPU של השרת (NVIDIA RTX PRO 4000 Blackwell, ‏24 GB). בסביבה `climate` חסרים sklearn ו־torch. ריצת `--demo` עם אותן 5 שיטות עברה בשרת בלי שגיאות.
 - **תוצאות (macro RMSE של Fsw, ‏W/m²), הדוח המלא ב־[results/2008_Pacific_every20/results.txt](docs/results/2008_Pacific_every20/results.txt):** ‏M1-ann ‏10.86 (המנצחת), ‏M0-allsky37 ‏13.11, ‏M1-gbm ‏13.13, ‏M0-ridge ‏33.14 (נכשלת במבחני המגמה מול SZA ו־glint). לפי ההשוואות הזוגיות על 646 קבוצות גרנולות, M1-ann טובה מכל השאר באופן מובהק (p < 0.01 בכל המבחנים). השורה "not significant" ביומן ההחלטה אומרת רק שהמתחרה לא *שיפרה* מובהקת על M1-ann. לפי סוג עננות, RMSE של M1-ann: בהיר 5.99, חלקי 12.56, מלא 14.03 (M0-allsky37: ‏8.38, ‏14.74, ‏16.22). ‏**M0-advisor התבדרה** (RMSE בסדר גודל של 10^38), רק ב־footprints הבהירים: בחלקי ובמלא היא נותנת 24.33 ו־31.12. הרשת של המנחה חוזה ב־log1p ומחזירה עם expm1, כך שחיזוי חריג אחד בשמיים בהירים מתפוצץ. צריך לבדוק לפני שמשווים אליה.
 - **מעקב:** `pgrep -af flux1km.cli` (יש שורה = רץ). בסוף, `tail -15 /archive/GUY/results_run.out` מציג את הטבלה ואת הנתיב של `results.txt`.
 
@@ -269,7 +269,7 @@ python3 scripts/organize_ceres.py --verify-only --out /archive/GUY
 
 ```bash
 cd ~/GUY/CTZ_Research/master && git pull
-nice -n 19 /home/ilai/miniconda3/envs/ctz/bin/python scripts/build_dataset.py --data /archive/GUY \
+nice -n 19 /home/ilai/miniconda3/envs/climate/bin/python scripts/build_dataset.py --data /archive/GUY \
     --out /archive/GUY/dataset_viz --workers 1 --granules $(ls /archive/GUY/subsets/img6/images | sed 's/\.npz$//')
 ```
 
