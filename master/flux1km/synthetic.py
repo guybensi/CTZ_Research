@@ -208,6 +208,25 @@ def make_hard_radiances(sza, vza, raa, glint, tau, cloud, dist_km, rng, ctz: boo
     return sw, lw, flux, adm
 
 
+def cloud_confidence(cloud: np.ndarray, dist_km: np.ndarray) -> np.ndarray:
+    """A MYD35-like confidence (uint8: 0 cloudy, 1 uncertain, 2 probably clear, 3 clear) from a true cloud field.
+
+    The real mask hesitates at cloud edges, so clear pixels within 1 km of a cloud are "uncertain" and those
+    within 3 km "probably clear"; the relaxed mask (conf == 0) is then the true cloud, the strict one (conf <= 1)
+    a cloud grown by one pixel.
+
+    Example:
+        >>> c = np.array([[True, False, False, False, False]]); d = np.array([[0.0, 1.0, 2.0, 3.0, 4.0]])
+        >>> cloud_confidence(c, d).tolist()
+        [[0, 1, 2, 2, 3]]
+    """
+    conf = np.full(np.shape(cloud), 3, dtype=np.uint8)
+    conf[np.asarray(dist_km) <= 3.0] = 2
+    conf[np.asarray(dist_km) <= 1.0] = 1
+    conf[np.asarray(cloud, bool)] = 0
+    return conf
+
+
 def make_synthetic_granule(granule_id: str, rng: np.random.Generator, n_rows: int = 6, n_cols: int = 20,
                            ctz: bool = True, label_noise: float = 2.0, operator: str = "fov_ellipse",
                            lat0: float = 0.0, lon0: float = -150.0, hard: bool = False,
@@ -278,7 +297,8 @@ def make_synthetic_granule(granule_id: str, rng: np.random.Generator, n_rows: in
     # row0/col0: optional footprint position (patch corner) in the granule's MODIS grid. Real triplets do not
     # have them yet; an in-house footprint index (PLAN.md section 2.3, phase F) would. Used by M7 (ATPRK).
     images = {"Imviews": views, "ImSW": im_sw, "ImLW": im_lw, "FOVorientation": orientation,
-              "row0": r0.astype(np.int32), "col0": c0.astype(np.int32)}
+              "row0": r0.astype(np.int32), "col0": c0.astype(np.int32),
+              "ImCloud": cut(cloud_confidence(scene["cloud"], scene["dist_km"]))}
     truth = {"flux": flux.astype(np.float32), "cloud": cloud, "dist_km": cut(scene["dist_km"]).astype(np.float32),
              "row0": r0, "col0": c0}
     return Granule(granule_id, scalars, mom, images, truth)

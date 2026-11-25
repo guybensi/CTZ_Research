@@ -213,6 +213,7 @@ python3 -m flux1km.methods.<שם הקובץ> --data-root DIR --manifest M.json  
 | `sampling_study.py` | אסטרטגיות S0–S7: ‏Jaccard, ‏KS, ‏MMD, מטריצת אימון לפי Si מול בדיקה לפי תת־אוכלוסייה, ו־Kendall τ | `python3 -m flux1km.sampling_study --models ...` |
 | `decision.py` | כלל ההחלטה של סעיף 6. מופעל אוטומטית בכל הרצה | — |
 | `cli.py` | הרצה של כל השיטות או של חלקן | `python3 -m flux1km.cli` |
+| `mapviz.py` | איורים של מפות 1 ק"מ לכל שיטת מפה: הסצנה, כרטיס footprint לכל משטר, ממוצע משוקלל מול CERES, עקומת CTZ, וה־masks של העננים. פירוט בהמשך הסעיף | `python3 -m flux1km.mapviz --demo` |
 | `scripts/download_modis.py` | הורדת גרנולות Aqua מ־LAADS DAAC ‏(ברירת מחדל `MYD021KM` ו־`MYD03`; אפשר להוסיף `MYD06_L2` ו־`MYD35_L2`), רק סטים מלאים ורק בשעות היום. תאריכים, יעד, שם אזור ותיבה נקבעים בארגומנטים (`--start --end --out --region --box --products`), בלי לערוך את הקובץ | `python3 scripts/download_modis.py --start 2008-01-01 --end 2008-12-31 --out /archive/GUY --dry-run` |
 
 הסקריפט עצמאי, ולכן אפשר להעתיק אותו לכל שרת. הוא צריך רק את `earthaccess` ומשתמש `Earthdata Login` שמוגדר ב־`~/.netrc`. ברירת המחדל היא כל 2008, האוקיינוס השקט בין 60°S ל־60°N, והפלט נשמר ב־`/archive/GUY`.
@@ -251,6 +252,42 @@ python3 scripts/organize_ceres.py --verify-only --out /archive/GUY
 ```
 
 ---
+
+### איורי המפות (`mapviz.py`)
+
+הכלי מאמן כל שיטת מפה **פעם אחת** על fold אחד, עם הפרמטרים שה־benchmark כבר בחר ל־fold הזה (`--params-from summary.json`, בלי כוונון מחדש). אחר כך הוא חוזה מפות בחלון של 150 על 500 ק"מ בכמה גרנולות מסט הבדיקה. החלון נבחר כך שיהיו בו footprints בהירים, שבורים ומעוננים. המפות נשמרות (`maps_<granule>.npz`), ומהן נוצרים חמישה איורים לכל גרנולה:
+
+| קובץ | מה רואים |
+|---|---|
+| `fig1_scene_*.png` | תמונת 0.66 µm עם גבולות ה־mask של MYD35 (רגיל ומחמיר), מה ש־CERES רואה (ערך ה־footprint צבוע על הפיקסלים שלו), ומפת 1 ק"מ של כל שיטה בסקאלת צבע אחת, עם ה־RMSE מול CERES |
+| `fig2_footprint_<משטר>_*.png` | footprint אחד בהיר, שבור ומעונן: העננים בו, ה־CF לפי כל mask (רגיל ומשוקלל PSF), ה־PSF, הערך של CERES ו־100−Clrf, המפה של כל שיטה, וה־Σw·f שלה מול CERES עם רצועת ±10 |
+| `fig3_scatter_*.png` | כל ה־footprints בחלון: Σw·f של כל שיטה מול CERES, צבוע לפי כיסוי העננים |
+| `fig4_ctz_*.png` | השטף הממוצע של פיקסלים בהירים מול המרחק מענן, לכל שיטה, לפי ה־mask הרגיל והמחמיר. עקומה יורדת יכולה להיות CTZ, אבל גם תוצאה של החלקה |
+| `fig5_masks_*.png` | שלושת ה־masks (MYD35 רגיל, MYD35 מחמיר, פרוקסי 0.66 µm), וה־CF של כל אחד מול האחוז המעונן של CERES ‏(100−Clrf) |
+
+**מה הכלי צריך מהדאטה:** בקבצי ה־images צריכים להיות `row0` ו־`col0` (מיקום הטלאי בגרנולה) ו־`ImCloud` (ה־mask של MYD35 לכל פיקסל). `build_dataset.py` שומר אותם מ־25.11.2026. הגרנולות של `img6` נבנו לפני כן, ולכן בונים מחדש רק אותן לתיקייה נפרדת. כך לא נוגעים בקבצים שהרצות אחרות קוראות. גרנולה אחת לוקחת כחצי דקה, ו־worker אחד צריך כ־1.5 GB:
+
+```bash
+cd ~/GUY/CTZ_Research/master && git pull
+nice -n 19 /home/ilai/miniconda3/envs/ctz/bin/python scripts/build_dataset.py --data /archive/GUY \
+    --out /archive/GUY/dataset_viz --workers 1 --granules $(ls /archive/GUY/subsets/img6/images | sed 's/\.npz$//')
+```
+
+ואז האיורים, עם החלוקה והפרמטרים של ריצת `img6`. ‏`pip install matplotlib` בסביבה `ctz` אם הוא חסר:
+
+```bash
+nohup nice -n 19 /home/ilai/miniconda3/envs/ctz/bin/python -m flux1km.mapviz --data-root /archive/GUY/dataset_viz/Pacific \
+    --manifest /archive/GUY/subsets/img6/split_day5.json --fold day-kfold:0 --psf resources/ceres_psf.csv \
+    --params-from docs/results/2008_Pacific_img6/summary.json --n-granules 2 \
+    --models B-const B-bagpixel M2 M3 M5 M6a M6b M6c M6d M6f M8 M9 M10 \
+    --cache-dir ~/ctz_cache --out /archive/GUY/maps > /archive/GUY/maps_run.out 2>&1 & disown
+```
+
+- **זמן:** כמו fold אחד של ה־benchmark בלי הכוונון, כלומר אימון אחד לכל שיטה: כ־2 שעות לכל הרשימה. ‏M4 לא ברשימה, כי היא לבדה לוקחת כ־8 שעות.
+- **זיכרון:** כמו ה־benchmark עם `--cache-dir`, כמה GB בלבד, ו־`nice` נותן עדיפות להרצות אחרות.
+- **החלוקה:** אם `--manifest` נכשל עם "manifest was built on a different footprint table", מספר ה־footprints שנבנו מחדש לא זהה למקור. במקרה כזה מריצים בלי `--manifest` ובלי `--params-from`, והכלי בונה חלוקה לפי ימים ובוחר את הפרמטר הראשון ברשת של כל שיטה.
+- **ציור מחדש בלי אימון:** `python3 -m flux1km.mapviz --replot /archive/GUY/maps/run_<זמן>`.
+- **לריפו:** את ה־PNG מעתיקים ל־`docs/results/2008_Pacific_img6/maps/`. קבצי ה־`maps_*.npz` גדולים ונשארים בשרת.
 
 ## 8. כללים שהקוד אוכף
 

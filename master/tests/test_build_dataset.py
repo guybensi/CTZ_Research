@@ -117,12 +117,29 @@ class TestDecodeCloudMask:
         assert bd.decode_cloud_mask(b, "relaxed")["cloud"].tolist() == [False, False]
         assert bd.decode_cloud_mask(b, "strict")["cloud"].tolist() == [True, False]
 
+    def test_confidence_values(self):
+        d = bd.decode_cloud_mask(np.array([0b00000000, 0b00000011, 0b00000101, 0b00000111]))
+        assert d["conf"].dtype == np.uint8 and d["conf"].tolist() == [0, 1, 2, 3]       # undetermined -> 0
+
     def test_negative_int8_bytes(self):
         assert bd.decode_cloud_mask(np.array([-1], dtype="int8"))["land"].tolist() == [3]
 
     def test_bad_kind(self):
         with pytest.raises(ValueError):
             bd.decode_cloud_mask(np.array([1]), "loose")
+
+
+class TestGranuleDateRange:
+    def test_range(self):
+        assert bd.granule_date_range(["A2008066.0305", "A2008006.2240"]) == ("2008-01-06", "2008-03-06")
+
+    def test_leap_year_last_day(self):
+        assert bd.granule_date_range(["A2008366.0000"]) == ("2008-12-31", "2008-12-31")
+
+    @pytest.mark.parametrize("key", ["A2009366.0000", "A2008000.0000", "MYD021KM.A2008001.0300", "A2008001"])
+    def test_bad_keys(self, key):
+        with pytest.raises(ValueError):
+            bd.granule_date_range([key])
 
 
 class TestRelativeAzimuth:
@@ -209,6 +226,28 @@ class TestExtractFootprints:
         assert fwd["moments"]["mSWspec"][0, 5] == pytest.approx(15.0, rel=1e-5)
         assert bwd["moments"]["mSWspec"][0, 5] == pytest.approx(15.0, rel=1e-5)
         assert fwd["moments"]["mSWspec"][0, 0] != pytest.approx(bwd["moments"]["mSWspec"][0, 0])
+
+    def test_patch_position_is_saved(self):
+        m = modis_arrays()
+        res = extract(m, ceres_arrays(m["lat"], m["lon"], [(CY, CX), (CY + 9, CX + 3)]))
+        im = res["images"]
+        assert im["row0"].dtype == np.int32 and im["col0"].dtype == np.int32
+        assert im["row0"].tolist() == [CY - 13, CY + 9 - 13]
+        for k in range(2):                                         # the patch is the granule cut at (row0, col0)
+            r, c = int(im["row0"][k]), int(im["col0"][k])
+            np.testing.assert_array_equal(im["ImSW"][k, 0], m["solar"][0, r:r + 27, c:c + 55])
+
+    def test_cloud_confidence_patches(self):
+        m = modis_arrays()
+        conf = np.full((H, W), 3, "uint8")
+        conf[CY - 2:CY + 3, CX - 2:CX + 3] = 0
+        ce = ceres_arrays(m["lat"], m["lon"], [(CY, CX), (CY, CX + 3)])
+        res = extract(m, ce, cloud_conf=conf)
+        im = res["images"]
+        assert im["ImCloud"].dtype == np.uint8 and im["ImCloud"].shape == (2, 27, 55)
+        r, c = int(im["row0"][0]), int(im["col0"][0])
+        np.testing.assert_array_equal(im["ImCloud"][0], conf[r:r + 27, c:c + 55])
+        assert "ImCloud" not in extract(m, ce)["images"]           # no MYD35: no ImCloud
 
     def test_night_footprint_skipped(self):
         m = modis_arrays()
@@ -776,6 +815,23 @@ class TestLimitDiagnoseRetry:
         logs = []
         self.build(data, out, diagnose=1, log=logs.append)
         assert "1.64um=50%" in "\n".join(logs)
+
+    def test_only_rebuilds_the_named_granules(self, tmp_path):
+        data, out = make_month(tmp_path)
+        assert self.build(data, out)["ok"] == 2
+        c = self.build(data, out, only={"A2008002.0300"})          # already built: rebuilt anyway
+        assert c["ok"] == 1 and c["skipped"] == 0
+        assert self.build(data, out, only={"A2009001.0000"})["ok"] == 0
+
+    def test_cli_granules_option(self, tmp_path):
+        data, out = make_month(tmp_path)
+        assert bd.main(["--data", str(data), "--out", str(out), "--workers", "1", "--granules", "A2008002.0300"]) == 0
+        jan = out / "Pacific/2008/jan"
+        assert [p.stem for p in (jan / "images").glob("*.npz")] == ["A2008002.0300"]
+        with np.load(jan / "images/A2008002.0300.npz") as im:
+            assert {"row0", "col0"} <= set(im.files)
+        with pytest.raises(SystemExit):
+            bd.main(["--data", str(data), "--out", str(out), "--granules", "nonsense"])
 
     def test_cli_options(self, tmp_path):
         data, out = make_month(tmp_path)

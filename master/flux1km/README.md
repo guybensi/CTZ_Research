@@ -53,6 +53,7 @@ The demo writes the six image-granule names as synthetic granules, groups them b
 | `sampling_study` | S0–S7 × leading methods: Jaccard/KS/MMD, train-on-Si × test-subpopulation matrix, Kendall τ rule | §5 |
 | `synthetic_study` | synthetic-truth experiment: pixel scores vs B-const, footprint counts × aggregation sizes, no-CTZ control | §4.3 |
 | `cli`, `run_single` | command-line entry points (all methods / one method module) | |
+| `mapviz` | figures of the 1 km maps: scene mosaic per method, footprint cards (clouds, CF per mask, Σw·f vs CERES), scatter, flux vs distance from cloud, cloud masks (MYD35 relaxed/strict, 0.66 µm proxy) vs CERES `Clrf`; `--replot` redraws saved maps | §6 |
 | `methods/` | the candidate methods, one family per module (table below) | §3 |
 
 ### `methods/`

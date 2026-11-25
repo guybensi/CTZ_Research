@@ -73,7 +73,7 @@ git clone https://github.com/guybensi/CTZ_Research.git && cd CTZ_Research/master
 ```
 2. **סביבת Python נפרדת** (לא ב־`base` של שרת משותף):
 ```bash
-conda create -n ctz -c conda-forge python=3.11 numpy scipy pandas scikit-learn netcdf4 -y
+conda create -n ctz -c conda-forge python=3.11 numpy scipy pandas scikit-learn netcdf4 matplotlib -y
 ```
 ‏`netcdf4` מ־conda-forge ולא מ־pip, כי צריך תמיכה ב־HDF4 בשביל קבצי MODIS.
 3. **PyTorch:** בשרת הנוכחי PyPI היה איטי מאוד (כ־50 KB/s), אז ההתקנה הייתה מהשרת של PyTorch עצמו. הגרסה `cu128` מתאימה לדרייבר שתומך ב־CUDA 12.8 ומעלה, כולל כרטיסי Blackwell. את גרסת ה־CUDA בודקים עם `nvidia-smi`, בפינה הימנית העליונה.

@@ -81,3 +81,19 @@ class TestHardScene:
 
     def test_anisotropy_glint_lobe(self):
         assert synthetic.anisotropy(30.0, 30.0, 0.0, 0.0, 0.0) > 2 * synthetic.anisotropy(30.0, 30.0, 180.0, 60.0, 0.0)
+
+
+class TestCloudConfidence:
+    def test_rings_around_cloud(self):
+        c = np.array([[True, False, False, False, False]]); d = np.array([[0.0, 1.0, 2.0, 3.0, 4.0]])
+        assert synthetic.cloud_confidence(c, d).tolist() == [[0, 1, 2, 2, 3]]
+
+    def test_dtype_and_no_cloud(self):
+        out = synthetic.cloud_confidence(np.zeros((2, 2), bool), np.full((2, 2), np.inf))
+        assert out.dtype == np.uint8 and (out == 3).all()
+
+    def test_granule_images_carry_it(self):
+        g = synthetic.make_synthetic_granule("A2014060.0245", np.random.default_rng(0), n_rows=2, n_cols=2)
+        conf = g.images["ImCloud"]
+        assert conf.shape == (4, 27, 55) and conf.dtype == np.uint8
+        np.testing.assert_array_equal(conf == 0, g.truth["cloud"])

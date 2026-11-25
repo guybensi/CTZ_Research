@@ -74,6 +74,7 @@ REQUIRED_LW = (2, 3, 5, 6, 7, 9, 10, 11)
 PSF_COLUMN_OFFSET = 0                  # the advisor's code is equivalent to 1 (see HOW_TO_BUILD_DATASET.md, fix 8)
 EARTH_RADIUS_KM = 6371.0
 CLOUD_MASK_TYPE = "relaxed"            # "relaxed": cloudy = the most confident cloudy class only
+IMAGE_DTYPES = {"row0": "int32", "col0": "int32", "ImCloud": "uint8"}   # every other image array is float32
 
 DEFAULT_PSF = Path(__file__).resolve().parents[2] / "resources" / "ceres_psf.csv"   # the advisor's CERES PSF
 
@@ -81,7 +82,7 @@ SCALAR_KEYS = ["Fsw", "Isw", "Flw", "Ilw", "mSumIsw", "stdSumIsw", "mSumIlw", "s
                "meanCTH", "stdCTH", "LiqPhsf", "VZA", "SZA", "RAA", "Lat", "Lon", "AOD", "Clrf", "glintf", "landf"]
 MOMENT_KEYS = ["mSWspec", "mLWspec", "stdSWspec", "stdLWspec", "skewSWspec", "skewLWspec", "kurtSWspec",
                "kurtLWspec", "SWwavlngs", "LWwavlngs"]
-IMAGE_KEYS = ["Imviews", "ImSW", "ImLW", "FOVorientation"]
+IMAGE_KEYS = ["Imviews", "ImSW", "ImLW", "FOVorientation", "row0", "col0"]   # + ImCloud when MYD35 is present
 PARTS = ("scalars", "moments", "images")
 # Worker processes: "fork" on Linux/macOS (cheap); Windows has only "spawn" (each worker re-imports this file).
 START_METHOD = os.environ.get("CTZ_START_METHOD") or ("fork" if "fork" in mp.get_all_start_methods() else "spawn")
@@ -221,12 +222,13 @@ def read_cloud_mask_byte0(path: str) -> np.ndarray:
 
 
 def decode_cloud_mask(byte0, kind: str = CLOUD_MASK_TYPE) -> dict[str, np.ndarray]:
-    """Decode MYD35 byte 0 into boolean `cloud`, boolean `glint` and the 2-bit `land` code (0 water .. 3 land).
+    """Decode MYD35 byte 0 into boolean `cloud`, boolean `glint`, the 2-bit `land` code (0 water .. 3 land) and `conf`.
 
     Bits: 0 = mask determined; 1-2 = cloud confidence (0 cloudy, 1 uncertain, 2 probably clear, 3 clear);
     4 = 0 when sun glint is present; 6-7 = 0 water, 1 coastal, 2 desert, 3 land.
     Undetermined pixels count as cloudy, have no glint and are water (as in the advisor's code).
-    "relaxed": cloudy = confidence 0; "strict": cloudy = confidence 0 or 1.
+    "relaxed": cloudy = confidence 0; "strict": cloudy = confidence 0 or 1. `conf` is the confidence itself
+    (uint8 0..3, undetermined = 0), saved per pixel in the images (ImCloud) so both masks can be drawn later.
 
     Example:
         >>> b = np.array([0b00000001, 0b00110011, 0b11010111])   # cloudy+glint; uncertain; clear over land
@@ -235,6 +237,8 @@ def decode_cloud_mask(byte0, kind: str = CLOUD_MASK_TYPE) -> dict[str, np.ndarra
         ([True, False, False], [True, False, False], [0, 0, 3])
         >>> decode_cloud_mask(np.array([0b00000011]), "strict")["cloud"].tolist()    # confidence 1
         [True]
+        >>> d["conf"].tolist()
+        [0, 1, 3]
 
     Raises:
         ValueError: if `kind` is not "relaxed" or "strict".
@@ -247,7 +251,7 @@ def decode_cloud_mask(byte0, kind: str = CLOUD_MASK_TYPE) -> dict[str, np.ndarra
     cloud = conf == 0 if kind == "relaxed" else conf <= 1
     glint = determined & (((b >> 4) & 1) == 0)
     land = np.where(determined, (b >> 6) & 3, 0).astype("int8")
-    return {"cloud": cloud, "glint": glint, "land": land}
+    return {"cloud": cloud, "glint": glint, "land": land, "conf": conf.astype("uint8")}
 
 
 def relative_azimuth(solar_az, sensor_az) -> np.ndarray:
@@ -339,7 +343,7 @@ def _mean_std_valid(values: np.ndarray, w: np.ndarray, exclude: np.ndarray) -> t
 def extract_footprints(solar, thermal, lat, lon, szen, vzen, raa, cloud, glint, land, cth, phase,
                        ceres: dict, hour_key: int, psf: np.ndarray, gen_images: bool = True,
                        psf_column_offset: int = PSF_COLUMN_OFFSET, required_sw=REQUIRED_SW, required_lw=REQUIRED_LW,
-                       stats: dict | None = None):
+                       stats: dict | None = None, cloud_conf: np.ndarray | None = None):
     """Cut the CERES footprints of one granule out of the MODIS arrays.
 
     Args:
@@ -353,10 +357,13 @@ def extract_footprints(solar, thermal, lat, lon, szen, vzen, raa, cloud, glint, 
             be kept. Every other channel with more invalid weight gets NaN moments (and its pixels stay NaN in the
             images, and out of mSum*). Pass range(11) and range(16) to require every channel.
         stats: optional dict that receives the counts candidates / outside / no_neighbour / edge / invalid / accepted.
+        cloud_conf: optional (H, W) MYD35 confidence 0..3 (decode_cloud_mask "conf"); saved as the ImCloud patches.
 
     Returns:
         None if the granule yields no footprint, else {"scalars": dict, "moments": dict, "images": dict | None}
-        with the advisor's keys; footprints are in CERES order.
+        with the advisor's keys; footprints are in CERES order. The images also hold row0, col0 (int32, the
+        patch corner in the granule's MODIS grid, to place the patches on a map) and, with cloud_conf, ImCloud
+        (uint8 (N, 27, 55), the MYD35 confidence per pixel: 0 cloudy, 1 uncertain, 2 probably clear, 3 clear).
     """
     from scipy.spatial import cKDTree
 
@@ -423,7 +430,9 @@ def extract_footprints(solar, thermal, lat, lon, szen, vzen, raa, cloud, glint, 
     dfnc = distance_to_cloud(cloud)
     rows = {k: [] for k in SCALAR_KEYS}
     mom = {k: [] for k in MOMENT_KEYS[:8]}
-    ims = {"Imviews": [], "ImSW": [], "ImLW": [], "FOVorientation": []}
+    ims = {"Imviews": [], "ImSW": [], "ImLW": [], "FOVorientation": [], "row0": [], "col0": []}
+    if cloud_conf is not None:
+        ims["ImCloud"] = []
 
     for n, fov in enumerate(cand):
         cy, cx = int(row0[n]), int(col0[n])
@@ -492,13 +501,17 @@ def extract_footprints(solar, thermal, lat, lon, szen, vzen, raa, cloud, glint, 
             ims["ImSW"].append(solarfov)
             ims["ImLW"].append(thermalfov)
             ims["FOVorientation"].append(float(normal))
+            ims["row0"].append(r0)
+            ims["col0"].append(k0)
+            if cloud_conf is not None:
+                ims["ImCloud"].append(cloud_conf[sl])
 
     if not rows["Fsw"]:
         return None
     scalars = {k: np.asarray(v, dtype="float32") for k, v in rows.items()}
     moments = {k: np.asarray(v, dtype="float32") for k, v in mom.items()}
     moments["SWwavlngs"], moments["LWwavlngs"] = SW_WAVELENGTHS.copy(), LW_WAVELENGTHS.copy()
-    images = {k: np.asarray(v, dtype="float32") for k, v in ims.items()} if gen_images else None
+    images = {k: np.asarray(v, dtype=IMAGE_DTYPES.get(k, "float32")) for k, v in ims.items()} if gen_images else None
     return {"scalars": scalars, "moments": moments, "images": images}
 
 
@@ -531,13 +544,14 @@ def read_granule(d: dict) -> dict:
     if d.get("MOD35"):
         mask = decode_cloud_mask(read_cloud_mask_byte0(d["MOD35"]), CLOUD_MASK_TYPE)
     else:                                                               # no cloud mask: flags unknown
-        mask = {"cloud": np.zeros(lat.shape, bool), "glint": np.zeros(lat.shape, bool), "land": np.zeros(lat.shape, "int8")}
+        mask = {"cloud": np.zeros(lat.shape, bool), "glint": np.zeros(lat.shape, bool), "land": np.zeros(lat.shape, "int8"),
+                "conf": None}
     cth = phase = None
     if d.get("MOD06"):
         phase = read_plain(d["MOD06"], "Cloud_Phase_Infrared_1km")
         cth = read_plain(d["MOD06"], "cloud_top_height_1km")
     return dict(solar=solar, thermal=thermal, lat=lat, lon=lon, szen=szen, vzen=vzen, raa=raa, cloud=mask["cloud"],
-                glint=mask["glint"], land=mask["land"], cth=cth, phase=phase)
+                glint=mask["glint"], land=mask["land"], cth=cth, phase=phase, cloud_conf=mask["conf"])
 
 
 def _required(task: dict):
@@ -550,7 +564,8 @@ def _call_extract(m: dict, task: dict, stats: dict):
     req_sw, req_lw = _required(task)
     return extract_footprints(m["solar"], m["thermal"], m["lat"], m["lon"], m["szen"], m["vzen"], m["raa"], m["cloud"],
                               m["glint"], m["land"], m["cth"], m["phase"], task["ceres"], task["hour_key"], task["psf"],
-                              task["gen_images"], required_sw=req_sw, required_lw=req_lw, stats=stats)
+                              task["gen_images"], required_sw=req_sw, required_lw=req_lw, stats=stats,
+                              cloud_conf=m.get("cloud_conf"))
 
 
 def process_granule(task: dict) -> dict:
@@ -691,11 +706,14 @@ def ceres_slice(ceres: dict, hour_key: int) -> dict | None:
 
 def build_month(data_root: Path, out_root: Path, year: int, region: str, month: int, psf: np.ndarray, *,
                 start: str, end: str, workers: int, gen_images: bool, limit: int | None, dry_run: bool,
-                log, required: str = "core", retry_empty: bool = False, diagnose: int = 0) -> dict[str, int]:
+                log, required: str = "core", retry_empty: bool = False, diagnose: int = 0,
+                only: set[str] | None = None) -> dict[str, int]:
     """Process one month folder; returns counts by status (ok, empty, error, skipped).
 
     limit: build only that many granules, spread over the month. diagnose: instead of building, report why that
     many granules (spread over the month) give few footprints. required: "core" or "all" (see REQUIRED_SW).
+    only: build just these granule keys (e.g. {"A2008006.0305"}), even if they were built before (the files are
+    replaced): used to rebuild a few granules with new image fields into a separate --out.
     """
     mdir = dm.MONTH_DIRS[month - 1]
     src = Path(data_root) / dm.SATELLITE_DIR / str(year) / region / mdir
@@ -705,7 +723,9 @@ def build_month(data_root: Path, out_root: Path, year: int, region: str, month: 
         log(f"{year}/{mdir}: no folder {src}")
         return counts
     granules = list_granules(src, start, end)
-    already = set() if diagnose else done_keys(month_out, gen_images, retry_empty)
+    if only is not None:
+        granules = [g for g in granules if g["key"] in only]
+    already = set() if (diagnose or only is not None) else done_keys(month_out, gen_images, retry_empty)
     todo = [g for g in granules if g["key"] not in already]
     counts["skipped"] = len(granules) - len(todo)
     if limit is not None:
@@ -757,6 +777,27 @@ def _append_log(month_out: Path, r: dict) -> None:
         if new:
             w.writerow(["granule", "status", "n_footprints", "seconds", "message"])
         w.writerow([r["key"], r["status"], r["n"], f"{r['sec']:.1f}", r["msg"].replace("\n", " | ")[:300]])
+
+
+def granule_date_range(keys: list[str]) -> tuple[str, str]:
+    """(first day, last day) as ISO dates of MODIS granule keys such as "A2008006.0305".
+
+    Example:
+        >>> granule_date_range(["A2008066.0305", "A2008006.2240"])
+        ('2008-01-06', '2008-03-06')
+
+    Raises:
+        ValueError: if a key is not of the form A|T + year + day-of-year + "." + hhmm.
+    """
+    days = []
+    for k in keys:
+        if not re.fullmatch(r"[AT]\d{7}\.\d{4}", k):
+            raise ValueError(f"not a granule key (expected e.g. A2008006.0305): {k!r}")
+        year, doy = int(k[1:5]), int(k[5:8])
+        if not 1 <= doy <= (366 if year % 4 == 0 else 365):
+            raise ValueError(f"day of year out of range in {k!r}")
+        days.append(date.fromordinal(date(year, 1, 1).toordinal() + doy - 1))
+    return min(days).isoformat(), max(days).isoformat()
 
 
 # ===================================== gather and verify =====================================
@@ -870,6 +911,9 @@ def main(argv: list[str] | None = None) -> int:
                    help="core (default): a footprint needs the advisor's 13 model channels valid, other channels get "
                         "NaN where they have invalid pixels; all: every channel must be valid")
     p.add_argument("--retry-empty", action="store_true", help="also rebuild granules recorded as empty by an earlier run")
+    p.add_argument("--granules", nargs="+", metavar="KEY",
+                   help="build only these granules (e.g. A2008006.0305), replacing earlier files; their months are "
+                        "taken from the keys, so --start/--end are not needed")
     p.add_argument("--dry-run", action="store_true", help="count the granules, build nothing")
     p.add_argument("--gather", action="store_true", help="only make <out>/<region>/{scalars,moments,images} symlinks")
     p.add_argument("--verify", action="store_true", help="only check the triplets of <out>/<region>")
@@ -886,6 +930,13 @@ def main(argv: list[str] | None = None) -> int:
             return 1 if bad else 0
         return 0
 
+    only = None
+    if a.granules:
+        try:
+            only = set(a.granules)
+            a.start, a.end = granule_date_range(a.granules)
+        except ValueError as e:
+            p.error(str(e))
     try:
         chunks = dm.date_chunks(a.start, a.end)
     except ValueError as e:
@@ -915,7 +966,8 @@ def main(argv: list[str] | None = None) -> int:
         try:
             c = build_month(Path(a.data).expanduser(), out, year, a.region, month, psf, start=a.start, end=a.end,
                             workers=a.workers, gen_images=not a.no_images, limit=a.limit, dry_run=a.dry_run, log=log,
-                            required=a.required_channels, retry_empty=a.retry_empty, diagnose=a.diagnose or 0)
+                            required=a.required_channels, retry_empty=a.retry_empty, diagnose=a.diagnose or 0,
+                            only=only)
         except Exception as e:  # noqa: BLE001 - e.g. a month without its CERES file; go on with the next
             log(f"{year}/{dm.MONTH_DIRS[month - 1]}: FAILED {type(e).__name__}: {e}")
             total["error"] += 1

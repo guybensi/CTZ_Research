@@ -25,6 +25,7 @@ The repo has two top-level work folders:
 - Work from `master/`: `cd master && pip install -e ".[dev]"`, then `pytest -q flux1km tests` (this includes the doctests); lint with `ruff check .`.
 - Run: `python3 -m flux1km.cli --demo`, or `python3 -m flux1km.cli --data-root <dir> --manifest <json> [--psf ceres_psf.csv]`. Every run writes `benchmark_outputs/flux1km/run_<time>/results.txt` (all results, plain text).
 - One method alone: `python3 -m flux1km.methods.<module> --demo` (e.g. `m3_pixel_mlp`, `m5_unet`, `m9_homogeneous`). The methods of PLAN.md §3 live one family per module in [master/flux1km/methods/](master/flux1km/methods/); what each one is and how to run it: [master/MODELS.md](master/MODELS.md).
+- Map figures of every map method (scene, footprint cards, CTZ curve, cloud masks): `python3 -m flux1km.mapviz --demo` (real data: [master/HOW_TO_RUN.md](master/HOW_TO_RUN.md) §7).
 - Stage E0 checks and the frozen split manifest: `python3 -m flux1km.e0 --data-root <dir>`. Studies: `python3 -m flux1km.synthetic_study` (§4.3), `python3 -m flux1km.sampling_study` (§5). The §6 decision rule is `flux1km/decision.py`.
 - Harder synthetic data (§4.3): `--demo --demo-hard` (nonlinear angle-dependent NB→BB, CTZ only partly visible in the channels).
 - Neural methods use PyTorch, imported only inside `fit` (`pip install -e ".[dev,ml]"`); without it they are skipped and their tests are skipped.
