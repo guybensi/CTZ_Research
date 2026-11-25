@@ -185,7 +185,7 @@ E[x]…E[x⁴] follow exactly from mean/std/skew/kurt. So a per-channel polynomi
    - its map physics fails: values above S0·μ0, or a peak at the footprint spacing (NaN pixels no longer make this check fail);
    - its residuals trend with SZA/VZA/RAA/glint;
    - its swath-side asymmetry is too large;
-   - its ranking flips between the primary and a sensitivity operator. Only map methods are compared here, because footprint-only methods do not depend on the operator.
+   - ~~its ranking flips between the primary and a sensitivity operator~~: since 25.11.2026 flips are reported (results.txt section "Ranking flips", and the decision log) but are not a gate; `flip_is_gate=True` (or `python3 -m flux1km.decision ... --flip-gate`) restores it. Only map methods are compared here, because footprint-only methods do not depend on the operator.
 2. **Primary score:** macro RMSE over the clear / broken / overcast regimes.
 3. **Replacement.** Going from simple to complex, a method replaces the incumbent only if:
    - the bootstrap CI excludes 0 in its favour after Holm correction; **and**

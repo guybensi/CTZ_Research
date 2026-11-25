@@ -1,0 +1,51 @@
+clear-sky gate: |bias| <= 5.0 W/m2   trend gate: 5.0   swath gate: 5.0   ranking flip a gate: False
+  B-bagpixel   macro   39.00   clear bias   +0.44 (n=2155)   FAIL: ok_bounds, trend:SZA, trend:RAA, trend:glint, swath_asymmetry
+  B-clim       macro  183.60   clear bias +236.77 (n=2155)   FAIL: clear_bias:+236.8, trend:SZA, trend:VZA, trend:RAA, trend:glint, swath_asymmetry
+  B-const      macro    0.00   clear bias   +0.00 (n=2155)   not ranked
+  M0-advisor   macro   47.57   clear bias   -8.77 (n=2155)   FAIL: clear_bias:-8.8, trend:SZA, trend:RAA, trend:glint, swath_asymmetry
+  M0-allsky37  macro   20.13   clear bias   +3.62 (n=2155)   FAIL: trend:RAA
+  M0-ridge     macro   37.17   clear bias   +2.71 (n=2155)   FAIL: trend:SZA, trend:VZA, trend:RAA, trend:glint, swath_asymmetry
+  M1-ann       macro   17.68   clear bias   +2.21 (n=2155)   PASS
+  M1-gbm       macro   26.07   clear bias  +11.59 (n=2155)   FAIL: clear_bias:+11.6, trend:SZA, trend:RAA, trend:glint
+  M10          macro   31.09   clear bias   +4.44 (n=2155)   FAIL: trend:SZA, trend:RAA, trend:glint, swath_asymmetry
+  M10-cmp      macro  132.87   clear bias  +12.93 (n=2155)   FAIL: clear_bias:+12.9, trend:SZA, trend:VZA, trend:RAA, trend:glint, swath_asymmetry
+  M2           macro   38.34   clear bias   +1.82 (n=2155)   FAIL: ok_bounds, trend:SZA, trend:RAA, trend:glint, swath_asymmetry
+  M3           macro   17.76   clear bias   +6.57 (n=2155)   FAIL: clear_bias:+6.6, trend:SZA, trend:RAA, swath_asymmetry
+  M5           macro   14.91   clear bias   +2.62 (n=2155)   PASS
+  M6a          macro   16.24   clear bias   +5.49 (n=2155)   FAIL: clear_bias:+5.5, trend:SZA
+  M6b          macro   17.04   clear bias   +3.43 (n=2155)   FAIL: trend:VZA
+  M6c          macro   15.16   clear bias   +0.08 (n=2155)   PASS
+  M6d          macro   19.28   clear bias   +3.48 (n=2155)   PASS
+  M6e          macro    0.00   clear bias   +0.00 (n=2152)   not ranked
+  M6f          macro   19.27   clear bias   +2.51 (n=2155)   PASS
+  M7           macro   17.33   clear bias   -0.09 (n=2155)   not ranked
+  M8           macro   33.45   clear bias   +1.12 (n=2155)   FAIL: trend:VZA, trend:RAA, trend:glint
+  M9           macro   29.32   clear bias  +12.00 (n=2155)   FAIL: clear_bias:+12.0, trend:SZA, trend:VZA, trend:RAA
+  M9-local     macro   29.32   clear bias  +12.00 (n=2155)   not ranked
+source of the clear-sky bias: clear regime (CF < 5 %)
+decision log:
+  - B-const reads test labels: reported, never ranked
+  - M6e reads test labels: reported, never ranked
+  - M7 reads test labels: reported, never ranked
+  - M9-local reads test labels: reported, never ranked
+  - order flips between operators (reported, not a gate; such methods are tied under operator uncertainty): M5 vs M6a@fov_ellipse, M6a@uniform, M6a@gaussian_psf; M6a vs M5@fov_ellipse, M6c@fov_ellipse, M5@uniform, M5@gaussian_psf, M6c@gaussian_psf; M6c vs M6a@fov_ellipse, M6a@gaussian_psf
+  - B-bagpixel fails gates: ['ok_bounds', 'trend:SZA', 'trend:RAA', 'trend:glint', 'swath_asymmetry']
+  - B-clim fails gates: ['clear_bias:+236.8', 'trend:SZA', 'trend:VZA', 'trend:RAA', 'trend:glint', 'swath_asymmetry']
+  - M0-advisor fails gates: ['clear_bias:-8.8', 'trend:SZA', 'trend:RAA', 'trend:glint', 'swath_asymmetry']
+  - M0-allsky37 fails gates: ['trend:RAA']
+  - M0-ridge fails gates: ['trend:SZA', 'trend:VZA', 'trend:RAA', 'trend:glint', 'swath_asymmetry']
+  - M1-gbm fails gates: ['clear_bias:+11.6', 'trend:SZA', 'trend:RAA', 'trend:glint']
+  - M10 fails gates: ['trend:SZA', 'trend:RAA', 'trend:glint', 'swath_asymmetry']
+  - M10-cmp fails gates: ['clear_bias:+12.9', 'trend:SZA', 'trend:VZA', 'trend:RAA', 'trend:glint', 'swath_asymmetry']
+  - M2 fails gates: ['ok_bounds', 'trend:SZA', 'trend:RAA', 'trend:glint', 'swath_asymmetry']
+  - M3 fails gates: ['clear_bias:+6.6', 'trend:SZA', 'trend:RAA', 'swath_asymmetry']
+  - M6a fails gates: ['clear_bias:+5.5', 'trend:SZA']
+  - M6b fails gates: ['trend:VZA']
+  - M8 fails gates: ['trend:VZA', 'trend:RAA', 'trend:glint']
+  - M9 fails gates: ['clear_bias:+12.0', 'trend:SZA', 'trend:VZA', 'trend:RAA']
+  - M6f does not replace M1-ann: gain -1.59 W/m2 (not significant)
+  - M6d does not replace M1-ann: gain -1.59 W/m2 (not significant)
+  - M5 does not replace M1-ann: gain 2.77 W/m2 (not significant)
+  - M6c does not replace M1-ann: gain 2.53 W/m2 (not significant)
+  - tie between ['M1-ann', 'M6f', 'M6d', 'M5', 'M6c']: M5 chosen by tie-breaker 2 (interleave-LOGO gap 5.79 vs 7.28)
+winner: M5

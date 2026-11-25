@@ -201,7 +201,8 @@ python3 -m flux1km.methods.<שם הקובץ> --data-root DIR --manifest M.json  
 8. **Clear-sky gate**: ה־bias של כל שיטה מול CERES ב־footprints בהירים (‏CF של MYD35 מתחת ל־5% ו־`Clrf` של CERES מעל 95%). השיטה נפסלת כשהוא גדול מ־5 W/m². ה־gate חל על כל השיטות המדורגות, גם על שיטות ה־footprint.
 9. **Physics checks**: חריגה מעל S0·μ0 ושיא בספקטרום במרווח בין ה־footprints (שניהם gates), ועקומת השטף מול המרחק לענן. המרחק מחושב לפי ה־mask המחמיר של MYD35 כשיש `ImCloud` בדאטה. שטף השמיים הבהירים הרחוקים במפה מדווח ולא פוסל (עד 25.11.2026 הוא היה gate עם יעד של 80±10).
 10. **Pairwise comparisons**: ‏bootstrap עם Holm, ‏Wilcoxon ו־Diebold–Mariano.
-11. **Gate results** ו־**Glossary**: מילון לכל מספר בדוח.
+11. **Ranking flips**: זוגות של שיטות מפה שהסדר ביניהן מתהפך כשמחליפים את אופרטור הצבירה. מ־25.11.2026 זה מדווח ולא פוסל, כי שיטות כאלה נחשבות שקולות.
+12. **Gate results** ו־**Glossary**: מילון לכל מספר בדוח.
 
 ---
 

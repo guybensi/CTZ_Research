@@ -322,7 +322,7 @@ If τ > 0.8, sampling does not change the winner: fix S7 (or S5) and move on. Ot
    - its residuals are not flat against geometry or glint;
    - its clear-sky bias against CERES exceeds 5 W m⁻² on clear footprints (MYD35 CF < 5 % and CERES `Clrf` ≥ 95 %). Changed 25.11.2026: the original gate, the map's pure clear sky within 80 ± 10 W m⁻², is not calibrated to our scenes (even the CERES labels gave 94 in img6) and was measured with a 0.66 µm brightness proxy that misses most clouds at low sun; the map value is now reported only. The gate applies to footprint-only methods too;
    - its maps show runaway extremes;
-   - its ranking flips between the uniform and PSF operators.
+   - ~~its ranking flips between the uniform and PSF operators~~ (changed 25.11.2026): a flip is reported, and the two methods are treated as tied, but it drops nobody. A map trained with the CERES PSF and scored with another operator mostly measures the mismatch between operators (in img6, M6e, which reproduces every footprint exactly, scored 15–18 W m⁻² with them), and the gate dropped exactly the closest, best methods. `flip_is_gate` restores the old rule.
 2. **Primary score.** Macro-averaged RMSE over the 3 regimes in Arena A, so broken-cloud scenes are not hidden by clear ones.
 3. **When a more complex method replaces a simpler one.** Only if both hold:
    - the paired bootstrap CI excludes 0 after Holm correction;

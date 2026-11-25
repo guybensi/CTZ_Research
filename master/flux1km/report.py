@@ -18,8 +18,9 @@ How to read this file
   RMSE / MAE / bias / R2  footprint level, predicted vs CERES Fsw, in W m^-2 (bias = pred - CERES).
   macro RMSE              mean of the RMSEs of the clear (CF < 5%), broken and overcast (CF >= 95%)
                           regimes: the PRIMARY score (PLAN.md section 6).
-  macro@<operator>        the same score with a sensitivity aggregation operator; the ranking must not
-                          flip between operators.
+  macro@<operator>        the same score with a sensitivity aggregation operator. A map trained with the
+                          CERES PSF loses 5-6 W m^-2 here by construction; flips between close methods are
+                          reported as ties, not a gate (unless flip_is_gate).
   interleave              RMSE on the leaky interleave test (every 2nd footprint); reported only, never
                           used for ranking. A small gap to the LOGO RMSE is tie-breaker 2.
   pixel RMSE/corr/SSIM    against the known 1 km truth (synthetic data only): tie-breaker 1.
@@ -183,6 +184,10 @@ def format_report(summary: dict, title: str = "flux1km benchmark results") -> st
         lines += [section("Pairwise comparisons (unit = granule group; negative diff = first model better)"),
                   format_table(["pair", "diff", "ci_low", "ci_high", "p_boot", "p_holm_b", "wilcox", "p_holm_w", "DM p", "units"],
                                crow, [28, 10, 10, 10, 9, 9, 9, 9, 9, 7])]
+    flips = d.get("operator_flips") or {}
+    if flips:
+        lines += [section("Ranking flips between aggregation operators (reported; a gate only with flip_is_gate)")] + \
+                 [f"  {n:<12s} order flips against: {', '.join(v)}" for n, v in flips.items()]
     gates = d.get("gates", {})
     if gates:
         lines += [section("Gate results")] + [f"  {n:<12s} {'PASS' if not g else 'FAIL: ' + ', '.join(g)}" for n, g in gates.items()]

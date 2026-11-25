@@ -19,12 +19,13 @@ class TestFormatReport:
                                   "physics": {"pcs_flux": 80.0, "passed": True, "flux_vs_distance": [90.0, 80.0]},
                                   "pixel": {"rmse": 7.0}}},
                 "comparisons": {"M2 vs B": {"mean_diff": -1.0, "ci_low": -2.0, "ci_high": -0.5, "p_boot": 0.01}},
-                "decision": {"winner": "M2", "log": ["x"], "gates": {"M2": []}},
+                "decision": {"winner": "M2", "log": ["x"], "gates": {"M2": []}, "operator_flips": {"M2": ["B@uniform"]}},
                 "folds": [{"name": "logo:a", "leaky": False, "n_train": 1, "n_val": 1, "n_test": 1, "params": {"M2": {"alpha": 1}},
                            "val_rmse": {"M2": 2.0}}],
                 "errors": [{"model": "M5", "fold": "logo:a", "seed": 0, "error": "ImportError: torch"}],
                 "config": {"models": ["M2"]}}
         text = report.format_report(summ)
         for key in ("WINNER", "winner: M2", "Configuration", "Folds", "Errors", "macro@uniform", "Scores by cloud regime",
-                    "Residual flatness", "Physics checks", "Clear-sky gate", "Pairwise comparisons", "Gate results", "Glossary", "ImportError"):
+                    "Residual flatness", "Physics checks", "Clear-sky gate", "Ranking flips",
+                    "Pairwise comparisons", "Gate results", "Glossary", "ImportError"):
             assert key in text

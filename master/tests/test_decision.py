@@ -38,8 +38,9 @@ class TestGateFailures:
         res = _m(5.0, clear_check={"bias": -7.5, "n": 50},
                  physics={"passed": False, "ok_pcs": True, "ok_bounds": False, "ok_spacing": False, "spacing_peak": 9.0},
                  trend_effect={"SZA": {"effect_wm2": 9.0, "p": 1e-4}}, swath_asymmetry=7.0)
-        fails = decision.gate_failures("A", res, CFG, {"A": ["B@uniform"]})
+        fails = decision.gate_failures("A", res, BenchmarkConfig(models=[], flip_is_gate=True), {"A": ["B@uniform"]})
         assert fails == ["clear_bias:-7.5", "ok_bounds", "ok_spacing", "trend:SZA", "swath_asymmetry", "ranking_flip:B@uniform"]
+        assert "ranking_flip:B@uniform" not in decision.gate_failures("A", res, CFG, {"A": ["B@uniform"]})
         assert decision.gate_failures("A", _m(5.0), CFG, {}) == []
 
     def test_far_clear_map_value_is_no_longer_a_gate(self):
@@ -142,3 +143,27 @@ class TestDecide:
     def test_no_model_passes(self):
         s = {"models": {"A": _m(5.0, swath_asymmetry=50.0)}, "comparisons": {}}
         assert decision.decide(s, CFG)["winner"] is None
+
+
+class TestOperatorFlips:
+    def _summary(self):
+        return {"models": {"A": _m(5.0, complexity=1, macro_rmse_uniform=9.0), "B": _m(6.0, complexity=1, macro_rmse_uniform=6.5)},
+                "comparisons": {}}
+
+    def test_flip_reported_not_a_gate(self):
+        d = decision.decide(self._summary(), CFG)
+        assert d["gates"] == {"A": [], "B": []} and set(d["operator_flips"]) == {"A", "B"}
+        assert any("order flips between operators" in x for x in d["log"])
+
+    def test_flip_gate_option(self):
+        d = decision.decide(self._summary(), BenchmarkConfig(models=[], sensitivity_operators=("uniform",), flip_is_gate=True))
+        assert d["winner"] is None and d["gates"]["A"] == ["ranking_flip:B@uniform"]
+
+    def test_cli_flag(self, tmp_path):
+        import json
+
+        s = {**self._summary(), "config": {"sensitivity_operators": ["uniform"]}}
+        p = tmp_path / "s.json"
+        p.write_text(json.dumps(s))
+        assert decision.main([str(p)])["winner"] == "A"
+        assert decision.main([str(p), "--flip-gate"])["winner"] is None

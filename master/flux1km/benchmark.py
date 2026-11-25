@@ -42,7 +42,8 @@ class BenchmarkConfig:
     noise_floor: float = 2.0       # W m^-2: fallback floor when no regime breakdown exists
     # CERES ADM noise floor per regime (Su et al. 2015; to verify): a more complex model must gain more.
     noise_floor_by_regime: dict = field(default_factory=lambda: {"clear": 1.9, "broken": 10.0, "overcast": 6.0})
-    flip_tol: float = 0.5          # W m^-2: ranking-flip gate ignores macro-RMSE differences smaller than this
+    flip_tol: float = 0.5          # W m^-2: ranking flips ignore macro-RMSE differences smaller than this
+    flip_is_gate: bool = False     # True: a ranking flip between operators drops the method (the rule before 25.11.2026)
     image_data_scarce: bool | None = None  # tie default M2 instead of M3; None = decide from the data (< 10 image granules)
     trend_gate: float = 5.0        # W m^-2: max residual trend effect across the range of an angle
     swath_gate: float = 5.0        # W m^-2: max forward/backscatter residual difference

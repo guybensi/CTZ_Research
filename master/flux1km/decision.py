@@ -11,9 +11,12 @@ Applied to the benchmark summary (benchmark.summarize). In order:
    * its map physics fails: values above S0 mu0, or a power-spectrum peak at the footprint spacing;
    * its residuals are not flat against SZA, VZA, RAA or glint (trend effect > trend_gate and
      p < 0.01), or the swath-side (forward vs backscatter) asymmetry exceeds swath_gate;
-   * its ranking flips between the primary operator and a sensitivity operator (uniform /
-     Gaussian PSF): against some other map method, the sign of the macro-RMSE difference changes
-     and both differences exceed flip_tol.
+   * only with flip_is_gate (off by default since 25.11.2026): its ranking flips between the primary operator and
+     a sensitivity operator (uniform / Gaussian PSF) against some other map method, both differences above flip_tol.
+     By default such flips are reported (operator_flips, and a log line) but drop nobody: a map trained with the
+     CERES PSF and scored with another operator mostly measures the mismatch between operators (in img6 even M6e,
+     which reproduces every footprint exactly, scored 15-18 W m^-2 with them), and a flip between two close methods
+     means they are tied, not that both are bad.
 2. Primary score: macro-averaged RMSE over the clear / broken / overcast regimes.
 3. Walk the passing methods from simple to complex. A more complex method replaces the incumbent
    only if (a) the paired bootstrap CI of the unit-loss difference excludes 0 in its favour after
@@ -127,7 +130,7 @@ def gate_failures(name: str, res: dict, cfg, flips: dict) -> list[str]:
             fails.append(f"trend:{c}")
     if abs(res.get("swath_asymmetry", 0.0) or 0.0) > _get(cfg, "swath_gate", 5.0):
         fails.append("swath_asymmetry")
-    if name in flips:
+    if name in flips and _get(cfg, "flip_is_gate", False):
         fails.append(f"ranking_flip:{','.join(flips[name])}")
     return fails
 
@@ -199,6 +202,9 @@ def decide(summary: dict, cfg) -> dict:
         if r.get("uses_test_labels"):
             log.append(f"{n} reads test labels: reported, never ranked")
     flips = ranking_flips(summary, ranked, tuple(_get(cfg, "sensitivity_operators", ())), _get(cfg, "flip_tol", 0.5))
+    if flips and not _get(cfg, "flip_is_gate", False):
+        log.append("order flips between operators (reported, not a gate; such methods are tied under operator "
+                   "uncertainty): " + "; ".join(f"{n} vs {', '.join(v)}" for n, v in flips.items()))
     for name in ranked:
         fails = gate_failures(name, models[name], cfg, flips)
         gates[name] = fails
@@ -207,7 +213,7 @@ def decide(summary: dict, cfg) -> dict:
         else:
             passing.append(name)
     if not passing:
-        return {"winner": None, "ranking_by_macro_rmse": [], "tie_set": [], "gates": gates,
+        return {"winner": None, "ranking_by_macro_rmse": [], "tie_set": [], "gates": gates, "operator_flips": flips,
                 "log": log + ["no model passed the gates"]}
     passing.sort(key=lambda n: (models[n].get("complexity", 0), models[n]["macro_rmse"]))
     incumbent = passing[0]
@@ -235,7 +241,8 @@ def decide(summary: dict, cfg) -> dict:
                        "beyond a residual correction (a result about the scale of the CTZ)")
             winner = "M6b"
     ranking = sorted(passing, key=lambda n: models[n]["macro_rmse"])
-    return {"winner": winner, "ranking_by_macro_rmse": ranking, "tie_set": tie, "gates": gates, "log": log}
+    return {"winner": winner, "ranking_by_macro_rmse": ranking, "tie_set": tie, "gates": gates, "operator_flips": flips,
+            "log": log}
 
 
 def _config_from(summary: dict, overrides: dict):
@@ -255,12 +262,14 @@ def main(argv=None) -> dict:
     p.add_argument("--clear-bias-gate", type=float, default=None, help="W m^-2 (default: the run's, else 5)")
     p.add_argument("--trend-gate", type=float, default=None)
     p.add_argument("--swath-gate", type=float, default=None)
+    p.add_argument("--flip-gate", action="store_true", help="make the ranking flip between operators a gate again")
     a = p.parse_args(argv)
     summary = json.loads(open(a.summary).read())
-    cfg = _config_from(summary, {"clear_bias_gate": a.clear_bias_gate, "trend_gate": a.trend_gate, "swath_gate": a.swath_gate})
+    cfg = _config_from(summary, {"clear_bias_gate": a.clear_bias_gate, "trend_gate": a.trend_gate, "swath_gate": a.swath_gate,
+                                    "flip_is_gate": a.flip_gate or None})
     d = decide(summary, cfg)
     print(f"clear-sky gate: |bias| <= {_get(cfg, 'clear_bias_gate', 5.0)} W/m2   trend gate: {_get(cfg, 'trend_gate', 5.0)}   "
-          f"swath gate: {_get(cfg, 'swath_gate', 5.0)}")
+          f"swath gate: {_get(cfg, 'swath_gate', 5.0)}   ranking flip a gate: {bool(_get(cfg, 'flip_is_gate', False))}")
     for n, r in summary["models"].items():
         c = clear_check_of(r)
         g = d["gates"].get(n)
