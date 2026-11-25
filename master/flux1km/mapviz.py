@@ -46,6 +46,11 @@ DIST_BINS = (0.5, 1.5, 2.5, 4, 6, 9, 13, 20, 30)                    # km, flux-v
 SERIES = ("#257de0", "#f47230")                                     # categorical slots 1-2 (relaxed, strict)
 
 
+def log(msg: str) -> None:
+    """One progress line with time and memory, flushed at once (the run usually writes to a file under nohup)."""
+    print(f"{datetime.now():%Y-%m-%d %H:%M:%S}  {msg}  {benchmark.memory_status()}", flush=True)
+
+
 # ============================================================ data helpers
 def cloud_masks(images: dict, vis_reflectance: np.ndarray, proxy_threshold: float = 0.2) -> dict[str, np.ndarray]:
     """Per-pixel cloud masks (N, H, W) bool: MYD35 relaxed / strict from ImCloud when present, and the 0.66 um proxy.
@@ -311,7 +316,7 @@ def granule_window_data(granules, table, rows: np.ndarray, cfg: benchmark.Benchm
 
 
 def fit_models(models: list[str], train: Batch, val: Batch, cfg: benchmark.BenchmarkConfig,
-               params: dict[str, dict] | None = None, log=print) -> dict:
+               params: dict[str, dict] | None = None, log=log) -> dict:
     """Fit each map method once: {name: fitted model}; a method that fails is logged and skipped."""
     out = {}
     for name in models:
@@ -329,7 +334,7 @@ def fit_models(models: list[str], train: Batch, val: Batch, cfg: benchmark.Bench
     return out
 
 
-def predict_maps(fitted: dict, batch: Batch, log=print) -> dict[str, np.ndarray]:
+def predict_maps(fitted: dict, batch: Batch, log=log) -> dict[str, np.ndarray]:
     """{name: (N, H, W) float32 map} of the fitted models on one window batch."""
     out = {}
     for name, model in fitted.items():
@@ -666,7 +671,7 @@ def main(argv=None) -> list[Path]:
     if a.demo:
         root = root or tempfile.mkdtemp(prefix="flux1km_viz_demo_")
         synthetic.write_demo_dataset(root, seed=a.seed, n_rows=8, n_cols=30, hard=a.demo_hard)
-        print(f"demo data written to {root}")
+        log(f"demo data written to {root}")
     granules = io.load_dataset(root, parts=("moments", "scalars", "images", "truth"), lazy_images=bool(a.cache_dir))
     groups = splits.group_granules([g.granule_id for g in granules], sizes={g.granule_id: g.n_footprints for g in granules},
                                    min_size=100)
@@ -690,28 +695,30 @@ def main(argv=None) -> list[Path]:
     out = Path(a.out) / f"run_{datetime.now():%Y%m%d_%H%M%S}"
     out.mkdir(parents=True, exist_ok=True)
     store = tempfile.mkdtemp(prefix="viz_", dir=a.cache_dir) if a.cache_dir else None
-    print(f"fold {fold.name}: train {len(fold.train)}, val {len(fold.val)}; granules {ids}; operator {cfg.operator}")
+    log(f"fold {fold.name}: train {len(fold.train)}, val {len(fold.val)}; granules {ids}; operator {cfg.operator}")
     train = make_batch(granules, table, fold.train, store=store)
     val = make_batch(granules, table, fold.val, store=store)
+    log(f"images of train and validation ready; fitting {len(models)} methods")
     fitted = fit_models(models, train, val, cfg, params)
     paths = []
     for gid in ids:
         g_rows = fold.test[test_g == gid]
         if len(g_rows) == 0:
-            print(f"{gid}: not in the test set of {fold.name}, skipped")
+            log(f"{gid}: not in the test set of {fold.name}, skipped")
             continue
         try:
             batch, data = granule_window_data(granules, table, g_rows, cfg, (rows, cols), store=store)
         except ValueError as e:
-            print(f"{gid}: {e}")
+            log(f"{gid}: {e}")
             continue
+        log(f"{gid}: window {data['size'].tolist()} at {data['corner'].tolist()}, {len(batch)} footprints; predicting")
         maps = predict_maps(fitted, batch)
         save_maps(out / f"maps_{gid}.npz", data, maps)
         paths += draw_all(data, maps, out, gid)
     (out / "README.txt").write_text(f"flux1km.mapviz run {datetime.now():%Y-%m-%d %H:%M}\nfold {fold.name}\n"
                                     f"models {list(fitted)}\nparams from {a.params_from}\ngranules {ids}\n"
                                     f"maps_<granule>.npz: the window's data and maps; redraw with --replot {out}\n")
-    print(f"figures in {out}:\n" + "\n".join(f"  {p.name}" for p in paths))
+    log(f"figures in {out}:\n" + "\n".join(f"  {p.name}" for p in paths))
     return paths
 
 
