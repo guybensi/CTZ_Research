@@ -108,6 +108,24 @@ class TestMaxGranules:
         assert rc == 1 and fake.downloaded == []
 
 
+class TestSearchRetry:
+    def test_transient_search_failures_are_retried(self, tmp_path, monkeypatch):
+        class Flaky(FakeEarthaccess):
+            calls = 0
+
+            def search_data(self, short_name, **kw):
+                Flaky.calls += 1
+                if Flaky.calls <= 2:
+                    raise RuntimeError("An Internal Error has occurred.")
+                return super().search_data(short_name, **kw)
+
+        monkeypatch.setattr(wdm, "SEARCH_WAIT", 0)
+        fake = Flaky()
+        monkeypatch.setitem(sys.modules, "earthaccess", fake)
+        assert wdm.main(["--start", "2008-01-15", "--end", "2008-01-15", "--out", str(tmp_path), "--max-granules", "1"]) == 0
+        assert len(fake.downloaded) == 2 and "search try 2 failed" in (tmp_path / "download_log.txt").read_text()
+
+
 class TestWiring:
     def test_siblings_are_the_windows_versions(self):
         assert hasattr(wbd.dm, "lock_folder") and hasattr(wdc.dm, "lock_folder")

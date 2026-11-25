@@ -218,3 +218,30 @@ class TestMainArguments:
         rc = dc.main(["--start", "2008-03-01", "--end", "2008-03-31", "--out", str(tmp_path), "--merge-only"])
         out = capsys.readouterr().out
         assert rc == 1 and out.count("NO CERES FILE") == 1 and "mrch" in out
+
+
+class TestSearch:
+    class _Fake:
+        def __init__(self, fails):
+            self.fails, self.calls = fails, 0
+
+        def search_data(self, **kw):
+            self.calls += 1
+            if self.calls <= self.fails:
+                raise RuntimeError("An Internal Error has occurred.")
+            g = type("G", (), {"data_links": lambda self: [
+                "https://x.invalid/CER_SSF_Aqua-FM3-MODIS_Edition4A_401406.2008011509"]})()
+            return [g]
+
+    def test_failed_catalogue_search_is_retried(self, monkeypatch, capsys):
+        monkeypatch.setattr(dc.dm, "SEARCH_WAIT", 0)
+        fake = self._Fake(fails=2)
+        out = dc.search(fake, "2008-01-15", "2008-01-15", None)
+        assert len(out) == 1 and fake.calls == 3
+        assert "CERES search try 2 failed" in capsys.readouterr().out
+
+    def test_gives_up_after_the_tries(self, monkeypatch):
+        monkeypatch.setattr(dc.dm, "SEARCH_WAIT", 0)
+        monkeypatch.setattr(dc.dm, "SEARCH_TRIES", 2)
+        with pytest.raises(RuntimeError):
+            dc.search(self._Fake(fails=99), "2008-01-15", "2008-01-15", None)
