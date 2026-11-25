@@ -320,7 +320,7 @@ If τ > 0.8, sampling does not change the winner: fix S7 (or S5) and move on. Ot
 
 1. **Gates.** A method is dropped if:
    - its residuals are not flat against geometry or glint;
-   - its pure clear sky falls outside 80 ± 10 W m⁻²;
+   - its clear-sky bias against CERES exceeds 5 W m⁻² on clear footprints (MYD35 CF < 5 % and CERES `Clrf` ≥ 95 %). Changed 25.11.2026: the original gate, the map's pure clear sky within 80 ± 10 W m⁻², is not calibrated to our scenes (even the CERES labels gave 94 in img6) and was measured with a 0.66 µm brightness proxy that misses most clouds at low sun; the map value is now reported only. The gate applies to footprint-only methods too;
    - its maps show runaway extremes;
    - its ranking flips between the uniform and PSF operators.
 2. **Primary score.** Macro-averaged RMSE over the 3 regimes in Arena A, so broken-cloud scenes are not hidden by clear ones.

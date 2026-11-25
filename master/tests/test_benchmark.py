@@ -42,6 +42,15 @@ class TestRunBenchmark:
         assert any("M2" in k for k in s["comparisons"])
         assert all("B-const" not in k for k in s["comparisons"])  # reads test labels: never ranked
 
+    def test_clear_sky_check_and_clrf_in_records(self, full_run):
+        m = full_run["summary"]["models"]
+        assert {"bias", "n", "mean_label"} <= set(m["M2"]["clear_check"])
+        assert m["B-const"]["clear_check"].get("bias", 0.0) in (0.0,) or np.isnan(m["B-const"]["clear_check"]["bias"])
+        assert "Clrf" in full_run["records"][0]
+
+    def test_physics_distance_from_truth_on_synthetic(self, full_run):
+        assert full_run["summary"]["models"]["M2"]["physics"]["distance_source"] == "synthetic truth"
+
     def test_learned_model_beats_climatology(self, full_run):
         m = full_run["summary"]["models"]
         assert m["M2"]["macro_rmse"] < m["B-clim"]["macro_rmse"]
@@ -124,13 +133,16 @@ class TestRobustness:
         text = open(res["summary"]["results_txt"]).read()
         assert "WINNER" in text and "Glossary" in text
 
-    def test_physics_uses_brightness_proxy_without_truth(self, setup):
+    def test_physics_cloud_source_without_truth(self, setup):
         from dataclasses import replace
         gs, t, folds = setup
         no_truth = [replace(g, truth=None) for g in gs]
         res = benchmark.run_benchmark(no_truth, t, folds[:1], benchmark.BenchmarkConfig(models=["M2"], budget=1))
         m2 = res["summary"]["models"]["M2"]
-        assert "pixel" not in m2 and m2["physics"]["distance_source"] == "0.66 um brightness proxy"
+        assert "pixel" not in m2 and m2["physics"]["distance_source"] == "MYD35 strict"
+        no_mask = [replace(g, truth=None, images={k: v for k, v in g.images.items() if k != "ImCloud"}) for g in gs]
+        res = benchmark.run_benchmark(no_mask, t, folds[:1], benchmark.BenchmarkConfig(models=["M2"], budget=1))
+        assert res["summary"]["models"]["M2"]["physics"]["distance_source"] == "0.66 um brightness proxy"
 
 
 class TestDiskCache:
@@ -198,3 +210,23 @@ class TestTuneProgress:
         cfg.progress = False
         benchmark.tune("M0-ridge", tr, va, cfg)
         assert "candidate" not in capsys.readouterr().out
+
+
+class TestCloudMask:
+    def _batch(self, images):
+        from flux1km.features import Batch
+
+        n = len(images["ImSW"])
+        return Batch(rows=np.arange(n), label=np.zeros(n), scalars={}, moments=None, images=images, truth=None,
+                     dist_km=None, group=np.zeros(n), weight=np.ones(n))
+
+    def test_myd35_strict_when_present(self):
+        g = synthetic.make_synthetic_granule("A2014060.0245", np.random.default_rng(0), n_rows=1, n_cols=2)
+        m = benchmark.cloud_mask(self._batch(g.images))
+        np.testing.assert_array_equal(m, g.images["ImCloud"] <= 1)
+
+    def test_proxy_without_imcloud(self):
+        g = synthetic.make_synthetic_granule("A2014060.0245", np.random.default_rng(0), n_rows=1, n_cols=2)
+        images = {k: v for k, v in g.images.items() if k != "ImCloud"}
+        m = benchmark.cloud_mask(self._batch(images))
+        assert m.shape == (2, 27, 55) and m.dtype == bool

@@ -85,9 +85,24 @@ def percentile_spread(maps, q=(1, 99)) -> tuple[float, float]:
 def spacing_peak_ratio(maps, period_px: float = 8.0) -> float:
     """Along-scan power at the footprint spacing relative to neighbouring frequencies.
 
-    A large ratio means footprint-shaped artefacts (e.g. uniform residual redistribution).
+    A large ratio means footprint-shaped artefacts (e.g. uniform residual redistribution). NaN pixels (invalid
+    channels) are replaced by their row's mean, so one bad pixel does not make the whole check NaN; rows with no
+    valid pixel are dropped. NaN only if no row is valid.
+
+    Example:
+        >>> x = np.tile(np.sin(2 * np.pi * np.arange(64) / 8.0), (2, 1)); x[0, 3] = np.nan
+        >>> spacing_peak_ratio(x[None]) > 5
+        True
     """
     x = np.asarray(maps, float)
+    x = x.reshape(-1, x.shape[-1])
+    ok = np.isfinite(x)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        row_mean = np.where(ok, x, 0.0).sum(axis=-1, keepdims=True) / ok.sum(axis=-1, keepdims=True)
+    x = np.where(np.isfinite(x), x, row_mean)
+    x = x[np.isfinite(x).all(axis=-1)]
+    if len(x) == 0:
+        return float("nan")
     x = x - x.mean(axis=-1, keepdims=True)
     power = (np.abs(np.fft.rfft(x, axis=-1)) ** 2).reshape(-1, x.shape[-1] // 2 + 1).mean(axis=0)
     freqs = np.fft.rfftfreq(x.shape[-1])
@@ -128,6 +143,6 @@ def run_checks(maps, dist_km, sza, pcs_target=(70.0, 90.0), pcs_min_km: float = 
     }
     res["ok_pcs"] = bool(np.isnan(pcs) or pcs_target[0] <= pcs <= pcs_target[1])
     res["ok_bounds"] = res["bound_violation"] <= max_bound_violation
-    res["ok_spacing"] = res["spacing_peak"] <= max_spacing_peak
+    res["ok_spacing"] = bool(np.isnan(res["spacing_peak"]) or res["spacing_peak"] <= max_spacing_peak)
     res["passed"] = res["ok_pcs"] and res["ok_bounds"] and res["ok_spacing"]
     return res

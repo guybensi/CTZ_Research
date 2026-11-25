@@ -198,9 +198,10 @@ python3 -m flux1km.methods.<שם הקובץ> --data-root DIR --manifest M.json  
 5. **Scores**: ‏macro RMSE (הציון הראשי), ‏RMSE, ‏MAE, ‏bias, ‏R², ציון לפי כל אופרטור רגישות, ציון interleave, וציוני פיקסל מול האמת הסינתטית (RMSE, קורלציה, ‏SSIM).
 6. **Scores by cloud regime**: ‏clear, ‏broken ו־overcast.
 7. **Residual flatness**: מגמת השאריות מול SZA, ‏VZA, ‏RAA ו־glint, ואסימטריית צדי ה־swath.
-8. **Physics checks**: שטף השמיים הבהירים הרחוקים (היעד: 80±10), חריגה מעל S0·μ0, שיא בספקטרום במרווח בין ה־footprints, ועקומת השטף מול המרחק לענן.
-9. **Pairwise comparisons**: ‏bootstrap עם Holm, ‏Wilcoxon ו־Diebold–Mariano.
-10. **Gate results** ו־**Glossary**: מילון לכל מספר בדוח.
+8. **Clear-sky gate**: ה־bias של כל שיטה מול CERES ב־footprints בהירים (‏CF של MYD35 מתחת ל־5% ו־`Clrf` של CERES מעל 95%). השיטה נפסלת כשהוא גדול מ־5 W/m². ה־gate חל על כל השיטות המדורגות, גם על שיטות ה־footprint.
+9. **Physics checks**: חריגה מעל S0·μ0 ושיא בספקטרום במרווח בין ה־footprints (שניהם gates), ועקומת השטף מול המרחק לענן. המרחק מחושב לפי ה־mask המחמיר של MYD35 כשיש `ImCloud` בדאטה. שטף השמיים הבהירים הרחוקים במפה מדווח ולא פוסל (עד 25.11.2026 הוא היה gate עם יעד של 80±10).
+10. **Pairwise comparisons**: ‏bootstrap עם Holm, ‏Wilcoxon ו־Diebold–Mariano.
+11. **Gate results** ו־**Glossary**: מילון לכל מספר בדוח.
 
 ---
 
@@ -211,7 +212,7 @@ python3 -m flux1km.methods.<שם הקובץ> --data-root DIR --manifest M.json  
 | `e0.py` | שלב E0: אינוונטר, טווחים ויחידות, בדיקת `FOVorientation`, ‏moments מול patches, התאמת H, חפיפה בין footprints, ערוצים פגומים, ‏manifest עם בדיקת זליגה, ודוח הבאגים לאשכול | `python3 -m flux1km.e0 --data-root DIR` |
 | `synthetic_study.py` | ניסוי האמת הסינתטית: כמה מספרי footprints, כמה גדלי צבירה, וסצנת ביקורת בלי CTZ | `python3 -m flux1km.synthetic_study --models ...` |
 | `sampling_study.py` | אסטרטגיות S0–S7: ‏Jaccard, ‏KS, ‏MMD, מטריצת אימון לפי Si מול בדיקה לפי תת־אוכלוסייה, ו־Kendall τ | `python3 -m flux1km.sampling_study --models ...` |
-| `decision.py` | כלל ההחלטה של סעיף 6. מופעל אוטומטית בכל הרצה | — |
+| `decision.py` | כלל ההחלטה של סעיף 6. מופעל אוטומטית בכל הרצה. אפשר להפעיל אותו מחדש על `summary.json` שמור, בלי אימון, למשל אחרי שינוי ב־gate | `python3 -m flux1km.decision <run>/summary.json` |
 | `cli.py` | הרצה של כל השיטות או של חלקן | `python3 -m flux1km.cli` |
 | `mapviz.py` | איורים של מפות 1 ק"מ לכל שיטת מפה: הסצנה, כרטיס footprint לכל משטר, ממוצע משוקלל מול CERES, עקומת CTZ, וה־masks של העננים. פירוט בהמשך הסעיף | `python3 -m flux1km.mapviz --demo` |
 | `scripts/download_modis.py` | הורדת גרנולות Aqua מ־LAADS DAAC ‏(ברירת מחדל `MYD021KM` ו־`MYD03`; אפשר להוסיף `MYD06_L2` ו־`MYD35_L2`), רק סטים מלאים ורק בשעות היום. תאריכים, יעד, שם אזור ותיבה נקבעים בארגומנטים (`--start --end --out --region --box --products`), בלי לערוך את הקובץ | `python3 scripts/download_modis.py --start 2008-01-01 --end 2008-12-31 --out /archive/GUY --dry-run` |

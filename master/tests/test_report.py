@@ -14,6 +14,7 @@ class TestFormatTable:
 class TestFormatReport:
     def test_all_sections(self):
         summ = {"models": {"M2": {"overall": {"rmse": 3.0, "n": 5}, "macro_rmse": 3.0, "by_regime": {"clear": {"rmse": 1.0, "n": 5}},
+                                  "clear_check": {"bias": 1.5, "rmse": 2.0, "mean_label": 70.0, "n": 40},
                                   "macro_rmse_uniform": 4.0, "trend_effect": {"SZA": {"effect_wm2": 1.0, "p": 0.5}},
                                   "physics": {"pcs_flux": 80.0, "passed": True, "flux_vs_distance": [90.0, 80.0]},
                                   "pixel": {"rmse": 7.0}}},
@@ -25,5 +26,5 @@ class TestFormatReport:
                 "config": {"models": ["M2"]}}
         text = report.format_report(summ)
         for key in ("WINNER", "winner: M2", "Configuration", "Folds", "Errors", "macro@uniform", "Scores by cloud regime",
-                    "Residual flatness", "Physics checks", "Pairwise comparisons", "Gate results", "Glossary", "ImportError"):
+                    "Residual flatness", "Physics checks", "Clear-sky gate", "Pairwise comparisons", "Gate results", "Glossary", "ImportError"):
             assert key in text

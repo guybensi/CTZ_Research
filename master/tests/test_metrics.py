@@ -110,3 +110,20 @@ class TestBootstrapPValue:
         a = np.linspace(0, 1, 30)
         assert metrics.paired_bootstrap(a, a + 5, n_boot=2000)["p_boot"] < 0.01
         assert metrics.paired_bootstrap(a, a, n_boot=200)["p_boot"] == 1.0
+
+
+class TestClearSkyCheck:
+    def test_bias_over_clear_only(self):
+        r = metrics.clear_sky_check([70.0, 72.0, 300.0], [75.0, 77.0, 310.0], ["clear", "clear", "broken"], min_n=2)
+        assert r["bias"] == 5.0 and r["n"] == 2 and r["mean_label"] == 71.0
+
+    def test_clrf_condition_and_nan(self):
+        r = metrics.clear_sky_check([70.0, 72.0, 74.0], [75.0, 77.0, 0.0], ["clear"] * 3, clrf=[100.0, np.nan, 50.0], min_n=1)
+        assert r["n"] == 1 and r["bias"] == 5.0
+
+    def test_too_few(self):
+        r = metrics.clear_sky_check([70.0], [75.0], ["clear"], min_n=30)
+        assert np.isnan(r["bias"]) and r["n"] == 1
+
+    def test_empty(self):
+        assert metrics.clear_sky_check([], [], [], min_n=1)["n"] == 0

@@ -40,6 +40,43 @@ def footprint_scores(y_true, y_pred, weights=None) -> dict:
     }
 
 
+def clear_sky_check(y_true, y_pred, regimes, clrf=None, min_clrf: float = 95.0, min_n: int = 30) -> dict:
+    """Bias (pred - CERES) of a method on clear footprints: the clear-sky gate of PLAN.md section 6.
+
+    A footprint is clear when its regime is "clear" (MODIS MYD35 CF < 5 %) and, if CERES's own clear fraction
+    Clrf (%) is given, Clrf >= min_clrf, so both masks agree. The CERES label is the reference: the gate asks
+    whether the method reproduces the clear sky CERES measures, whatever its value at this geometry, instead of a
+    fixed flux range from the literature.
+
+    Example:
+        >>> r = clear_sky_check([70.0, 72.0, 300.0], [75.0, 77.0, 310.0], ["clear", "clear", "broken"], min_n=2)
+        >>> r["bias"], r["n"]
+        (5.0, 2)
+        >>> clear_sky_check([70.0, 72.0], [75.0, 77.0], ["clear", "clear"], clrf=[100.0, 50.0], min_n=1)["n"]
+        1
+
+    Args:
+        y_true, y_pred: CERES Fsw and the method's footprint prediction.
+        regimes: "clear" / "broken" / "overcast" per footprint (sampling.regime).
+        clrf: Optional CERES clear-strong percentage per footprint.
+        min_clrf: Clrf a clear footprint needs (%).
+        min_n: Fewer clear footprints give bias NaN (the gate is then not applied).
+
+    Returns:
+        {"bias", "rmse", "n", "mean_label"} over the clear footprints.
+    """
+    reg = np.asarray(regimes)
+    sel = reg == "clear"
+    if clrf is not None:
+        c = np.asarray(clrf, float)
+        sel &= np.isfinite(c) & (c >= min_clrf)
+    y, p = np.asarray(y_true, float)[sel], np.asarray(y_pred, float)[sel]
+    sc = footprint_scores(y, p)
+    if sc["n"] < min_n:
+        return {"bias": np.nan, "rmse": np.nan, "n": sc["n"], "mean_label": np.nan}
+    return {"bias": sc["bias"], "rmse": sc["rmse"], "n": sc["n"], "mean_label": float(np.nanmean(y))}
+
+
 def scores_by(y_true, y_pred, labels) -> dict:
     """footprint_scores for every distinct label (e.g. regime, SZA bin)."""
     labels = np.asarray(labels)

@@ -35,11 +35,59 @@ class TestRankingFlips:
 
 class TestGateFailures:
     def test_each_gate(self):
-        res = _m(5.0, physics={"passed": False, "ok_pcs": False, "ok_bounds": True, "ok_spacing": True},
+        res = _m(5.0, clear_check={"bias": -7.5, "n": 50},
+                 physics={"passed": False, "ok_pcs": True, "ok_bounds": False, "ok_spacing": False, "spacing_peak": 9.0},
                  trend_effect={"SZA": {"effect_wm2": 9.0, "p": 1e-4}}, swath_asymmetry=7.0)
         fails = decision.gate_failures("A", res, CFG, {"A": ["B@uniform"]})
-        assert fails == ["ok_pcs", "trend:SZA", "swath_asymmetry", "ranking_flip:B@uniform"]
+        assert fails == ["clear_bias:-7.5", "ok_bounds", "ok_spacing", "trend:SZA", "swath_asymmetry", "ranking_flip:B@uniform"]
         assert decision.gate_failures("A", _m(5.0), CFG, {}) == []
+
+    def test_far_clear_map_value_is_no_longer_a_gate(self):
+        res = _m(5.0, physics={"passed": False, "ok_pcs": False, "ok_bounds": True, "ok_spacing": True})
+        assert decision.gate_failures("A", res, CFG, {}) == []
+
+    def test_clear_bias_within_gate_and_unmeasured(self):
+        assert decision.gate_failures("A", _m(5.0, clear_check={"bias": 4.9, "n": 50}), CFG, {}) == []
+        assert decision.gate_failures("A", _m(5.0, clear_check={"bias": float("nan"), "n": 3}), CFG, {}) == []
+
+    def test_footprint_only_models_face_the_clear_gate(self):
+        res = _m(5.0, produces_map=False, clear_check={"bias": 12.0, "n": 50})
+        assert decision.gate_failures("A", res, CFG, {}) == ["clear_bias:+12.0"]
+
+    def test_nan_spacing_is_not_a_failure(self):
+        res = _m(5.0, physics={"ok_bounds": True, "ok_spacing": False, "spacing_peak": float("nan")})
+        assert decision.gate_failures("A", res, CFG, {}) == []
+
+    def test_gate_from_config(self):
+        cfg = BenchmarkConfig(models=[], clear_bias_gate=2.0)
+        assert decision.gate_failures("A", _m(5.0, clear_check={"bias": 3.0, "n": 50}), cfg, {}) == ["clear_bias:+3.0"]
+
+
+class TestClearCheckOf:
+    def test_prefers_clear_check(self):
+        r = {"clear_check": {"bias": 1.0, "n": 40}, "by_regime": {"clear": {"bias": 9.0, "n": 99}}}
+        c = decision.clear_check_of(r)
+        assert c["bias"] == 1.0 and "Clrf" in c["source"]
+
+    def test_falls_back_to_clear_regime(self):
+        assert decision.clear_check_of({"by_regime": {"clear": {"bias": 2.5, "n": 40}}})["bias"] == 2.5
+
+    def test_nothing(self):
+        assert np.isnan(decision.clear_check_of({"by_regime": {"clear": {"bias": 2.5, "n": 0}}})["bias"])
+
+
+class TestMain:
+    def test_redecide_saved_summary(self, tmp_path, capsys):
+        import json
+
+        s = {"models": {"A": _m(5.0, by_regime={"clear": {"bias": 8.0, "n": 50}}), "B": _m(6.0, complexity=1)},
+             "comparisons": {}, "config": {"clear_bias_gate": 5.0}}
+        p = tmp_path / "summary.json"
+        p.write_text(json.dumps(s))
+        d = decision.main([str(p)])
+        assert d["winner"] == "B" and d["gates"]["A"] == ["clear_bias:+8.0"]
+        assert decision.main([str(p), "--clear-bias-gate", "10"])["winner"] == "A"
+        assert "winner: A" in capsys.readouterr().out
 
 
 class TestCompare:

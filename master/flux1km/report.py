@@ -25,8 +25,11 @@ How to read this file
   pixel RMSE/corr/SSIM    against the known 1 km truth (synthetic data only): tie-breaker 1.
   trend effect            |slope| x range of the residual vs an angle; must stay below the trend gate.
   swath asymmetry         forward- minus backscatter-side residual at matched VZA.
-  physics                 pcs = far-field pure clear-sky flux (target 80 +- 10 W m^-2), bound = fraction
-                          of pixels above S0 cos(SZA), spacing = power-spectrum peak at the footprint spacing.
+  clear-sky gate          bias vs CERES on clear footprints (MYD35 CF < 5 % and CERES Clrf >= 95 %) must
+                          stay within the clear-sky gate; it applies to every ranked method.
+  physics                 pcs = far-field clear-sky flux of the map (reported only), bound = fraction of
+                          pixels above S0 cos(SZA), spacing = power-spectrum peak at the footprint spacing
+                          (both gates). Distance to cloud: MYD35 strict mask when the images have ImCloud.
   comparisons             paired tests on per-group losses: bootstrap CI of loss(A) - loss(B) (negative =
                           A better), bootstrap p and its Holm correction, Wilcoxon (+Holm), Diebold-Mariano.
   ranked = no             the method reads the test footprints' own CERES labels (B-const, M6e, M7,
@@ -102,7 +105,8 @@ def format_report(summary: dict, title: str = "flux1km benchmark results") -> st
                   f"sampling: {cfg.get('sampling')} {cfg.get('sampling_params') or ''}   leakage check: {cfg.get('check_leakage')} "
                   f"(radius {cfg.get('leakage_radius_km')} km)",
                   f"noise floor by regime: {cfg.get('noise_floor_by_regime')}   trend gate: {cfg.get('trend_gate')}   "
-                  f"swath gate: {cfg.get('swath_gate')}   clear-sky target: {cfg.get('pcs_target')}",
+                  f"swath gate: {cfg.get('swath_gate')}   clear-sky gate: |bias| <= {cfg.get('clear_bias_gate')} W/m2 "
+                  f"(clear = CF < 5 % and Clrf >= {cfg.get('clear_min_clrf')} %)",
                   f"image granules: {summary.get('n_image_granules', '?')}"]
 
     folds = summary.get("folds", [])
@@ -146,6 +150,12 @@ def format_report(summary: dict, title: str = "flux1km benchmark results") -> st
         rrows.append(row)
     lines.append(format_table(["model", "clear", "bias", "n", "broken", "bias", "n", "overcast", "bias", "n"], rrows,
                               [12] + [10, 9, 7] * 3))
+
+    crow = [[n, r["clear_check"].get("bias"), r["clear_check"].get("rmse"), r["clear_check"].get("mean_label"),
+             str(r["clear_check"].get("n", 0))] for n, r in models.items() if r.get("clear_check")]
+    if crow:
+        lines += [section("Clear-sky gate (clear footprints: MYD35 CF < 5 % and CERES Clrf high; bias = pred - CERES)"),
+                  format_table(["model", "bias", "RMSE", "CERES mean", "n"], crow, [12, 10, 10, 12, 8])]
 
     lines.append(section("Residual flatness (gates: trend effect, swath-side asymmetry)"))
     trows = []

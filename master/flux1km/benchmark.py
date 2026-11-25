@@ -46,7 +46,10 @@ class BenchmarkConfig:
     image_data_scarce: bool | None = None  # tie default M2 instead of M3; None = decide from the data (< 10 image granules)
     trend_gate: float = 5.0        # W m^-2: max residual trend effect across the range of an angle
     swath_gate: float = 5.0        # W m^-2: max forward/backscatter residual difference
-    pcs_target: tuple[float, float] = (70.0, 90.0)
+    pcs_target: tuple[float, float] = (70.0, 90.0)  # reported only since 25.11.2026 (no longer a gate)
+    clear_bias_gate: float = 5.0   # W m^-2: max |bias| vs CERES on clear footprints (MYD35 CF < 5 % and Clrf >= clear_min_clrf)
+    clear_min_clrf: float = 95.0   # %: CERES clear-strong fraction a clear footprint needs
+    clear_min_n: int = 30          # fewer clear footprints: the clear-sky gate is not applied
     patch: tuple[int, int] = (27, 55)
     psf_path: str | None = None    # ceres_psf.csv; required by the "ceres_psf" operator
     cache_dir: str | None = None   # disk cache for the folds' images and network inputs (None = all in memory)
@@ -181,7 +184,7 @@ def run_benchmark(granules: list[Granule], table: FootprintTable, folds: list[sp
                                "regime": sampling.regime(table["CF"][row:row + 1])[0] if "CF" in table else "unknown"}
                         for op in cfg.sensitivity_operators:
                             rec[f"pred_{op}"] = float(preds[op][k])
-                        for c in TREND_COLUMNS:
+                        for c in TREND_COLUMNS + ("Clrf",):
                             if c in table:
                                 rec[c] = float(table[c][row])
                         records.append(rec)
@@ -283,16 +286,32 @@ def _pixel_and_physics(granules, table, folds, maps_store, cfg) -> dict:
             if b.truth is not None:
                 truth.append(b.truth)
                 dist.append(b.dist_km)
-            else:  # real data: distance to the nearest bright (cloud-proxy) pixel from the MODIS radiances
-                dist.append(_common.distance_to_bright(_common.bright_mask(b)))
+            else:  # real data: distance to the nearest cloud of the MYD35 strict mask, or of the 0.66 um proxy
+                dist.append(_common.distance_to_bright(cloud_mask(b)))
         res = {}
         if truth and len(truth) == len(pred):
             res["pixel"] = metrics.pixel_scores(np.concatenate(truth), np.concatenate(pred))
         res["physics"] = physics.run_checks(np.concatenate(pred), np.concatenate(dist), np.concatenate(sza),
                                             pcs_target=cfg.pcs_target)
-        res["physics"]["distance_source"] = "synthetic truth" if truth else "0.66 um brightness proxy"
+        res["physics"]["distance_source"] = ("synthetic truth" if truth else
+                                             "MYD35 strict" if "ImCloud" in b.images else "0.66 um brightness proxy")
         out[name] = res
     return out
+
+
+def cloud_mask(batch: Batch) -> np.ndarray:
+    """Cloudy pixels (N, H, W) for the physics checks: MYD35 strict (confidence cloudy or uncertain) when the images
+    carry ImCloud, else the 0.66 um brightness proxy.
+
+    The proxy misses most clouds at low sun (cloud-fraction correlation 0.69 with CERES in img6, MYD35 0.99), so
+    "clear sky far from cloud" took in cloudy pixels; the strict MYD35 mask agrees best with CERES's Clrf.
+
+    Example:
+        >>> # cloud_mask(test_batch).shape == test_batch.images["ImSW"].shape[:1] + (27, 55)
+    """
+    if batch.images is not None and "ImCloud" in batch.images:
+        return np.asarray(batch.images["ImCloud"]) <= 1
+    return _common.bright_mask(batch)
 
 
 def _arr(records, key, sel):
@@ -314,6 +333,8 @@ def summarize(records: list[dict], cfg: BenchmarkConfig, pixel: dict | None = No
         for op in cfg.sensitivity_operators:
             ps = _arr(records, f"pred_{op}", sel)
             res[f"macro_rmse_{op}"] = metrics.macro_rmse(y, ps, reg) if len(y) else np.nan
+        clrf = _arr(records, "Clrf", sel) if len(y) and "Clrf" in records[0] else None
+        res["clear_check"] = metrics.clear_sky_check(y, p, reg, clrf, cfg.clear_min_clrf, cfg.clear_min_n) if len(y) else {}
         resid = p - y
         res["trend_effect"] = {}
         for c in TREND_COLUMNS:

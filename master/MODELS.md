@@ -181,7 +181,8 @@ E[x]…E[x⁴] follow exactly from mean/std/skew/kurt. So a per-channel polynomi
 
 ### The decision rule as implemented (`flux1km/decision.py`)
 1. **Gates.** A method is dropped if:
-   - its physics checks fail (clear sky outside 80 ± 10, values above S0·μ0, a peak at the footprint spacing);
+   - its clear-sky bias against CERES exceeds 5 W m⁻² (`clear_bias_gate`) on clear footprints: MYD35 CF < 5 % and CERES `Clrf` ≥ 95 %. Every ranked method faces it, footprint-only ones too. (Until 25.11.2026: the map's far-field clear sky within 80 ± 10, with a 0.66 µm proxy for clouds; now reported only.)
+   - its map physics fails: values above S0·μ0, or a peak at the footprint spacing (NaN pixels no longer make this check fail);
    - its residuals trend with SZA/VZA/RAA/glint;
    - its swath-side asymmetry is too large;
    - its ranking flips between the primary and a sensitivity operator. Only map methods are compared here, because footprint-only methods do not depend on the operator.
@@ -195,3 +196,5 @@ E[x]…E[x⁴] follow exactly from mean/std/skew/kurt. So a per-channel polynomi
    3. the default, M3 (or M2 with fewer than 10 image granules);
    4. simplicity.
 5. **The UNet rule:** if M5 wins without being significantly better than M6b, M6b wins.
+
+To re-apply the rule to a saved run after a gate changes, without retraining: `python3 -m flux1km.decision <run>/summary.json [--clear-bias-gate 5]`. Distances to cloud in the physics checks use the MYD35 strict mask when the images carry `ImCloud`.

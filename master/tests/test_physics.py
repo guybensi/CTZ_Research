@@ -48,6 +48,14 @@ class TestMapChecks:
         assert physics.spacing_peak_ratio(striped + noise, period_px=8) > 5
         assert physics.spacing_peak_ratio(clean + noise, period_px=8) < 3
 
+    def test_spacing_peak_ignores_nan_pixels(self):
+        x = np.arange(55)
+        striped = np.ones((4, 27, 55)) + 5 * np.cos(2 * np.pi * x / 8)[None, None, :]
+        striped[0, 3, 7] = np.nan
+        striped[1, 5, :] = np.nan                       # a whole invalid row is dropped
+        assert physics.spacing_peak_ratio(striped, period_px=8) > 5
+        assert np.isnan(physics.spacing_peak_ratio(np.full((1, 2, 55), np.nan)))
+
     def test_far_clear_flux(self):
         maps = np.full((1, 2, 2), 80.0); maps[0, 0, 0] = 500
         d = np.array([[[0.0, 40.0], [50.0, 60.0]]])
