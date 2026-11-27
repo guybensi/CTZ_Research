@@ -146,6 +146,21 @@ class TestLoadParams:
         assert params["M5"]["base"] in (16, 32) and "psf_path" not in params["M5"]
 
 
+class TestSharpnessTable:
+    def test_per_method_and_truth(self):
+        img = np.random.default_rng(0).random((2, 27, 55))
+        t = mapviz.sharpness_table({"vis": img, "truth": 2 * img}, {"A": img, "B": np.ones((2, 27, 55))})
+        assert t["A"] == pytest.approx(1.0) and t["B"] == 0.0 and t["truth"] == pytest.approx(1.0)
+
+
+class TestWriteSharpness:
+    def test_sorted_by_mean_and_nan_last(self, tmp_path):
+        p = mapviz.write_sharpness(tmp_path / "s.txt", {"g1": {"A": 0.2, "B": 0.8, "C": float("nan")}, "g2": {"A": 0.4, "B": 0.6}})
+        rows = [line.split()[0] for line in p.read_text().splitlines()[4:]]
+        assert rows == ["B", "A", "C"]
+        assert "0.70" in p.read_text().splitlines()[4]
+
+
 class TestSaveLoadMaps:
     def test_round_trip(self, tmp_path):
         data = {"label": np.array([1.0, 2.0]), "mask__MYD35 relaxed": np.zeros((2, 3, 4), bool)}
@@ -171,6 +186,7 @@ class TestMain:
         names = {p.name.split("_A")[0] for p in paths}
         assert {"fig1_scene", "fig3_scatter", "fig4_ctz", "fig5_masks"} <= names
         assert any(n.startswith("fig2_footprint_") for n in names)
+        assert (paths[0].parent / "sharpness.txt").exists()
         run = paths[0].parent
         data, maps = mapviz.load_maps(next(run.glob("maps_*.npz")))
         assert set(maps) == {"B-const", "M2", "M9"}

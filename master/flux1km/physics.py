@@ -111,6 +111,62 @@ def spacing_peak_ratio(maps, period_px: float = 8.0) -> float:
     return float(power[k] / max(np.median(neigh), 1e-12))
 
 
+def high_pass(patches, sigma: float = 2.0) -> np.ndarray:
+    """Fine detail of each (H, W) patch: the patch minus its Gaussian blur (sigma in pixels, within the patch).
+
+    NaN pixels are filled with the patch mean before blurring and stay NaN in the result.
+
+    Example:
+        >>> high_pass(np.ones((1, 4, 4))).max()
+        np.float64(0.0)
+    """
+    x = np.asarray(patches, float)
+    ok = np.isfinite(x)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        mean = np.where(ok, x, 0.0).sum(axis=(1, 2), keepdims=True) / ok.sum(axis=(1, 2), keepdims=True)
+    filled = np.where(ok, x, np.nan_to_num(mean))
+    out = filled - ndimage.gaussian_filter(filled, sigma=(0, sigma, sigma), mode="nearest")
+    return np.where(ok, out, np.nan)
+
+
+def sharpness(maps, reference, sigma: float = 2.0, min_std: float = 1e-9) -> float:
+    """How much of the image's fine structure the map keeps: median over patches of the correlation between the
+    high-pass of the map and the high-pass of a reference image (the 0.66 um reflectance).
+
+    1 = every edge and small cloud of the image is in the map; near 0 = the map is smooth where the image has
+    detail (a blurred map, or one constant per footprint); negative = detail in the wrong place. The flux of a
+    cloud field follows its reflectance at 1 km, so a good map scores high; the score does not say the values
+    are right (the footprint RMSE does that), only that the structure is there. Patches where the image has no
+    detail (std of its high-pass <= min_std: clear ocean) are left out; a map with no detail where the image has
+    some scores 0 there. NaN if no patch is left.
+
+    Example:
+        >>> rng = np.random.default_rng(0); img = rng.random((3, 27, 55))
+        >>> round(sharpness(5 * img + 1, img), 3), sharpness(np.ones((3, 27, 55)), img)
+        (1.0, 0.0)
+
+    Args:
+        maps: (N, H, W) predicted flux.
+        reference: (N, H, W) image the structure is taken from (reflectance).
+        sigma: Blur width (pixels) that separates fine detail from the broad field.
+        min_std: Patches whose image has less fine detail than this are skipped; a map with less scores 0.
+
+    Returns:
+        Median correlation over the usable patches.
+    """
+    a, b = high_pass(maps, sigma), high_pass(reference, sigma)
+    vals = []
+    for pa, pb in zip(a, b):
+        ok = np.isfinite(pa) & np.isfinite(pb)
+        if ok.sum() < 3:
+            continue
+        xa, xb = pa[ok], pb[ok]
+        if xb.std() <= min_std:
+            continue
+        vals.append(0.0 if xa.std() <= min_std else float(np.corrcoef(xa, xb)[0, 1]))
+    return float(np.median(vals)) if vals else float("nan")
+
+
 def far_clear_flux(maps, dist_km, min_km: float = 30.0) -> float:
     """Mean flux of clear pixels at least min_km from cloud (pure clear sky); NaN if none.
 

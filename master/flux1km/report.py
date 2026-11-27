@@ -28,6 +28,9 @@ How to read this file
   swath asymmetry         forward- minus backscatter-side residual at matched VZA.
   clear-sky gate          bias vs CERES on clear footprints (MYD35 CF < 5 % and CERES Clrf >= 95 %) must
                           stay within the clear-sky gate; it applies to every ranked method.
+  sharpness               median over footprints of corr(high-pass of the map, high-pass of the 0.66 um
+                          image), blur sigma 2 px: 1 = the map keeps every edge and small cloud of the image,
+                          near 0 = smeared. Says nothing about the values (the RMSE does); reported, not a gate.
   physics                 pcs = far-field clear-sky flux of the map (reported only), bound = fraction of
                           pixels above S0 cos(SZA), spacing = power-spectrum peak at the footprint spacing
                           (both gates). Distance to cloud: MYD35 strict mask when the images have ImCloud.
@@ -165,13 +168,17 @@ def format_report(summary: dict, title: str = "flux1km benchmark results") -> st
         trows.append([n] + [te.get(c, {}).get("effect_wm2") for c in ("SZA", "VZA", "RAA", "glint")] + [r.get("swath_asymmetry")])
     lines.append(format_table(["model", "SZA", "VZA", "RAA", "glint", "swath"], trows, [12, 10, 10, 10, 10, 10]))
 
-    phys_rows = [[n, r["physics"].get("pcs_flux"), r["physics"].get("bound_violation"), r["physics"].get("spacing_peak"),
-                  r["physics"].get("decay_score"), str(r["physics"].get("passed")), r["physics"].get("distance_source", "")]
+    phys_rows = [[n, r["physics"].get("sharpness"), r["physics"].get("pcs_flux"), r["physics"].get("bound_violation"),
+                  r["physics"].get("spacing_peak"), r["physics"].get("decay_score"), str(r["physics"].get("passed")),
+                  r["physics"].get("distance_source", "")]
                  for n, r in models.items() if r.get("physics")]
     if phys_rows:
         lines += [section("Physics checks of the 1 km maps"),
-                  format_table(["model", "clear_sky", "bound_frac", "spacing", "decay", "passed", "distance from"], phys_rows,
-                               [12, 11, 11, 10, 10, 8, 28])]
+                  format_table(["model", "sharpness", "clear_sky", "bound_frac", "spacing", "decay", "passed", "distance from"], phys_rows,
+                               [12, 11, 11, 11, 10, 10, 8, 28])]
+        st = next((r["physics"].get("sharpness_truth") for r in models.values() if r.get("physics", {}).get("sharpness_truth") is not None), None)
+        if st is not None:
+            lines.append(f"  sharpness of the synthetic truth itself: {_f(st, 2, 0).strip()} (a map that keeps the true structure scores about this)")
         for n, r in models.items():
             if r.get("physics", {}).get("flux_vs_distance") is not None:
                 curve = ", ".join(_f(v, 1, 0).strip() for v in r["physics"]["flux_vs_distance"])

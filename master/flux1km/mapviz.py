@@ -17,6 +17,7 @@ What it does:
                    from each mask, the PSF, each method's map and its PSF-weighted mean against CERES;
    fig3_scatter    every footprint: PSF-weighted mean of each map against CERES, coloured by cloud fraction;
    fig4_ctz        mean flux of clear pixels against distance from cloud, one panel per method, for each mask;
+   sharpness.txt   how much of the image's fine structure each map keeps (physics.sharpness), per granule;
    fig5_masks      the cloud masks (MYD35 relaxed / strict, 0.66 um brightness proxy) and their footprint cloud
                    fractions against CERES's own (100 - Clrf).
 
@@ -35,7 +36,7 @@ from pathlib import Path
 import numpy as np
 from scipy import ndimage
 
-from . import benchmark, io, splits, synthetic
+from . import benchmark, io, physics, splits, synthetic
 from .features import Batch, make_batch
 from .models import MODELS, get_model, predict_map_chunked
 from .table import build_table
@@ -391,6 +392,39 @@ def _rmse(a, b):
     return float(np.sqrt(np.nanmean((np.asarray(a) - np.asarray(b)) ** 2)))
 
 
+def sharpness_table(data: dict, maps: dict) -> dict[str, float]:
+    """physics.sharpness of every map (and of the synthetic truth when present) against the window's 0.66 um image.
+
+    Example:
+        >>> img = np.random.default_rng(0).random((2, 27, 55))
+        >>> t = sharpness_table({"vis": img}, {"A": 3 * img, "B": np.ones((2, 27, 55))})
+        >>> round(t["A"], 3), t["B"]
+        (1.0, 0.0)
+    """
+    out = {k: physics.sharpness(m, data["vis"]) for k, m in maps.items()}
+    if "truth" in data:
+        out["truth"] = physics.sharpness(data["truth"], data["vis"])
+    return out
+
+
+def write_sharpness(path, tables: dict[str, dict[str, float]]) -> Path:
+    """One text table: sharpness per method (rows) and granule window (columns), plus the mean."""
+    tags = list(tables)
+    names = list(dict.fromkeys(k for t in tables.values() for k in t))
+    lines = ["sharpness of the 1 km maps: median over footprints of corr(high-pass of the map, high-pass of the 0.66 um image)",
+             "1 = the map keeps every edge of the image, ~0 = smeared; says nothing about the values (the RMSE does)", "",
+             f"{'method':<12s}" + "".join(f"{t:>16s}" for t in tags) + f"{'mean':>10s}"]
+    def mean(vals):
+        vals = [v for v in vals if np.isfinite(v)]
+        return float(np.mean(vals)) if vals else float("nan")
+
+    rows = {n: [tables[t].get(n, np.nan) for t in tags] for n in names}
+    for n in sorted(names, key=lambda k: (np.isnan(mean(rows[k])), -np.nan_to_num(mean(rows[k])))):
+        lines.append(f"{n:<12s}" + "".join(f"{v:16.2f}" for v in rows[n]) + f"{mean(rows[n]):10.2f}")
+    Path(path).write_text("\n".join(lines) + "\n")
+    return Path(path)
+
+
 def _footprint_means(data, maps):
     w = data["weights"].astype(float)
     return {k: (np.nan_to_num(m.astype(float)) * w).sum(axis=(1, 2)) / np.maximum(w.sum(axis=(1, 2)), 1e-12)
@@ -414,7 +448,10 @@ def plot_scene(data: dict, maps: dict, title: str = ""):
     if "truth" in data:
         panels.append(("Truth (synthetic data only)", grid(data["truth"])))
     rm = {k: _rmse(v, data["label"]) for k, v in _footprint_means(data, maps).items()}
-    panels += [(f"{k}{_title_tag(k)}   |   RMSE vs CERES {rm[k]:.1f} W/m²", grid(m)) for k, m in maps.items()]
+    sh = sharpness_table(data, maps)
+    if "truth" in data:
+        panels[-1] = (f"Truth (synthetic data only)   |   sharpness {sh['truth']:.2f}", panels[-1][1])
+    panels += [(f"{k}{_title_tag(k)}   |   RMSE vs CERES {rm[k]:.1f} W/m²   |   sharpness {sh[k]:.2f}", grid(m)) for k, m in maps.items()]
     n = 1 + len(panels)
     ncol = 2
     nrow = (n + 1) // 2
@@ -624,6 +661,8 @@ def draw_all(data: dict, maps: dict, out_dir: str | Path, tag: str) -> list[Path
     for regime, i in pick_footprints(cf).items():
         save(plot_footprint(data, maps, i, regime, tag), f"fig2_footprint_{regime}")
     save(plot_scatter(data, maps, tag), "fig3_scatter")
+    sharp = sharpness_table(data, maps)
+    write_sharpness(out_dir / f"sharpness_{tag}.txt", {tag: sharp})
     if has_place:
         save(plot_ctz(data, maps, tag), "fig4_ctz")
         save(plot_masks(data, tag), "fig5_masks")
@@ -662,9 +701,13 @@ def main(argv=None) -> list[Path]:
     a = parse_args(argv)
     if a.replot:
         paths = []
+        tables = {}
         for f in sorted(Path(a.replot).glob("maps_*.npz")):
             data, maps = load_maps(f)
             paths += draw_all(data, maps, a.replot, f.stem[5:])
+            tables[f.stem[5:]] = sharpness_table(data, maps)
+        if tables:
+            print(write_sharpness(Path(a.replot) / "sharpness.txt", tables).read_text())
         print("\n".join(str(p) for p in paths))
         return paths
     root = a.data_root
@@ -700,7 +743,7 @@ def main(argv=None) -> list[Path]:
     val = make_batch(granules, table, fold.val, store=store)
     log(f"images of train and validation ready; fitting {len(models)} methods")
     fitted = fit_models(models, train, val, cfg, params)
-    paths = []
+    paths, tables = [], {}
     for gid in ids:
         g_rows = fold.test[test_g == gid]
         if len(g_rows) == 0:
@@ -715,6 +758,9 @@ def main(argv=None) -> list[Path]:
         maps = predict_maps(fitted, batch)
         save_maps(out / f"maps_{gid}.npz", data, maps)
         paths += draw_all(data, maps, out, gid)
+        tables[gid] = sharpness_table(data, maps)
+    if tables:
+        log("sharpness:\n" + write_sharpness(out / "sharpness.txt", tables).read_text())
     (out / "README.txt").write_text(f"flux1km.mapviz run {datetime.now():%Y-%m-%d %H:%M}\nfold {fold.name}\n"
                                     f"models {list(fitted)}\nparams from {a.params_from}\ngranules {ids}\n"
                                     f"maps_<granule>.npz: the window's data and maps; redraw with --replot {out}\n")

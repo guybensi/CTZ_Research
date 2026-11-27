@@ -45,7 +45,7 @@ The demo writes the six image-granule names as synthetic granules, groups them b
 | `features` | `Batch` of footprints; MODIS-only pixel and footprint features | §3 |
 | `models` | `FluxModel` interface and baselines: B-clim, B-const (uniTR), M0-ridge, B-bagpixel, M2 | §3 |
 | `metrics` | scores by regime, macro RMSE, residual trends, swath-side asymmetry, bootstrap / Wilcoxon / DM / Holm, pixel RMSE / corr / SSIM | §4.2 |
-| `physics` | distance to cloud, flux vs distance, pure clear-sky flux, bounds, percentile spread, footprint-spacing artefact | §4.3 |
+| `physics` | sharpness (high-pass correlation of the map with the 0.66 µm image), distance to cloud, flux vs distance, pure clear-sky flux, bounds, percentile spread, footprint-spacing artefact | §4.3 |
 | `benchmark` | tune within a shared budget, then run, score, compare and decide; a failing method is logged, not fatal | §4, §6 |
 | `decision` | the decision rule: gates (physics, flat residuals, swath asymmetry, ranking flip), bootstrap+Holm and regime noise floor, tie-breakers, M3/M2 default, the UNet-vs-M6b rule | §6 |
 | `report` | the plain-text `results.txt` of every run | |

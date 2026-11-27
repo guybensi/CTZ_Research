@@ -49,7 +49,9 @@ class TestRunBenchmark:
         assert "Clrf" in full_run["records"][0]
 
     def test_physics_distance_from_truth_on_synthetic(self, full_run):
-        assert full_run["summary"]["models"]["M2"]["physics"]["distance_source"] == "synthetic truth"
+        phys = full_run["summary"]["models"]["M2"]["physics"]
+        assert phys["distance_source"] == "synthetic truth"
+        assert -1 <= phys["sharpness"] <= 1 and phys["sharpness_truth"] > 0.9
 
     def test_learned_model_beats_climatology(self, full_run):
         m = full_run["summary"]["models"]

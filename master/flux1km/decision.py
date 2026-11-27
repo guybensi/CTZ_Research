@@ -314,7 +314,10 @@ def main(argv=None) -> dict:
         c = clear_check_of(r)
         g = d["gates"].get(n)
         status = "not ranked" if g is None else ("PASS" if not g else "FAIL: " + ", ".join(g))
-        print(f"  {n:<12s} macro {r.get('macro_rmse', float('nan')):7.2f}   clear bias {c['bias']:+7.2f} (n={c['n']})   {status}")
+        sharp = (r.get("physics") or {}).get("sharpness", float("nan"))
+        sharp = float("nan") if sharp is None else sharp
+        print(f"  {n:<12s} macro {r.get('macro_rmse', float('nan')):7.2f}   clear bias {c['bias']:+7.2f} (n={c['n']})   "
+              f"sharpness {sharp:5.2f}   {status}")
     print(f"source of the clear-sky bias: {clear_check_of(next(iter(summary['models'].values())))['source']}")
     print("decision log:")
     for x in d["log"]:

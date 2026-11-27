@@ -72,3 +72,38 @@ class TestRunChecks:
         bad_maps = g.truth["flux"].copy(); bad_maps[:, :, ::2] *= 3
         bad = physics.run_checks(bad_maps, g.truth["dist_km"], sza, pcs_target=(40, 120))
         assert not bad["passed"]
+
+
+class TestHighPass:
+    def test_constant_has_no_detail(self):
+        assert np.allclose(physics.high_pass(np.full((2, 5, 7), 3.0)), 0.0)
+
+    def test_nan_stays_nan_and_does_not_spread(self):
+        x = np.random.default_rng(0).random((1, 9, 9)); x[0, 4, 4] = np.nan
+        hp = physics.high_pass(x)
+        assert np.isnan(hp[0, 4, 4]) and np.isfinite(hp).sum() == 80
+
+
+class TestSharpness:
+    def _scene(self):
+        g = synthetic.make_synthetic_granule("A2014060.0245", np.random.default_rng(1), n_rows=3, n_cols=6)
+        return g.truth["flux"], g.images["ImSW"][:, 2]           # flux and the 0.66 um channel
+
+    def test_blur_lowers_the_score(self):
+        from scipy import ndimage
+
+        truth, img = self._scene()
+        s = [physics.sharpness(ndimage.gaussian_filter(truth, (0, b, b)) if b else truth, img) for b in (0, 1, 2, 4)]
+        assert s[0] > 0.9 and s[0] > s[1] > s[2] > s[3]
+
+    def test_constant_per_footprint_scores_zero(self):
+        truth, img = self._scene()
+        const = np.broadcast_to(truth.mean(axis=(1, 2), keepdims=True), truth.shape)
+        assert physics.sharpness(const, img) == 0.0
+
+    def test_detail_in_the_wrong_place_is_negative(self):
+        truth, img = self._scene()
+        assert physics.sharpness(-truth, img) < -0.9
+
+    def test_no_detail_in_the_image_is_nan(self):
+        assert np.isnan(physics.sharpness(np.random.default_rng(0).random((2, 5, 5)), np.ones((2, 5, 5))))

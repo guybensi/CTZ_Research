@@ -279,11 +279,12 @@ def _pixel_and_physics(granules, table, folds, maps_store, cfg) -> dict:
             continue
         per_model.setdefault(name, []).append((rows, maps))
     for name, items in per_model.items():
-        truth, pred, dist, sza = [], [], [], []
+        truth, pred, dist, sza, refl = [], [], [], [], []
         for rows, maps in items:
             b = make_batch(granules, table, rows)
             pred.append(maps)
             sza.append(b.images["Imviews"][:, 0])
+            refl.append(_common.reflectance(b, "0.66"))
             if b.truth is not None:
                 truth.append(b.truth)
                 dist.append(b.dist_km)
@@ -294,6 +295,9 @@ def _pixel_and_physics(granules, table, folds, maps_store, cfg) -> dict:
             res["pixel"] = metrics.pixel_scores(np.concatenate(truth), np.concatenate(pred))
         res["physics"] = physics.run_checks(np.concatenate(pred), np.concatenate(dist), np.concatenate(sza),
                                             pcs_target=cfg.pcs_target)
+        res["physics"]["sharpness"] = physics.sharpness(np.concatenate(pred), np.concatenate(refl))
+        if truth and len(truth) == len(pred):
+            res["physics"]["sharpness_truth"] = physics.sharpness(np.concatenate(truth), np.concatenate(refl))
         res["physics"]["distance_source"] = ("synthetic truth" if truth else
                                              "MYD35 strict" if "ImCloud" in b.images else "0.66 um brightness proxy")
         out[name] = res
