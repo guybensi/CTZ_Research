@@ -1,0 +1,91 @@
+flux1km benchmark results
+written 2026-11-27 08:59 UTC
+run folder: /archive/GUY/results_img_m4/run_20261127_085927
+
+====================================================================================================
+WINNER
+====================================================================================================
+winner: None
+ranking by macro RMSE (gate-passing, ranked methods): []
+decision log:
+  - M4 fails gates: ['ok_pcs', 'trend:SZA', 'trend:VZA']
+  - no model passed the gates
+
+====================================================================================================
+Configuration
+====================================================================================================
+models: ['M4']
+primary operator: ceres_psf   sensitivity operators: ('fov_ellipse', 'uniform', 'gaussian_psf')
+PSF file: resources/ceres_psf.csv   tuning budget: 40   seeds: (0,)
+sampling: S0    leakage check: True (radius 20.0 km)
+noise floor by regime: {'clear': 1.9, 'broken': 10.0, 'overcast': 6.0}   trend gate: 5.0   swath gate: 5.0   clear-sky target: (70.0, 90.0)
+image granules: 7
+
+====================================================================================================
+Folds (frozen split manifest)
+====================================================================================================
+fold                           leaky   n_train     n_val    n_test
+day-kfold:0                    False     25893      6243     13975
+day-kfold:1                    False     28216      4645     13050
+day-kfold:2                    False     31274      7497      7135
+day-kfold:3                    False     33947      7318      4645
+day-kfold:4                    False     32349      6243      7318
+interleave:2                    True     22957         0     23059
+chosen hyper-parameters (validation RMSE):
+  day-kfold:0              M4           val_rmse=16.42  {'max_depth': 5, 'learning_rate': 0.1, 'n_rounds': 200, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:1              M4           val_rmse=29.13  {'max_depth': 5, 'learning_rate': 0.1, 'n_rounds': 200, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:2              M4           val_rmse=21.18  {'max_depth': 5, 'learning_rate': 0.05, 'n_rounds': 200, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:3              M4           val_rmse=15.25  {'max_depth': 5, 'learning_rate': 0.1, 'n_rounds': 200, 'seed': 0, 'input_set': 'F5'}
+  day-kfold:4              M4           val_rmse=17.47  {'max_depth': 5, 'learning_rate': 0.05, 'n_rounds': 200, 'seed': 0, 'input_set': 'F5'}
+
+====================================================================================================
+Scores (non-leaky folds; W m^-2)
+====================================================================================================
+model        ranked  macroRMSE       RMSE        MAE       bias         R2          n  macro@fov_ellipse  macro@uniform  macro@gaussian_psf  interleave    pixRMSE    pixCorr       SSIM
+M4              yes      16.83      18.26      13.38      -1.23       0.98      45905              22.62          22.83               22.04       16.67          -          -          -
+
+====================================================================================================
+Scores by cloud regime (RMSE / bias / n)
+====================================================================================================
+model            clear     bias      n    broken     bias      n  overcast     bias      n
+M4               13.65     4.90   2155     16.38     2.22  22643     20.44    -5.56  21107
+
+====================================================================================================
+Residual flatness (gates: trend effect, swath-side asymmetry)
+====================================================================================================
+model              SZA       VZA       RAA     glint     swath
+M4                5.26      7.63      0.41      3.13      1.42
+
+====================================================================================================
+Physics checks of the 1 km maps
+====================================================================================================
+model         clear_sky bound_frac   spacing     decay  passed               distance from
+M4                95.71       0.00      0.77     -1.00   False    0.66 um brightness proxy
+  M4           flux vs distance to cloud: [167.8, 151.6, 127.2, 107.7, 96.6]
+
+====================================================================================================
+Gate results
+====================================================================================================
+  M4           FAIL: ok_pcs, trend:SZA, trend:VZA
+
+====================================================================================================
+Glossary
+====================================================================================================
+How to read this file
+  RMSE / MAE / bias / R2  footprint level, predicted vs CERES Fsw, in W m^-2 (bias = pred - CERES).
+  macro RMSE              mean of the RMSEs of the clear (CF < 5%), broken and overcast (CF >= 95%)
+                          regimes: the PRIMARY score (PLAN.md section 6).
+  macro@<operator>        the same score with a sensitivity aggregation operator; the ranking must not
+                          flip between operators.
+  interleave              RMSE on the leaky interleave test (every 2nd footprint); reported only, never
+                          used for ranking. A small gap to the LOGO RMSE is tie-breaker 2.
+  pixel RMSE/corr/SSIM    against the known 1 km truth (synthetic data only): tie-breaker 1.
+  trend effect            |slope| x range of the residual vs an angle; must stay below the trend gate.
+  swath asymmetry         forward- minus backscatter-side residual at matched VZA.
+  physics                 pcs = far-field pure clear-sky flux (target 80 +- 10 W m^-2), bound = fraction
+                          of pixels above S0 cos(SZA), spacing = power-spectrum peak at the footprint spacing.
+  comparisons             paired tests on per-group losses: bootstrap CI of loss(A) - loss(B) (negative =
+                          A better), bootstrap p and its Holm correction, Wilcoxon (+Holm), Diebold-Mariano.
+  ranked = no             the method reads the test footprints' own CERES labels (B-const, M6e, M7,
+                          M9-local): it is a reference for pixel truth and the interleave test only.
+

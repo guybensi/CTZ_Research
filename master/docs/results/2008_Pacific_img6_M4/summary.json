@@ -1,0 +1,284 @@
+{
+  "models": {
+    "M4": {
+      "overall": {
+        "rmse": 18.255968917981665,
+        "mae": 13.380734436609222,
+        "bias": -1.2311050232014493,
+        "r2": 0.9754555342589348,
+        "n": 45905
+      },
+      "by_regime": {
+        "overcast": {
+          "rmse": 20.444377854393327,
+          "mae": 15.471499080075105,
+          "bias": -5.562833965150851,
+          "r2": 0.9760296426983309,
+          "n": 21107
+        },
+        "broken": {
+          "rmse": 16.380448490562447,
+          "mae": 11.887610851616834,
+          "bias": 2.222831152908323,
+          "r2": 0.9273923025646924,
+          "n": 22643
+        },
+        "clear": {
+          "rmse": 13.650259038771855,
+          "mae": 8.59142028595873,
+          "bias": 4.904545065927297,
+          "r2": -2.686650326596394,
+          "n": 2155
+        }
+      },
+      "macro_rmse": 16.825028461242542,
+      "uses_test_labels": false,
+      "complexity": 5,
+      "produces_map": true,
+      "macro_rmse_fov_ellipse": 22.623829417196404,
+      "macro_rmse_uniform": 22.83146178520533,
+      "macro_rmse_gaussian_psf": 22.04482740386717,
+      "trend_effect": {
+        "SZA": {
+          "effect_wm2": 5.256659429489155,
+          "p": 7.344244002889757e-60
+        },
+        "VZA": {
+          "effect_wm2": 7.6285795911148995,
+          "p": 1.09385987058859e-139
+        },
+        "RAA": {
+          "effect_wm2": 0.4126599728708563,
+          "p": 0.19118403827707506
+        },
+        "glint": {
+          "effect_wm2": 3.1343025513123384,
+          "p": 1.5716009390992553e-16
+        }
+      },
+      "swath_asymmetry": 1.41849920397026,
+      "interleave": {
+        "rmse": 16.6665347158619,
+        "mae": 11.766612262214453,
+        "bias": 0.8019829323196024,
+        "r2": 0.9795479192703765,
+        "n": 22948
+      },
+      "physics": {
+        "pcs_flux": 95.70811067194154,
+        "decay_score": -0.9999999999999999,
+        "bound_violation": 0.0,
+        "spacing_peak": 0.7712833108056161,
+        "p1_p99": [
+          59.91320668770021,
+          600.5849853444598
+        ],
+        "flux_vs_distance": [
+          167.81322326310791,
+          151.5972128221032,
+          127.24235157997892,
+          107.71714873696116,
+          96.57214824440231
+        ],
+        "ok_pcs": false,
+        "ok_bounds": true,
+        "ok_spacing": true,
+        "passed": false,
+        "distance_source": "0.66 um brightness proxy"
+      }
+    }
+  },
+  "comparisons": {},
+  "folds": [
+    {
+      "name": "day-kfold:0",
+      "leaky": false,
+      "n_train": 25893,
+      "n_val": 6243,
+      "n_test": 13975,
+      "params": {
+        "M4": {
+          "max_depth": 5,
+          "learning_rate": 0.1,
+          "n_rounds": 200,
+          "seed": 0,
+          "operator": "ceres_psf",
+          "psf_path": "resources/ceres_psf.csv",
+          "input_set": "F5"
+        }
+      },
+      "val_rmse": {
+        "M4": 16.423752068312783
+      }
+    },
+    {
+      "name": "day-kfold:1",
+      "leaky": false,
+      "n_train": 28216,
+      "n_val": 4645,
+      "n_test": 13050,
+      "params": {
+        "M4": {
+          "max_depth": 5,
+          "learning_rate": 0.1,
+          "n_rounds": 200,
+          "seed": 0,
+          "operator": "ceres_psf",
+          "psf_path": "resources/ceres_psf.csv",
+          "input_set": "F5"
+        }
+      },
+      "val_rmse": {
+        "M4": 29.125538654626045
+      }
+    },
+    {
+      "name": "day-kfold:2",
+      "leaky": false,
+      "n_train": 31274,
+      "n_val": 7497,
+      "n_test": 7135,
+      "params": {
+        "M4": {
+          "max_depth": 5,
+          "learning_rate": 0.05,
+          "n_rounds": 200,
+          "seed": 0,
+          "operator": "ceres_psf",
+          "psf_path": "resources/ceres_psf.csv",
+          "input_set": "F5"
+        }
+      },
+      "val_rmse": {
+        "M4": 21.17929025972476
+      }
+    },
+    {
+      "name": "day-kfold:3",
+      "leaky": false,
+      "n_train": 33947,
+      "n_val": 7318,
+      "n_test": 4645,
+      "params": {
+        "M4": {
+          "max_depth": 5,
+          "learning_rate": 0.1,
+          "n_rounds": 200,
+          "seed": 0,
+          "operator": "ceres_psf",
+          "psf_path": "resources/ceres_psf.csv",
+          "input_set": "F5"
+        }
+      },
+      "val_rmse": {
+        "M4": 15.246466605827942
+      }
+    },
+    {
+      "name": "day-kfold:4",
+      "leaky": false,
+      "n_train": 32349,
+      "n_val": 6243,
+      "n_test": 7318,
+      "params": {
+        "M4": {
+          "max_depth": 5,
+          "learning_rate": 0.05,
+          "n_rounds": 200,
+          "seed": 0,
+          "operator": "ceres_psf",
+          "psf_path": "resources/ceres_psf.csv",
+          "input_set": "F5"
+        }
+      },
+      "val_rmse": {
+        "M4": 17.469671674534485
+      }
+    },
+    {
+      "name": "interleave:2",
+      "leaky": true,
+      "n_train": 22957,
+      "n_val": 0,
+      "n_test": 23059,
+      "params": {
+        "M4": {
+          "max_depth": 3,
+          "learning_rate": 0.05,
+          "n_rounds": 100,
+          "seed": 0,
+          "operator": "ceres_psf",
+          "psf_path": "resources/ceres_psf.csv",
+          "input_set": "F5"
+        }
+      },
+      "val_rmse": {
+        "M4": null
+      }
+    }
+  ],
+  "errors": [],
+  "config": {
+    "models": [
+      "M4"
+    ],
+    "operator": "ceres_psf",
+    "sensitivity_operators": [
+      "fov_ellipse",
+      "uniform",
+      "gaussian_psf"
+    ],
+    "budget": 40,
+    "seeds": [
+      0
+    ],
+    "sampling": "S0",
+    "sampling_params": {},
+    "model_params": {
+      "M4": {
+        "input_set": "F5"
+      }
+    },
+    "check_leakage": true,
+    "leakage_radius_km": 20.0,
+    "noise_floor": 2.0,
+    "noise_floor_by_regime": {
+      "clear": 1.9,
+      "broken": 10.0,
+      "overcast": 6.0
+    },
+    "flip_tol": 0.5,
+    "image_data_scarce": null,
+    "trend_gate": 5.0,
+    "swath_gate": 5.0,
+    "pcs_target": [
+      70.0,
+      90.0
+    ],
+    "patch": [
+      27,
+      55
+    ],
+    "psf_path": "resources/ceres_psf.csv",
+    "cache_dir": "/home/ilai/ctz_cache",
+    "physics_max_footprints": 5000,
+    "progress": true
+  },
+  "n_image_granules": 7,
+  "decision": {
+    "winner": null,
+    "ranking_by_macro_rmse": [],
+    "tie_set": [],
+    "gates": {
+      "M4": [
+        "ok_pcs",
+        "trend:SZA",
+        "trend:VZA"
+      ]
+    },
+    "log": [
+      "M4 fails gates: ['ok_pcs', 'trend:SZA', 'trend:VZA']",
+      "no model passed the gates"
+    ]
+  }
+}
