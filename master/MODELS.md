@@ -197,4 +197,4 @@ E[x]…E[x⁴] follow exactly from mean/std/skew/kurt. So a per-channel polynomi
    4. simplicity.
 5. **The UNet rule:** if M5 wins without being significantly better than M6b, M6b wins.
 
-To re-apply the rule to a saved run after a gate changes, without retraining: `python3 -m flux1km.decision <run>/summary.json [--clear-bias-gate 5]`. Distances to cloud in the physics checks use the MYD35 strict mask when the images carry `ImCloud`.
+To re-apply the rule to a saved run after a gate changes, without retraining: `python3 -m flux1km.decision <run>/summary.json [--clear-bias-gate 5]`. A method run alone on the same folds joins with `--merge <other>/summary.json` (no paired tests across the two runs). Distances to cloud in the physics checks use the MYD35 strict mask when the images carry `ImCloud`.

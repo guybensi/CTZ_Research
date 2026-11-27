@@ -32,6 +32,10 @@ Methods that read test labels (B-const, M6e, M7, M9-local) are never ranked.
 Re-apply the rule to a saved run (e.g. after a gate changes), without retraining:
 
     python3 -m flux1km.decision docs/results/2008_Pacific_img6/summary.json [--clear-bias-gate 5]
+
+A method run alone on the same split (e.g. M4) joins the table with --merge <its summary.json>. Its paired tests
+against the other methods need both runs' predictions.csv, so they are missing: it can pass the gates and be
+ranked, but it cannot be shown significantly better or worse than the others.
 """
 from __future__ import annotations
 
@@ -245,6 +249,38 @@ def decide(summary: dict, cfg) -> dict:
             "log": log}
 
 
+def merge_summaries(base: dict, *others: dict) -> dict:
+    """One summary from runs of different methods on the same folds (same fold names and test sizes).
+
+    Models and paired comparisons are joined; comparisons across runs do not exist (they need the predictions).
+
+    Example:
+        >>> f = [{"name": "day-kfold:0", "n_test": 5}]
+        >>> a = {"models": {"A": {}}, "comparisons": {}, "folds": f, "config": {"models": ["A"]}}
+        >>> b = {"models": {"B": {}}, "comparisons": {}, "folds": f, "config": {"models": ["B"]}}
+        >>> sorted(merge_summaries(a, b)["models"]), merge_summaries(a, b)["config"]["models"]
+        (['A', 'B'], ['A', 'B'])
+
+    Raises:
+        ValueError: the folds differ, or a method is in two summaries.
+    """
+    out = {**base, "models": dict(base["models"]), "comparisons": dict(base.get("comparisons", {})),
+           "config": {**base.get("config", {}), "models": list(base.get("config", {}).get("models", base["models"]))}}
+    out.pop("decision", None)
+    key = [(f["name"], f.get("n_test")) for f in base.get("folds", [])]
+    for o in others:
+        if [(f["name"], f.get("n_test")) for f in o.get("folds", [])] != key:
+            raise ValueError("the runs were not made on the same folds; their scores cannot be merged")
+        dup = set(o["models"]) & set(out["models"])
+        if dup:
+            raise ValueError(f"methods in more than one summary: {sorted(dup)}")
+        out["models"].update(o["models"])
+        out["comparisons"].update(o.get("comparisons", {}))
+        out["config"]["models"] += [m for m in o.get("config", {}).get("models", o["models"])]
+        out["errors"] = list(out.get("errors", [])) + list(o.get("errors", []))
+    return out
+
+
 def _config_from(summary: dict, overrides: dict):
     """The run's own configuration (summary["config"]) with the given overrides, as an attribute object."""
     from types import SimpleNamespace
@@ -263,8 +299,12 @@ def main(argv=None) -> dict:
     p.add_argument("--trend-gate", type=float, default=None)
     p.add_argument("--swath-gate", type=float, default=None)
     p.add_argument("--flip-gate", action="store_true", help="make the ranking flip between operators a gate again")
+    p.add_argument("--merge", nargs="+", default=[], metavar="SUMMARY",
+                   help="summary.json of other runs on the same folds (e.g. a method run alone) to add to the table")
     a = p.parse_args(argv)
     summary = json.loads(open(a.summary).read())
+    if a.merge:
+        summary = merge_summaries(summary, *(json.loads(open(f).read()) for f in a.merge))
     cfg = _config_from(summary, {"clear_bias_gate": a.clear_bias_gate, "trend_gate": a.trend_gate, "swath_gate": a.swath_gate,
                                     "flip_is_gate": a.flip_gate or None})
     d = decide(summary, cfg)

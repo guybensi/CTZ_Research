@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from flux1km import decision
 from flux1km.benchmark import BenchmarkConfig
@@ -167,3 +168,35 @@ class TestOperatorFlips:
         p.write_text(json.dumps(s))
         assert decision.main([str(p)])["winner"] == "A"
         assert decision.main([str(p), "--flip-gate"])["winner"] is None
+
+
+class TestMergeSummaries:
+    @staticmethod
+    def _run(names, folds=(("day-kfold:0", 10),)):
+        m = {n: {"overall": {"rmse": 10.0 + i}, "macro_rmse": 10.0 + i, "complexity": i} for i, n in enumerate(names)}
+        return {"models": m, "comparisons": {}, "folds": [{"name": a, "n_test": b} for a, b in folds],
+                "config": {"models": list(names)}, "errors": [], "decision": {"winner": names[0]}}
+
+    def test_joins_models_and_drops_old_decision(self):
+        s = decision.merge_summaries(self._run(["A", "B"]), self._run(["C"]))
+        assert sorted(s["models"]) == ["A", "B", "C"] and s["config"]["models"] == ["A", "B", "C"]
+        assert "decision" not in s and decision.decide(s, None)["winner"] == "A"
+
+    def test_base_not_modified(self):
+        a = self._run(["A"])
+        decision.merge_summaries(a, self._run(["C"]))
+        assert list(a["models"]) == ["A"] and a["config"]["models"] == ["A"]
+
+    def test_different_folds_or_duplicate_method(self):
+        with pytest.raises(ValueError):
+            decision.merge_summaries(self._run(["A"]), self._run(["C"], folds=(("day-kfold:0", 11),)))
+        with pytest.raises(ValueError):
+            decision.merge_summaries(self._run(["A"]), self._run(["A"]))
+
+    def test_cli_merge(self, tmp_path):
+        import json
+
+        (tmp_path / "a.json").write_text(json.dumps(self._run(["A"])))
+        (tmp_path / "c.json").write_text(json.dumps(self._run(["C"])))
+        d = decision.main([str(tmp_path / "a.json"), "--merge", str(tmp_path / "c.json")])
+        assert set(d["gates"]) == {"A", "C"}
