@@ -1,0 +1,17 @@
+sharpness of the 1 km maps: median over footprints of corr(high-pass of the map, high-pass of the 0.66 um image)
+1 = the map keeps every edge of the image, ~0 = smeared; says nothing about the values (the RMSE does)
+
+method         A2008088.0100   A2008210.0315      mean
+M6d                     0.96            0.96      0.96
+M6f                     0.95            0.97      0.96
+M8                      0.99            0.87      0.93
+M3                      0.91            0.95      0.93
+M6b                     0.92            0.94      0.93
+M9                      0.79            0.90      0.84
+B-bagpixel              0.69            0.78      0.74
+M2                      0.66            0.80      0.73
+M10                     0.68            0.76      0.72
+M6c                     0.70            0.64      0.67
+M5                      0.48            0.34      0.41
+M6a                     0.02            0.02      0.02
+B-const                 0.00            0.00      0.00
