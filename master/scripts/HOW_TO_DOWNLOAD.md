@@ -123,6 +123,22 @@ cd /colony/bgu-eytane/users/$USER && mv dl/2004/AQUA/2004 AQUA/
 ```
 ב־`dl/<שנה>/AQUA/` מופיעה לפעמים גם תיקייה של השנה הקודמת עם גרנולה אחת (31.12 בשעה 23:55, שהחיפוש מחצות מחזיר). היא יורדת גם בשנה שלה, ואפשר למחוק אותה.
 
+### בדיקה מלאה (בלוק אחד)
+```bash
+D=/colony/bgu-eytane/users/$USER; echo "===== JOBS"; squeue -u $USER -o "%.6i %.14j %.2t %.10M %R"; echo "===== SIZE PER YEAR ($(date))"; du -sh $D/AQUA/* $D/dl/*/AQUA/* 2>/dev/null; echo "===== TOTAL"; du -sc $D/AQUA $D/dl 2>/dev/null | awk 'END{d=$1/1024^3; printf "downloaded %.1f TiB of ~78.7 (%.0f%%), left %.1f TiB\n", d, 100*d/78.7, 78.7-d}'; echo "===== STILL FAILED"; for M in $D/manifest.csv $D/dl/*/manifest.csv; do echo "$M $(awk -F, 'NR>1{s[$3]=$5} END{n=0; for(f in s) if(s[f]=="FAILED") n++; print n}' $M)"; done; echo "===== SEARCH FAILED (should print nothing)"; grep -l "SEARCH FAILED" $D/dl/*/download_log.txt $D/download_log.txt 2>/dev/null; echo "===== FINISHED YEARS"; for f in $(grep -l "=== year .* done" $D/logs/dl_*.out); do echo "$(grep '=== year' $f | tail -n 1)  OK=$(tail -n 14 $f | grep -cE '^\s*(jan|feb|mrch|apr|may|june|july|aug|sep|oct|nov|dec)\s.*OK') PROBLEM=$(tail -n 14 $f | grep -c PROBLEM)"; done
+```
+שנה גמורה: `OK=12 PROBLEM=0`, ‏`STILL FAILED` שלה 0 ואין לה `SEARCH FAILED`. אז מעבירים אותה ל־`AQUA/`.
+job שרץ ימים ומונה ה־CERES שלו (`[n/N]` בסוף הלוג) לא זז: הוא תקוע. מבטלים ושולחים את השנה שוב (ב־25–28.11 זה קרה ל־2008–2010 עם קוד בלי timeout).
+
+### אחרי נפילה או תחזוקה של האשכול
+ה־jobs שרצו נעצרים. קבצים שירדו נשמרים, ושליחה מחדש ממשיכה מאותה נקודה.
+1. **לפני התחזוקה:** jobs שממתינים יכולים להופיע ב־`squeue` עם `(ReqNodeNotAvail, Reserved for maintenance)`, כי מגבלת 7 הימים שלהם חוצה את חלון התחזוקה. הם יתחילו לבד אחריו.
+2. **אחרי התחזוקה:** בודקים ב־`squeue -u $USER` מה עוד בתור. אם אין שום job שלנו (או רק כאלה שנכשלו), שולחים מחדש את כל השנים שעוד לא הסתיימו, על 5 מסלולים:
+```bash
+D=/colony/bgu-eytane/users/$USER; cd ~/CTZ_Research && git pull; DONE=$(grep -h "=== year .* done" $D/logs/dl_*.out | awk '{print $3}' | sort -u); i=0; for Y in $(seq 2003 2022); do echo "$DONE" | grep -qx $Y && continue; [ -d $D/AQUA/$Y ] && continue; L=$((i % 5)); i=$((i+1)); echo "resubmit $Y lane $L"; OUT=$D/dl/$Y sbatch -J ctz_dl_$L --dependency=singleton master/scripts/slurm/download_year.sbatch $Y; done
+```
+   אם חלק מה־jobs עדיין בתור, לא מריצים את זה (השנים יירדו פעמיים במקביל): קודם `scancel -u $USER`, ואז הפקודה.
+
 ## הרצה בשרת רגיל (בלי Slurm)
 
 1. **MODIS קודם** (CERES מוריד רק שעות שיש להן MODIS):
